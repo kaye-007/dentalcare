@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dentalcare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dentalcare}
+      POSTGRES_DB: ${POSTGRES_DB:-dentalcare}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dentalcare} -d ${POSTGRES_DB:-dentalcare}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-dentalcare}:${POSTGRES_PASSWORD:-dentalcare}@postgres:5432/${POSTGRES_DB:-dentalcare}
+      APP_DATABASE_URL: postgres://${APP_DB_USER:-app_user}:${APP_DB_PASSWORD:-app_user_dev_pw}@postgres:5432/${POSTGRES_DB:-dentalcare}
+      DEV_TENANT_SUBDOMAIN: ${DEV_TENANT_SUBDOMAIN:-avicena}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
