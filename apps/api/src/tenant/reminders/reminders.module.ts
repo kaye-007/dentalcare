@@ -111,9 +111,10 @@ export class RemindersService {
   }
 
   /* request-scoped: manual trigger for one appointment */
-  sendManual(appointmentId: string, userId: string) {
+  async sendManual(appointmentId: string, userId: string) {
     const tenantId = this.tenant.getRequiredTenantId();
-    return this.db.withTenant(tenantId, async (client) => {
+
+    const row = await this.db.withTenant(tenantId, async (client) => {
       const appt = await client.query<{
         starts_at: string; status: string; reason: string;
         patient_name: string; patient_phone: string | null; clinic_name: string;
@@ -128,25 +129,30 @@ export class RemindersService {
           WHERE a.id = $1`,
         [appointmentId],
       );
-      const row = appt.rows[0];
-      if (!row) throw new NotFoundException('Appointment not found');
-      if (row.status !== 'scheduled') {
+      const r = appt.rows[0];
+      if (!r) throw new NotFoundException('Appointment not found');
+      if (r.status !== 'scheduled') {
         throw new BadRequestException('Reminders can only be sent for scheduled appointments');
       }
-      const message = renderMessage({
-        patient: row.patient_name,
-        clinic: row.clinic_name,
-        startsAt: new Date(row.starts_at),
-        reason: row.reason,
-      });
-      const id = await this.deliver(client, {
-        tenantId,
-        appointmentId,
-        type: 'manual',
-        message,
-        to: row.patient_phone,
-        createdBy: userId,
-      });
+      return r;
+    });
+
+    const message = renderMessage({
+      patient: row.patient_name,
+      clinic: row.clinic_name,
+      startsAt: new Date(row.starts_at),
+      reason: row.reason,
+    });
+
+    const id = await this.createReminder(tenantId, {
+      appointmentId,
+      type: 'manual',
+      message,
+      createdBy: userId,
+    });
+    await this.deliverAndRecord(tenantId, id, row.patient_phone, message);
+
+    return this.db.withTenant(tenantId, async (client) => {
       const out = await client.query<ReminderRow>(`${SELECT} WHERE r.id = $1`, [id]);
       return map(out.rows[0]!);
     });
@@ -154,8 +160,8 @@ export class RemindersService {
 
   /* scheduler-scoped: scan one tenant for due automatic reminders */
   async scanTenant(tenantId: string, hoursBefore: number): Promise<number> {
-    return this.db.withTenant(tenantId, async (client) => {
-      const due = await client.query<{
+    const due = await this.db.withTenant(tenantId, async (client) => {
+      const res = await client.query<{
         id: string; starts_at: string; reason: string;
         patient_name: string; patient_phone: string | null; clinic_name: string;
       }>(
@@ -177,68 +183,110 @@ export class RemindersService {
           LIMIT 100`,
         [String(hoursBefore)],
       );
-      let sent = 0;
-      for (const a of due.rows) {
-        const message = renderMessage({
-          patient: a.patient_name,
-          clinic: a.clinic_name,
-          startsAt: new Date(a.starts_at),
-          reason: a.reason,
-        });
-        try {
-          await this.deliver(client, {
-            tenantId,
-            appointmentId: a.id,
-            type: 'automatic',
-            message,
-            to: a.patient_phone,
-            createdBy: null,
-          });
-          sent += 1;
-        } catch (err: unknown) {
-          // unique-index race (another scan got there first) — safe to skip
-          if ((err as { code?: string }).code === '23505') continue;
-          throw err;
-        }
-      }
-      return sent;
+      return res.rows;
     });
+
+    let sent = 0;
+    for (const a of due) {
+      const message = renderMessage({
+        patient: a.patient_name,
+        clinic: a.clinic_name,
+        startsAt: new Date(a.starts_at),
+        reason: a.reason,
+      });
+      let id: string;
+      try {
+        id = await this.createReminder(tenantId, {
+          appointmentId: a.id,
+          type: 'automatic',
+          message,
+          createdBy: null,
+        });
+      } catch (err: unknown) {
+        // Unique-index race: another scanner claimed this appointment first.
+        // Safe to skip — and safe to *continue* the loop, because each claim
+        // now runs in its own transaction. Previously the whole scan shared
+        // one transaction, so the 23505 aborted it and every following
+        // statement failed with 25P02, discarding the entire pass.
+        if ((err as { code?: string }).code === '23505') continue;
+        throw err;
+      }
+      await this.deliverAndRecord(tenantId, id, a.patient_phone, message);
+      sent += 1;
+    }
+    return sent;
   }
 
-  /** Insert the reminder row, deliver via the active channel, record outcome. */
-  private async deliver(
-    client: PoolClient,
+  /**
+   * Claim the appointment by inserting a pending reminder row, in its own
+   * short transaction. Throws 23505 if another scanner got there first.
+   */
+  private async createReminder(
+    tenantId: string,
     opts: {
-      tenantId: string;
       appointmentId: string;
       type: 'automatic' | 'manual';
       message: string;
-      to: string | null;
       createdBy: string | null;
     },
   ): Promise<string> {
     const channel = this.channels.active();
-    const ins = await client.query<{ id: string }>(
-      `INSERT INTO reminders (tenant_id, appointment_id, type, channel, status, message, created_by)
-       VALUES ($1,$2,$3,$4,'pending',$5,$6) RETURNING id`,
-      [opts.tenantId, opts.appointmentId, opts.type, channel.id, opts.message, opts.createdBy],
-    );
-    const id = ins.rows[0]!.id;
+    return this.db.withTenant(tenantId, async (client) => {
+      const ins = await client.query<{ id: string }>(
+        `INSERT INTO reminders (tenant_id, appointment_id, type, channel, status, message, created_by)
+         VALUES ($1,$2,$3,$4,'pending',$5,$6) RETURNING id`,
+        [tenantId, opts.appointmentId, opts.type, channel.id, opts.message, opts.createdBy],
+      );
+      return ins.rows[0]!.id;
+    });
+  }
+
+  /**
+   * Deliver through the active channel and record the outcome.
+   *
+   * Delivery happens OUTSIDE any transaction. Sending is a network call to a
+   * third party: holding a database connection open for its duration would tie
+   * up the pool, and — more seriously — a later rollback would erase the
+   * reminder row after the message had already left, so the next scan would
+   * send it again. Committing the claim first, then delivering, keeps the
+   * at-most-once guarantee that the partial unique index is there to provide.
+   */
+  private async deliverAndRecord(
+    tenantId: string,
+    id: string,
+    to: string | null,
+    message: string,
+  ): Promise<void> {
+    const channel = this.channels.active();
+    let error: string | null = null;
     try {
-      await channel.send({ to: opts.to, message: opts.message });
-      await client.query(
-        `UPDATE reminders SET status = 'sent', sent_at = now() WHERE id = $1`,
-        [id],
-      );
+      await channel.send({ to, message });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'delivery failed';
-      await client.query(
-        `UPDATE reminders SET status = 'failed', error = $2 WHERE id = $1`,
-        [id, msg.slice(0, 500)],
-      );
-      this.logger.error(`reminder ${id} failed: ${msg}`);
+      error = err instanceof Error ? err.message : 'delivery failed';
+      this.logger.error(`reminder ${id} failed: ${error}`);
     }
-    return id;
+
+    try {
+      await this.db.withTenant(tenantId, async (client) => {
+        if (error === null) {
+          await client.query(
+            `UPDATE reminders SET status = 'sent', sent_at = now() WHERE id = $1`,
+            [id],
+          );
+        } else {
+          await client.query(
+            `UPDATE reminders SET status = 'failed', error = $2 WHERE id = $1`,
+            [id, error.slice(0, 500)],
+          );
+        }
+      });
+    } catch (err: unknown) {
+      // The message may already have gone out; leaving the row 'pending' is
+      // the honest record. Never let bookkeeping failure abort the scan.
+      this.logger.error(
+        `reminder ${id}: could not record outcome: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 }
 
