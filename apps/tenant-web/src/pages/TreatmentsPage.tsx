@@ -8,7 +8,7 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
-import { formatLek } from '../lib/format';
+import { formatMoney } from '../lib/format';
 
 const TABS = [
   { key: 'active', label: 'Active' },
@@ -94,7 +94,7 @@ export default function TreatmentsPage() {
               {items.map((t) => (
                 <tr key={t.id}>
                   <td><span style={{ fontWeight: 600 }}>{t.name}</span></td>
-                  <td>from {formatLek(t.price)}</td>
+                  <td>from {formatMoney(t.price)}</td>
                   <td className="muted">± {t.durationMinutes} min</td>
                   <td>
                     {t.visitType ? (
@@ -177,7 +177,7 @@ function TreatmentModal({
         </label>
         <div className="grid2">
           <label className="field">
-            <span>Price (Lekë)</span>
+            <span>Price (€)</span>
             <input type="number" min={0} value={form.price}
               onChange={(e) => setForm((f) => ({ ...f, price: Number(e.target.value) }))} required />
           </label>

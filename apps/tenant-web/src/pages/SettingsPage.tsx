@@ -200,7 +200,7 @@ function PreferencesCard({ initial, payrollInitial }: { initial: number; payroll
           </span>
         </label>
         <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
-          Currency is Lekë (ALL) across the product.
+          Currency is Euro (EUR) across the product.
         </p>
         {error && <p className="formerror">{error}</p>}
         <div className="form__foot"><SaveButton busy={busy} saved={saved} /></div>

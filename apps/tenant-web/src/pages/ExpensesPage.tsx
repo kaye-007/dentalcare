@@ -8,7 +8,7 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
-import { formatLek } from '../lib/format';
+import { formatMoney } from '../lib/format';
 
 const CATEGORIES: { key: ExpenseCategory; label: string }[] = [
   { key: 'rent', label: 'Rent' },
@@ -55,7 +55,7 @@ export default function ExpensesPage() {
     <div className="page">
       <PageHeader
         title="Expenses"
-        meta={items ? `${items.length} entr${items.length === 1 ? 'y' : 'ies'} · ${formatLek(total)} in view` : '…'}
+        meta={items ? `${items.length} entr${items.length === 1 ? 'y' : 'ies'} · ${formatMoney(total)} in view` : '…'}
         actions={
           <button className="btn btn--primary" onClick={() => setCreating(true)}>
             <Plus size={16} /> Add expense
@@ -98,7 +98,7 @@ export default function ExpensesPage() {
                   <td className="muted">{fmtDate(e.expenseDate)}</td>
                   <td><StatusPill status="neutral" label={CAT_LABEL[e.category]} /></td>
                   <td className="muted">{e.note ?? '—'}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatLek(e.amount)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(e.amount)}</td>
                   {isOwner && (
                     <td style={{ textAlign: 'right' }}>
                       <button className="note__del" onClick={() => remove(e.id)} title="Delete expense">
@@ -164,7 +164,7 @@ function ExpenseModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             </select>
           </label>
           <label className="field">
-            <span>Amount (Lekë)</span>
+            <span>Amount (€)</span>
             <input type="number" min={1} value={amount || ''}
               onChange={(e) => setAmount(Number(e.target.value))} required />
           </label>

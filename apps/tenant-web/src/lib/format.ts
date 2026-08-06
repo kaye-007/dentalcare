@@ -1,5 +1,27 @@
-export function formatLek(value: number): string {
-  return `${value.toLocaleString('en-US')} L`;
+/**
+ * Money formatting.
+ *
+ * Amounts are stored as integers in whole currency units (never floats, never
+ * minor units). A stored 4500 is €4,500 — not €45.00. That mapping is
+ * unchanged from when the product was denominated in Lekë; only the
+ * presentation currency moved to EUR, so no historical amount changes value.
+ *
+ * There is no multi-currency system: the product is single-currency by
+ * design, and this is the one place that decides how money is rendered.
+ */
+export const CURRENCY = 'EUR';
+export const CURRENCY_SYMBOL = '€';
+export const CURRENCY_LABEL = 'Euro (EUR)';
+
+const moneyFormatter = new Intl.NumberFormat('de-DE', {
+  style: 'currency',
+  currency: CURRENCY,
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
+export function formatMoney(value: number): string {
+  return moneyFormatter.format(value);
 }
 
 export function initials(name: string): string {

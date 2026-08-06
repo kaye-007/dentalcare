@@ -9,7 +9,7 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Avatar, PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
-import { formatLek } from '../lib/format';
+import { formatMoney } from '../lib/format';
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -130,7 +130,7 @@ export default function StaffPage() {
                       <td>
                         {s.salaryAmount ? (
                           <span style={{ fontWeight: 600 }}>
-                            {formatLek(s.salaryAmount)}
+                            {formatMoney(s.salaryAmount)}
                             <span className="muted" style={{ fontWeight: 400 }}> /mo</span>
                           </span>
                         ) : (
@@ -205,7 +205,7 @@ function SalaryLog() {
         <div>
           <h2>Salary payment log</h2>
           <p className="card__sub">
-            {items === null ? '…' : `${items.length} payment(s) · ${formatLek(total)} recorded`}
+            {items === null ? '…' : `${items.length} payment(s) · ${formatMoney(total)} recorded`}
             {' '}· lightweight log for payments made outside the system
           </p>
         </div>
@@ -227,7 +227,7 @@ function SalaryLog() {
                 <td className="muted">{fmtDate(p.paidOn)}</td>
                 <td style={{ fontWeight: 600 }}>{p.staffName}</td>
                 <td className="muted">{p.position ?? '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatLek(p.amount)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(p.amount)}</td>
                 <td className="muted">{p.note ?? '—'}</td>
               </tr>
             ))}
@@ -282,7 +282,7 @@ function SalaryPaymentModal({
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           <label className="field">
-            <span>Amount (Lekë)</span>
+            <span>Amount (€)</span>
             <input type="number" min={1} value={amount || ''}
               onChange={(e) => setAmount(Number(e.target.value))} required />
           </label>
@@ -301,7 +301,7 @@ function SalaryPaymentModal({
           <div className="modal__foot-right">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
             <button className="btn btn--primary" disabled={busy}>
-              {busy ? 'Recording…' : `Yes, record ${formatLek(amount || 0)}`}
+              {busy ? 'Recording…' : `Yes, record ${formatMoney(amount || 0)}`}
             </button>
           </div>
         </div>
@@ -413,7 +413,7 @@ function StaffModal({
         </label>
         <div className="grid2">
           <label className="field">
-            <span>Salary (Lekë / month)</span>
+            <span>Salary (€ / month)</span>
             <input type="number" min={1} value={salaryAmount}
               onChange={(e) => setSalaryAmount(e.target.value)} placeholder="Optional" />
           </label>

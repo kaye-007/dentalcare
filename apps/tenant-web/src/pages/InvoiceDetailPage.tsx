@@ -8,7 +8,7 @@ import {
   type PaymentMethod,
 } from '../lib/api';
 import { StatusPill, Modal, Avatar } from '../components/ui';
-import { formatLek } from '../lib/format';
+import { formatMoney } from '../lib/format';
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -82,9 +82,9 @@ export default function InvoiceDetailPage() {
       {error && <p className="formerror" style={{ marginBottom: 14 }}>{error}</p>}
 
       <div className="sumstrip">
-        <div><span>Total</span><strong>{formatLek(inv.total)}</strong></div>
-        <div><span>Paid</span><strong>{formatLek(inv.paid)}</strong></div>
-        <div><span>Balance</span><strong className={inv.balance > 0 ? 'sumstrip__due' : ''}>{formatLek(inv.balance)}</strong></div>
+        <div><span>Total</span><strong>{formatMoney(inv.total)}</strong></div>
+        <div><span>Paid</span><strong>{formatMoney(inv.paid)}</strong></div>
+        <div><span>Balance</span><strong className={inv.balance > 0 ? 'sumstrip__due' : ''}>{formatMoney(inv.balance)}</strong></div>
       </div>
 
       <div className="grid">
@@ -104,8 +104,8 @@ export default function InvoiceDetailPage() {
                     )}
                   </td>
                   <td className="muted">{it.quantity}</td>
-                  <td className="muted">{formatLek(it.unitPrice)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatLek(it.amount)}</td>
+                  <td className="muted">{formatMoney(it.unitPrice)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(it.amount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -121,7 +121,7 @@ export default function InvoiceDetailPage() {
               {inv.payments.map((p) => (
                 <li className="row" key={p.id}>
                   <span className="row__main">
-                    <span className="row__title">{formatLek(p.amount)}</span>
+                    <span className="row__title">{formatMoney(p.amount)}</span>
                     <span className="row__sub">
                       {fmtDateTime(p.paidAt)}{p.recordedBy ? ` · ${p.recordedBy}` : ''}
                       {p.note ? ` · ${p.note}` : ''}
@@ -179,11 +179,11 @@ function PaymentModal({
   }
 
   return (
-    <Modal title="Record payment" subtitle={`Outstanding balance: ${formatLek(balance)}`} onClose={onClose}>
+    <Modal title="Record payment" subtitle={`Outstanding balance: ${formatMoney(balance)}`} onClose={onClose}>
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           <label className="field">
-            <span>Amount (Lekë)</span>
+            <span>Amount (€)</span>
             <input type="number" min={1} max={balance} value={amount}
               onChange={(e) => setAmount(Number(e.target.value))} required />
           </label>
@@ -205,7 +205,7 @@ function PaymentModal({
           <div className="modal__foot-right">
             <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
             <button className="btn btn--primary" disabled={busy}>
-              {busy ? 'Saving…' : `Record ${formatLek(amount || 0)}`}
+              {busy ? 'Saving…' : `Record ${formatMoney(amount || 0)}`}
             </button>
           </div>
         </div>
@@ -226,7 +226,7 @@ export function PaymentsPage() {
       <div className="page__head">
         <div className="page__head-main">
           <h2 className="section-title">Payments</h2>
-          <p className="page__meta">{items ? `${items.length} payment(s) · ${formatLek(total)} collected` : '…'}</p>
+          <p className="page__meta">{items ? `${items.length} payment(s) · ${formatMoney(total)} collected` : '…'}</p>
         </div>
       </div>
       <div className="card">
@@ -248,7 +248,7 @@ export function PaymentsPage() {
                     <div className="namecell"><Avatar name={p.patientName} size={26} /><span>{p.patientName}</span></div>
                   </td>
                   <td><StatusPill status="neutral" label={METHOD_LABEL[p.method]} /></td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatLek(p.amount)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(p.amount)}</td>
                 </tr>
               ))}
             </tbody>

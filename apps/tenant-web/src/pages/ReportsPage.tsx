@@ -3,7 +3,7 @@ import { Lock, BarChart3 } from 'lucide-react';
 import { reportsApi, type ReportOverview, type ReportBreakdownRow } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { PageHeader, EmptyState } from '../components/ui';
-import { formatLek } from '../lib/format';
+import { formatMoney } from '../lib/format';
 
 /* ── date helpers ───────────────────────────────────────── */
 function iso(d: Date) {
@@ -78,7 +78,7 @@ export default function ReportsPage() {
         title="Reports"
         meta={
           t
-            ? `${t.newPatients} new patient(s) · ${t.appointments} appointment(s), ${t.appointmentsCompleted} completed · ${formatLek(t.outstanding)} currently outstanding`
+            ? `${t.newPatients} new patient(s) · ${t.appointments} appointment(s), ${t.appointmentsCompleted} completed · ${formatMoney(t.outstanding)} currently outstanding`
             : '…'
         }
       />
@@ -106,15 +106,15 @@ export default function ReportsPage() {
       ) : (
         <>
           <div className="sumstrip sumstrip--4">
-            <div><span>Collected</span><strong>{formatLek(data.totals.collected)}</strong></div>
-            <div><span>Expenses</span><strong>{formatLek(data.totals.expenses)}</strong></div>
+            <div><span>Collected</span><strong>{formatMoney(data.totals.collected)}</strong></div>
+            <div><span>Expenses</span><strong>{formatMoney(data.totals.expenses)}</strong></div>
             <div>
               <span>Profit</span>
               <strong className={data.totals.profit < 0 ? 'sumstrip__due' : 'sumstrip__pos'}>
-                {formatLek(data.totals.profit)}
+                {formatMoney(data.totals.profit)}
               </strong>
             </div>
-            <div><span>Invoiced</span><strong>{formatLek(data.totals.invoiced)}</strong></div>
+            <div><span>Invoiced</span><strong>{formatMoney(data.totals.invoiced)}</strong></div>
           </div>
 
           <div className="grid">
@@ -279,7 +279,7 @@ function BreakdownCard({
               <span className="bars__track">
                 <span className={`bars__fill bars__fill--${tone}`} style={{ width: `${(r.value / max) * 100}%` }} />
               </span>
-              <span className="bars__value">{formatLek(r.value)}</span>
+              <span className="bars__value">{formatMoney(r.value)}</span>
             </li>
           ))}
         </ul>

@@ -6,7 +6,7 @@ import {
 import { useAuth } from '../lib/auth';
 import { api, appointmentsApi, financeApi, type Appointment, type PatientListItem, type InvoiceSummaryRow, type FinanceSummary } from '../lib/api';
 import { Avatar, StatusPill, EmptyState } from '../components/ui';
-import { formatLek } from '../lib/format';
+import { formatMoney } from '../lib/format';
 
 function todayLabel() {
   return new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -86,21 +86,21 @@ export default function DashboardPage() {
           <>
             <article className="kpi">
               <div className="kpi__top"><span className="kpi__label">Collected this month</span></div>
-              <p className="kpi__value">{summary === null ? '…' : formatLek(summary.totalCollected)}</p>
+              <p className="kpi__value">{summary === null ? '…' : formatMoney(summary.totalCollected)}</p>
               <div className="kpi__foot">
                 <span className="kpi__caption">
-                  {summary === null ? '' : `${formatLek(summary.totalInvoiced)} invoiced`}
+                  {summary === null ? '' : `${formatMoney(summary.totalInvoiced)} invoiced`}
                 </span>
               </div>
             </article>
             <article className="kpi">
               <div className="kpi__top"><span className="kpi__label">Profit this month</span></div>
               <p className="kpi__value">
-                {summary === null ? '…' : formatLek(summary.totalCollected - summary.totalExpenses)}
+                {summary === null ? '…' : formatMoney(summary.totalCollected - summary.totalExpenses)}
               </p>
               <div className="kpi__foot">
                 <span className="kpi__caption">
-                  {summary === null ? 'collected − expenses' : `${formatLek(summary.totalExpenses)} expenses`}
+                  {summary === null ? 'collected − expenses' : `${formatMoney(summary.totalExpenses)} expenses`}
                 </span>
               </div>
             </article>
@@ -108,7 +108,7 @@ export default function DashboardPage() {
         ) : (
           <article className="kpi">
             <div className="kpi__top"><span className="kpi__label">Outstanding balance</span></div>
-            <p className="kpi__value">{summary === null ? '…' : formatLek(summary.outstanding)}</p>
+            <p className="kpi__value">{summary === null ? '…' : formatMoney(summary.outstanding)}</p>
             <div className="kpi__foot">
               <span className="kpi__caption">{openInvoices === null ? '' : `${openInvoices.length} open invoice(s) shown`}</span>
             </div>
@@ -172,7 +172,7 @@ export default function DashboardPage() {
               <div>
                 <h2>Pending payments</h2>
                 <p className="card__sub">
-                  {summary === null ? '…' : `${formatLek(summary.outstanding)} outstanding`}
+                  {summary === null ? '…' : `${formatMoney(summary.outstanding)} outstanding`}
                 </p>
               </div>
               <Link to="/invoices" className="link"><ChevronRight size={15} /></Link>
@@ -188,7 +188,7 @@ export default function DashboardPage() {
                       <span className="row__title">{p.patientName}</span>
                       <span className="row__sub">{p.invoiceNumber}</span>
                     </span>
-                    <span className="row__amount">{formatLek(p.balance)}</span>
+                    <span className="row__amount">{formatMoney(p.balance)}</span>
                     <StatusPill status={p.status} label={p.status === 'partially_paid' ? 'Partial' : undefined} />
                   </li>
                 ))}

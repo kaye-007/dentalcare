@@ -305,7 +305,7 @@ export class FinanceService {
       const balance = inv.total - Number(inv.paid);
       if (balance <= 0) throw new BadRequestException('This invoice is already fully paid');
       if (dto.amount > balance) {
-        throw new BadRequestException(`Amount exceeds the outstanding balance (${balance} L)`);
+        throw new BadRequestException(`Amount exceeds the outstanding balance (${balance} EUR)`);
       }
       await client.query(
         `INSERT INTO payments (tenant_id, invoice_id, amount, method, note, created_by)

@@ -11,7 +11,7 @@ import {
 } from '../lib/api';
 import { PageHeader, StatusPill, EmptyState, Modal, Avatar } from '../components/ui';
 import PatientPicker from '../components/PatientPicker';
-import { formatLek } from '../lib/format';
+import { formatMoney } from '../lib/format';
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -54,7 +54,7 @@ export default function InvoicesPage() {
     <div className="page">
       <PageHeader
         title="Invoices"
-        meta={items ? `${items.length} in view · ${formatLek(outstanding)} outstanding` : '…'}
+        meta={items ? `${items.length} in view · ${formatMoney(outstanding)} outstanding` : '…'}
         actions={
           <button className="btn btn--primary" onClick={() => setCreating(true)}>
             <Plus size={16} /> New invoice
@@ -107,9 +107,9 @@ export default function InvoicesPage() {
                     </div>
                   </td>
                   <td className="muted">{fmtDate(i.issuedAt)}</td>
-                  <td>{formatLek(i.total)}</td>
-                  <td className="muted">{formatLek(i.paid)}</td>
-                  <td style={{ fontWeight: i.balance > 0 ? 600 : 400 }}>{formatLek(i.balance)}</td>
+                  <td>{formatMoney(i.total)}</td>
+                  <td className="muted">{formatMoney(i.paid)}</td>
+                  <td style={{ fontWeight: i.balance > 0 ? 600 : 400 }}>{formatMoney(i.balance)}</td>
                   <td><StatusPill status={i.status}
                     label={i.status === 'partially_paid' ? 'Partial' : undefined} /></td>
                 </tr>
@@ -215,10 +215,10 @@ function NewInvoiceModal({
                 onChange={(e) => setItem(it.key, { quantity: Math.max(1, Number(e.target.value)) })}
               />
               <input
-                type="number" min={0} value={it.unitPrice} title="Unit price (Lekë)"
+                type="number" min={0} value={it.unitPrice} title="Unit price (€)"
                 onChange={(e) => setItem(it.key, { unitPrice: Math.max(0, Number(e.target.value)) })}
               />
-              <span className="lineitem__amount">{formatLek(it.quantity * it.unitPrice)}</span>
+              <span className="lineitem__amount">{formatMoney(it.quantity * it.unitPrice)}</span>
               <button
                 type="button" className="note__del" title="Remove line"
                 disabled={items.length === 1}
@@ -238,7 +238,7 @@ function NewInvoiceModal({
 
         <div className="invoice-total">
           <span>Total</span>
-          <strong>{formatLek(total)}</strong>
+          <strong>{formatMoney(total)}</strong>
         </div>
 
         {error && <p className="formerror">{error}</p>}
