@@ -34,7 +34,13 @@ export class TenantMiddleware implements NestMiddleware {
     if (!tenant) {
       throw new NotFoundException('Clinic not found.');
     }
-    if (tenant.status === 'suspended' || tenant.status === 'cancelled') {
+    // Allowlist, not denylist: any status other than 'active' loses access.
+    // Migration 0004 replaced ('trial','active','suspended','cancelled') with
+    // ('active','suspended','archived'); the previous denylist still named
+    // 'cancelled' (now unreachable) and never named 'archived', so archiving a
+    // clinic in the admin console revoked nothing. Failing closed also means a
+    // future status is denied by default rather than silently permitted.
+    if (tenant.status !== 'active') {
       throw new ForbiddenException({
         code: 'tenant_suspended',
         message: "This clinic's access is currently suspended.",
@@ -51,11 +57,17 @@ export class TenantMiddleware implements NestMiddleware {
    * Production: the subdomain of the Host (avicena.dentalcare.app -> avicena).
    * Development: an X-Tenant-Subdomain header, or the DEV_TENANT_SUBDOMAIN
    * fallback, so localhost works without editing the hosts file.
+   *
+   * The header lets a client choose which clinic it is talking to, so it is
+   * gated on an explicit opt-in (ALLOW_TENANT_HEADER=1) and hard-disabled in
+   * production. Previously it was enabled by the absence of
+   * NODE_ENV=production, which fails open: a deploy that forgot one variable
+   * quietly accepted client-chosen tenants. Token-to-tenant binding still
+   * blocked cross-tenant reads, but it allowed enumerating clinics and probing
+   * credentials against any of them.
    */
   private resolveSubdomain(req: Request): string | null {
-    const isProd = this.config.get<string>('NODE_ENV') === 'production';
-
-    if (!isProd) {
+    if (this.tenantHeaderAllowed()) {
       const header = req.headers['x-tenant-subdomain'];
       if (header) {
         return String(Array.isArray(header) ? header[0] : header).toLowerCase();
@@ -70,5 +82,11 @@ export class TenantMiddleware implements NestMiddleware {
       return labels[0].toLowerCase();
     }
     return null;
+  }
+
+  /** Never honour the client-supplied tenant header in production. */
+  private tenantHeaderAllowed(): boolean {
+    if (this.config.get<string>('NODE_ENV') === 'production') return false;
+    return this.config.get<string>('ALLOW_TENANT_HEADER') === '1';
   }
 }

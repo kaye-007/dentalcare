@@ -18,6 +18,10 @@ const envSchema = z.object({
 
   // Local-dev tenant fallback when there is no subdomain (M3).
   DEV_TENANT_SUBDOMAIN: z.string().min(1).optional(),
+  // Opt-in for the X-Tenant-Subdomain request header, which lets the caller
+  // choose its clinic. Required for localhost development; ignored outright
+  // when NODE_ENV=production. Set to '1' to enable.
+  ALLOW_TENANT_HEADER: z.enum(['0', '1']).optional(),
 
   REDIS_URL: z.string().min(1).optional(),
 

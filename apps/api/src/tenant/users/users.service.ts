@@ -9,7 +9,8 @@ export interface AuthUserRow {
   full_name: string;
   role: 'owner' | 'frontdesk';
   user_status: 'active' | 'disabled';
-  tenant_status: 'trial' | 'active' | 'suspended' | 'cancelled';
+  /** Matches the tenants_status_check constraint set by migration 0004. */
+  tenant_status: 'active' | 'suspended' | 'archived';
   clinic_name: string;
   subdomain: string;
 }

@@ -43,8 +43,9 @@ export class AuthService {
     if (user.user_status !== 'active') {
       throw new UnauthorizedException('This account is disabled');
     }
-    // Tenant suspension is also blocked upstream by the middleware.
-    if (user.tenant_status === 'suspended' || user.tenant_status === 'cancelled') {
+    // Tenant suspension is also blocked upstream by the middleware. Allowlist
+    // here too, so 'archived' (and any future status) fails closed.
+    if (user.tenant_status !== 'active') {
       throw new UnauthorizedException('Clinic access is currently suspended');
     }
 
