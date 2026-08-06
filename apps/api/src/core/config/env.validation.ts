@@ -25,6 +25,11 @@ const envSchema = z.object({
 
   REDIS_URL: z.string().min(1).optional(),
 
+  // Comma-separated origins allowed to call the API cross-origin, e.g.
+  // "https://app.dentalcare.app,https://*.dentalcare.app". localhost is
+  // always allowed. Leave unset when the SPAs are same-origin with the API.
+  CORS_ORIGINS: z.string().optional(),
+
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_ACCESS_TTL: z.string().min(1).default('15m'),
   REMINDER_SCAN_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),

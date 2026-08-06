@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto, LoginDto, RefreshDto } from './dto/login.dto';
 import { JwtAuthGuard } from './jwt.guard';
@@ -23,11 +24,14 @@ export class AuthController {
     private readonly tenant: TenantContextService,
   ) {}
 
+  // Credential endpoint: tight per-IP ceiling to blunt credential stuffing.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
   }
 
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @Post('refresh')
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);

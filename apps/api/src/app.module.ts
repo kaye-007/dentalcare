@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigModule } from './core/config/config.module';
 import { DatabaseModule } from './core/database/database.module';
@@ -47,6 +49,9 @@ import { PlansModule } from './platform/plans/plans.module';
         redact: ['req.headers.authorization', 'req.headers.cookie'],
       },
     }),
+    // Baseline ceiling for every route. Login routes narrow this further with
+    // their own @Throttle — see AuthController / PlatformAuthController.
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     DatabaseModule,
     TenancyModule,
     HealthModule,
@@ -64,6 +69,7 @@ import { PlansModule } from './platform/plans/plans.module';
     TenantsModule,
     PlansModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule implements NestModule {
   // Tenant resolution applies to clinic (tenant-plane) routes. Health stays
