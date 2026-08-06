@@ -27,10 +27,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
   constructor(private readonly config: ConfigService) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     const appUrl = this.config.get<string>('APP_DATABASE_URL');
     const adminUrl = this.config.get<string>('DATABASE_URL')!;
+    const isProd = this.config.get<string>('NODE_ENV') === 'production';
+
     if (!appUrl) {
+      // env.validation rejects this combination in production, so reaching
+      // here without appUrl means development.
       this.logger.warn(
         'APP_DATABASE_URL not set — tenant plane falling back to DATABASE_URL. ' +
           'Row-Level Security is NOT enforced. Set APP_DATABASE_URL for isolation.',
@@ -48,6 +52,41 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     });
     this.pool.on('error', (e) => this.logger.error(`app pool: ${e.message}`));
     this.adminPool.on('error', (e) => this.logger.error(`admin pool: ${e.message}`));
+
+    await this.assertTenantRoleIsRestricted(isProd);
+  }
+
+  /**
+   * Defence in depth for the tenant plane. A correct APP_DATABASE_URL is not
+   * enough on its own — the role it points at must also be unable to bypass
+   * RLS. A superuser, or any role with BYPASSRLS, silently defeats every
+   * tenant_isolation policy in the schema. Verify at boot rather than
+   * discovering it from a cross-tenant data leak.
+   */
+  private async assertTenantRoleIsRestricted(isProd: boolean): Promise<void> {
+    let row: { rolsuper: boolean; rolbypassrls: boolean } | undefined;
+    try {
+      const res = await this.pool.query<{ rolsuper: boolean; rolbypassrls: boolean }>(
+        'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user',
+      );
+      row = res.rows[0];
+    } catch (e) {
+      // Never block startup on the check itself being unavailable.
+      this.logger.warn(
+        `Could not verify tenant DB role privileges: ${(e as Error).message}`,
+      );
+      return;
+    }
+    if (!row || (!row.rolsuper && !row.rolbypassrls)) return;
+
+    const how = row.rolsuper ? 'is a SUPERUSER' : 'has BYPASSRLS';
+    const message =
+      `The tenant database role ${how}, so Row-Level Security is NOT enforced ` +
+      'and every clinic can read every other clinic\'s data. ' +
+      'Point APP_DATABASE_URL at the non-superuser app_user role created by migration 0003.';
+
+    if (isProd) throw new Error(message);
+    this.logger.warn(message);
   }
 
   async onModuleDestroy(): Promise<void> {

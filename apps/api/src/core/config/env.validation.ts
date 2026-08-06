@@ -25,7 +25,40 @@ const envSchema = z.object({
   JWT_ACCESS_TTL: z.string().min(1).default('15m'),
   REMINDER_SCAN_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),
   JWT_REFRESH_TTL: z.string().min(1).default('7d'),
-});
+})
+  .superRefine((val, ctx) => {
+    if (val.NODE_ENV !== 'production') return;
+
+    // Without APP_DATABASE_URL the tenant plane silently falls back to the
+    // privileged DATABASE_URL, which bypasses RLS unconditionally — including
+    // FORCE. Since tenant services deliberately never filter by tenant_id and
+    // rely entirely on RLS, that fallback would expose every clinic's data to
+    // every other clinic. Refuse to boot rather than run unisolated.
+    if (!val.APP_DATABASE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['APP_DATABASE_URL'],
+        message:
+          'required in production — the tenant plane must use the non-superuser app_user role so Row-Level Security is enforced',
+      });
+    }
+
+    // The shipped example secret must never reach production.
+    if (val.JWT_SECRET.includes('dev-only-change-me')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['JWT_SECRET'],
+        message: 'must not be the development placeholder from .env.example',
+      });
+    }
+    if (val.JWT_SECRET.length < 32) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['JWT_SECRET'],
+        message: 'must be at least 32 characters in production',
+      });
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 
