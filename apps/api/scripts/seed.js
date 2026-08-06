@@ -356,7 +356,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('Seed failed:', err.message);
-  process.exit(1);
-});
+module.exports = { assertNotProduction };
+
+// Only run when invoked directly, so the guard can be unit-tested.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Seed failed:', err.message);
+    process.exit(1);
+  });
+}
