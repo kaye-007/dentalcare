@@ -40,10 +40,54 @@ const CLINICS = [
   },
 ];
 
+/**
+ * Refuse to run anywhere that looks like production.
+ *
+ * This script upserts well-known credentials that are published in the README
+ * (admin@nodex.al / Admin123!, owner@avicena.al / Owner123!, ...). Running it
+ * against a live database would overwrite real passwords with those defaults,
+ * handing cross-tenant access to anyone who has read the repo. The upserts
+ * below are additive, but a superadmin password reset is not recoverable by
+ * re-running anything — so the guard has to come first.
+ */
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1', 'postgres', 'host.docker.internal'];
+
+function assertNotProduction(connectionString) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed: NODE_ENV=production.');
+  }
+
+  let url;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    throw new Error('DATABASE_URL is not a valid connection string.');
+  }
+
+  const host = url.hostname;
+  const dbName = url.pathname.replace(/^\//, '');
+
+  if (/prod/i.test(dbName) || /prod/i.test(host)) {
+    throw new Error(
+      `Refusing to seed: "${host}/${dbName}" looks like production.`,
+    );
+  }
+  if (!LOCAL_HOSTS.includes(host) && process.env.ALLOW_REMOTE_SEED !== 'yes') {
+    throw new Error(
+      `Refusing to seed a non-local database (${host}).\n` +
+        '  This script overwrites passwords with the public demo defaults.\n' +
+        '  If you really mean it, set ALLOW_REMOTE_SEED=yes.',
+    );
+  }
+
+  console.log(`  Seeding ${host}/${dbName}\n`);
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is not set. Copy .env.example to .env first.');
   }
+  assertNotProduction(process.env.DATABASE_URL);
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const client = await pool.connect();
   try {
