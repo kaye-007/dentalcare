@@ -138,8 +138,10 @@ function dayAt(offsetDays, hour, minute) {
 }
 const isoDate = (d) => d.toISOString().slice(0, 10);
 
-function phone(i) {
-  return `+43 6${int(60, 99)} ${String(1000000 + i * 34129).slice(0, 3)} ${String(1000 + i * 7).slice(0, 4)}`;
+function phone() {
+  // Fully random digits. An arithmetic pattern across 25 rows is obvious the
+  // moment anyone scans the patient list.
+  return `+43 6${int(60, 99)} ${int(100, 999)} ${int(1000, 9999)}`;
 }
 
 function birthDate(i) {
@@ -271,15 +273,19 @@ async function main() {
         patientIds.push(existing.rows[0].id);
         continue;
       }
+      // Registration dates are spread across the last ~18 months. Without
+      // this every patient reads "Registered today", which is the clearest
+      // possible tell that the data was generated.
+      const registeredAt = dayAt(-int(5, 540), int(8, 17), int(0, 59));
       const r = await client.query(
         `INSERT INTO patients
            (tenant_id, first_name, last_name, phone, email, gender, birth_date,
-            address, city, postal_code, status, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11) RETURNING id`,
+            address, city, postal_code, status, created_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11,$12,$12) RETURNING id`,
         [
-          tenantId, first, last, phone(i), `${email}@example.at`, gender, birthDate(i),
+          tenantId, first, last, phone(), `${email}@example.at`, gender, birthDate(i),
           `${pick(['Lange Gasse', 'Neubaugasse', 'Josefstädter Straße', 'Praterstraße', 'Wiedner Hauptstraße'])} ${int(2, 148)}`,
-          city, postal, ownerId,
+          city, postal, ownerId, registeredAt,
         ],
       );
       patientIds.push(r.rows[0].id);
@@ -298,6 +304,9 @@ async function main() {
         if (weekday === 0 || weekday === 6) continue; // clinic closed
         const perDay = offset <= 0 ? int(3, 6) : int(2, 5);
         let slot = 0;
+        // No patient twice in one day — three consecutive slots for the same
+        // person looked like a generator artefact on the week view.
+        const seenToday = new Set();
         for (let n = 0; n < perDay; n++) {
           const treatment = pick(TREATMENTS);
           const durationMin = treatment[2];
@@ -311,11 +320,17 @@ async function main() {
             const roll = rnd();
             status = roll < 0.86 ? 'completed' : roll < 0.94 ? 'cancelled' : 'no_show';
           }
+          let patientId = pick(patientIds);
+          for (let tries = 0; seenToday.has(patientId) && tries < 8; tries++) {
+            patientId = pick(patientIds);
+          }
+          seenToday.add(patientId);
+
           const r = await client.query(
             `INSERT INTO appointments
                (tenant_id, patient_id, staff_id, reason, status, starts_at, ends_at, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-            [tenantId, pick(patientIds), pick(dentistIds), pick(REASONS), status, start, end, ownerId],
+            [tenantId, patientId, pick(dentistIds), pick(REASONS), status, start, end, ownerId],
           );
           createdAppointments.push({ id: r.rows[0].id, status, offset });
         }
@@ -356,11 +371,17 @@ async function main() {
       // Roughly one invoice per completed appointment over the period, which
       // is what a practice of this size actually bills. Fewer than that and
       // the reports show a loss-making clinic.
+      // Issue dates are generated first and sorted, so invoice numbers
+      // increase with date. Random dates against a running sequence produced
+      // INV-0140 dated May sitting above INV-0138 dated July — the first
+      // thing a practice manager would notice.
+      const issueOffsets = Array.from({ length: 140 }, () => int(1, 120)).sort((a, b) => b - a);
+
       let seq = 0;
       for (let i = 0; i < 140; i++) {
         seq += 1;
-        const daysAgo = int(1, 120);
-        const issued = dayAt(-daysAgo, 12, 0);
+        const daysAgo = issueOffsets[i];
+        const issued = dayAt(-daysAgo, int(9, 17), pick([0, 15, 30, 45]));
         const lineCount = rnd() < 0.65 ? 1 : 2;
         const lines = [];
         for (let l = 0; l < lineCount; l++) {
@@ -396,7 +417,15 @@ async function main() {
 
         if (status === 'paid' || status === 'partially_paid') {
           const amount = status === 'paid' ? total : Math.max(1, Math.round(total * (0.3 + rnd() * 0.4)));
-          const paidAt = new Date(issued.getTime() + int(0, 6) * 86400000);
+          // Clamp to now: settlement offsets were pushing recent invoices'
+          // payments into the future, so the payments list showed dates that
+          // had not happened yet.
+          const paidAt = new Date(
+            Math.min(
+              issued.getTime() + int(0, 6) * 86400000 + int(0, 8) * 3600000,
+              Date.now() - int(1, 90) * 60000,
+            ),
+          );
           await client.query(
             `INSERT INTO payments (tenant_id, invoice_id, amount, method, note, paid_at, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7)`,

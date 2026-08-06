@@ -183,7 +183,7 @@ function NewInvoiceModal({
   }
 
   return (
-    <Modal wide title="New invoice" subtitle="Line items from the treatment catalog or custom entries." onClose={onClose}>
+    <Modal wide title="New invoice" subtitle="Line items from the treatment catalogue or custom entries." onClose={onClose}>
       <form className="modal__body" onSubmit={submit}>
         <PatientPicker
           value={patientName}

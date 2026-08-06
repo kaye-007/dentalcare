@@ -10,6 +10,7 @@ import {
   type Treatment,
 } from '../lib/api';
 import { StatusPill } from './ui';
+import { plural } from '../lib/format';
 
 /* ════════════════════════════════════════════════════════════
    Odontogram — SVG mouth with curved upper/lower arches (FDI).
@@ -231,7 +232,7 @@ export default function MedicalRecordCard({ patientId }: { patientId: string }) 
         <div>
           <h2>Medical record</h2>
           <p className="card__sub">
-            {records === null ? '…' : `${records.length} record(s) across ${recordedTeeth.length} teeth`}
+            {records === null ? '…' : `${plural(records.length, 'record')} across ${plural(recordedTeeth.length, 'tooth', 'teeth')}`}
           </p>
         </div>
         <div className="odo__legend">

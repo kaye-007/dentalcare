@@ -13,7 +13,15 @@ export const CURRENCY = 'EUR';
 export const CURRENCY_SYMBOL = '€';
 export const CURRENCY_LABEL = 'Euro (EUR)';
 
-const moneyFormatter = new Intl.NumberFormat('de-DE', {
+/**
+ * en-IE: English-language euro formatting — "€1,200".
+ *
+ * de-DE was tried first and produced "1.200 €", which reads as "one point two"
+ * to an English-speaking user and clashed with the rest of the UI, which is
+ * English throughout (en-GB dates). Symbol-first with comma grouping is
+ * unambiguous alongside that.
+ */
+const moneyFormatter = new Intl.NumberFormat('en-IE', {
   style: 'currency',
   currency: CURRENCY,
   minimumFractionDigits: 0,
@@ -24,10 +32,21 @@ export function formatMoney(value: number): string {
   return moneyFormatter.format(value);
 }
 
+/** Titles carry no identifying information, so they are dropped before
+ *  initialling — otherwise every clinician's avatar reads "D" for "Dr." and
+ *  three dentists become indistinguishable. */
+const HONORIFICS = /^(dr|prof|mr|mrs|ms|mx)\.?$/i;
+
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
+  const parts = name.trim().split(/\s+/).filter((p) => !HONORIFICS.test(p));
+  if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
+
+/** "1 patient" / "2 patients" — avoids the "patient(s)" placeholder look. */
+export function plural(count: number, singular: string, pluralForm?: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm ?? `${singular}s`}`;
 }
 
 // Soft, readable avatar tints — deterministic per name.

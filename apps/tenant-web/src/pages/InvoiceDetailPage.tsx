@@ -8,7 +8,7 @@ import {
   type PaymentMethod,
 } from '../lib/api';
 import { StatusPill, Modal, Avatar } from '../components/ui';
-import { formatMoney } from '../lib/format';
+import { formatMoney, plural } from '../lib/format';
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -226,7 +226,7 @@ export function PaymentsPage() {
       <div className="page__head">
         <div className="page__head-main">
           <h2 className="section-title">Payments</h2>
-          <p className="page__meta">{items ? `${items.length} payment(s) · ${formatMoney(total)} collected` : '…'}</p>
+          <p className="page__meta">{items ? `${plural(items.length, 'payment')} · ${formatMoney(total)} collected` : '…'}</p>
         </div>
       </div>
       <div className="card">

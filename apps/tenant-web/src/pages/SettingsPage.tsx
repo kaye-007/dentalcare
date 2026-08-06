@@ -87,7 +87,7 @@ function ProfileCard({ initial }: { initial: ClinicSettings }) {
           </label>
           <label className="field">
             <span>Email</span>
-            <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="info@clinic.al" />
+            <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="info@clinic.com" />
           </label>
         </div>
         <div className="grid2">

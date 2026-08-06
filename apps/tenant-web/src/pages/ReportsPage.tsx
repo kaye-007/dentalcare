@@ -3,7 +3,7 @@ import { Lock, BarChart3 } from 'lucide-react';
 import { reportsApi, type ReportOverview, type ReportBreakdownRow } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { PageHeader, EmptyState } from '../components/ui';
-import { formatMoney } from '../lib/format';
+import { formatMoney, plural } from '../lib/format';
 
 /* ── date helpers ───────────────────────────────────────── */
 function iso(d: Date) {
@@ -78,7 +78,7 @@ export default function ReportsPage() {
         title="Reports"
         meta={
           t
-            ? `${t.newPatients} new patient(s) · ${t.appointments} appointment(s), ${t.appointmentsCompleted} completed · ${formatMoney(t.outstanding)} currently outstanding`
+            ? `${plural(t.newPatients, 'new patient')} · ${plural(t.appointments, 'appointment')}, ${t.appointmentsCompleted} completed · ${formatMoney(t.outstanding)} currently outstanding`
             : '…'
         }
       />

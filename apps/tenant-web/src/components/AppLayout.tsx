@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Menu,
   LayoutDashboard,
   CalendarDays,
   Users,
@@ -10,7 +12,6 @@ import {
   TrendingDown,
   BarChart3,
   Settings,
-  Search,
   Bell,
   Plus,
   LogOut,
@@ -83,12 +84,31 @@ export default function AppLayout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [navOpen, setNavOpen] = useState(false);
   const section = '/' + (location.pathname.split('/')[1] ?? '');
   const title = TITLES[section] ?? 'DentalCare';
   const isOwner = user?.role === 'owner';
 
+  // Close the mobile drawer whenever the route changes, so tapping a
+  // destination doesn't leave the menu covering the page it just opened.
+  useEffect(() => setNavOpen(false), [location.pathname]);
+
+  // Escape closes it, matching the modal behaviour elsewhere.
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setNavOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
+
   return (
-    <div className="shell">
+    <div className={`shell${navOpen ? ' shell--navopen' : ''}`}>
+      <button
+        className="scrim"
+        aria-label="Close navigation"
+        tabIndex={navOpen ? 0 : -1}
+        onClick={() => setNavOpen(false)}
+      />
       <aside className="sidebar">
         <div className="brand">
           <span className="brand__mark"><Logo /></span>
@@ -152,7 +172,7 @@ export default function AppLayout() {
               <span className="usercard__name">{user?.fullName}</span>
               <span className="usercard__role">{user?.role}</span>
             </span>
-            <button className="iconbtn" onClick={logout} title="Sign out">
+            <button className="iconbtn" onClick={logout} title="Sign out" aria-label="Sign out">
               <LogOut size={16} />
             </button>
           </div>
@@ -162,23 +182,31 @@ export default function AppLayout() {
       <div className="main">
         <header className="topbar">
           <div className="topbar__title">
+            <button
+              className="iconbtn navtoggle"
+              aria-label="Open navigation"
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen(true)}
+            >
+              <Menu size={18} />
+            </button>
             <h1>{title}</h1>
           </div>
           <div className="topbar__actions">
-            <div className="topbar__search">
-              <Search size={16} />
-              <input placeholder="Search patients, invoices…" />
-            </div>
             <button
               className="btn btn--primary btn--sm"
               onClick={() => navigate('/reservations')}
             >
               <Plus size={16} /> New appointment
             </button>
-            <button className="iconbtn iconbtn--bell" title="Reminder log"
-            onClick={() => navigate('/reservations?view=reminders')}>
-            <Bell size={17} />
-          </button>
+            <button
+              className="iconbtn iconbtn--bell"
+              title="Reminder log"
+              aria-label="Reminder log"
+              onClick={() => navigate('/reservations?view=reminders')}
+            >
+              <Bell size={17} />
+            </button>
           </div>
         </header>
         <div className="content">

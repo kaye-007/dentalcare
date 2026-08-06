@@ -9,7 +9,7 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Avatar, PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
-import { formatMoney } from '../lib/format';
+import { formatMoney, plural } from '../lib/format';
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -67,7 +67,7 @@ export default function StaffPage() {
     <div className="page">
       <PageHeader
         title="Staff"
-        meta={items ? `${items.length} member(s) · ${items.filter((s) => s.status === 'active').length} active · access roles: Owner / Frontdesk` : '…'}
+        meta={items ? `${plural(items.length, 'team member')} · ${items.filter((s) => s.status === 'active').length} active · access roles: Owner / Frontdesk` : '…'}
         actions={
           <button className="btn btn--primary" onClick={() => setCreating(true)}>
             <Plus size={16} /> Add staff
@@ -205,7 +205,7 @@ function SalaryLog() {
         <div>
           <h2>Salary payment log</h2>
           <p className="card__sub">
-            {items === null ? '…' : `${items.length} payment(s) · ${formatMoney(total)} recorded`}
+            {items === null ? '…' : `${plural(items.length, 'payment')} · ${formatMoney(total)} recorded`}
             {' '}· lightweight log for payments made outside the system
           </p>
         </div>
@@ -389,7 +389,7 @@ function StaffModal({
             <label className="field">
               <span>Email</span>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@clinic.al" required />
+                placeholder="name@clinic.com" required />
             </label>
             <label className="field">
               <span>Temporary password</span>

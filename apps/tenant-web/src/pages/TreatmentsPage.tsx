@@ -45,7 +45,7 @@ export default function TreatmentsPage() {
     <div className="page">
       <PageHeader
         title="Treatments"
-        meta={items ? `${items.length} in catalog` : '…'}
+        meta={items ? `${items.length} in catalogue` : '…'}
         actions={
           isOwner ? (
             <button className="btn btn--primary" onClick={() => setCreating(true)}>
@@ -76,7 +76,7 @@ export default function TreatmentsPage() {
           <EmptyState
             icon={<Stethoscope size={22} />}
             title="No treatments found"
-            body={isOwner ? 'Add your first treatment to build the catalog.' : 'The owner manages the treatment catalog.'}
+            body={isOwner ? 'Add your first treatment to build the catalogue.' : 'The owner manages the treatment catalogue.'}
           />
         ) : (
           <table className="table">

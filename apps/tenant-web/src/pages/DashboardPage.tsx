@@ -6,7 +6,7 @@ import {
 import { useAuth } from '../lib/auth';
 import { api, appointmentsApi, financeApi, type Appointment, type PatientListItem, type InvoiceSummaryRow, type FinanceSummary } from '../lib/api';
 import { Avatar, StatusPill, EmptyState } from '../components/ui';
-import { formatMoney } from '../lib/format';
+import { formatMoney, plural } from '../lib/format';
 
 function todayLabel() {
   return new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -110,7 +110,7 @@ export default function DashboardPage() {
             <div className="kpi__top"><span className="kpi__label">Outstanding balance</span></div>
             <p className="kpi__value">{summary === null ? '…' : formatMoney(summary.outstanding)}</p>
             <div className="kpi__foot">
-              <span className="kpi__caption">{openInvoices === null ? '' : `${openInvoices.length} open invoice(s) shown`}</span>
+              <span className="kpi__caption">{openInvoices === null ? '' : `${plural(openInvoices.length, 'open invoice')} shown`}</span>
             </div>
           </article>
         )}
