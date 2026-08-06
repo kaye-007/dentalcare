@@ -1,7 +1,16 @@
 # DentalCare — Architecture & Production Readiness Audit
 
-**Phase 1 deliverable.** Describes the system as it actually exists today.
-No source files were modified to produce this document.
+Describes the system as built.
+
+> **Status.** Sections 1–5 remain accurate. Section 6 (Findings) and section 7
+> (Vercel assessment) were written *before* the `production-hardening` branch;
+> most Critical and High findings there are now fixed. For current state see
+> [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md), [`CHANGELOG.md`](CHANGELOG.md), and
+> [`DEPLOYMENT.md`](DEPLOYMENT.md). Structure is catalogued in
+> [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md).
+>
+> This repository is a snapshot that diverges from another copy of the
+> project — see the note at the end of [`CLEANUP_REPORT.md`](CLEANUP_REPORT.md).
 
 ---
 
