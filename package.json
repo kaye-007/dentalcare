@@ -15,6 +15,7 @@
     "migrate:create": "npm run migrate:create -w @dentalcare/api",
     "seed": "npm run seed -w @dentalcare/api",
     "reset-demo": "npm run reset-demo -w @dentalcare/api",
+    "bootstrap-admin": "npm run bootstrap-admin -w @dentalcare/api",
     "web:dev": "npm run dev -w @dentalcare/tenant-web",
     "web:build": "npm run build -w @dentalcare/tenant-web",
     "admin:dev": "npm run dev -w @dentalcare/admin-web",

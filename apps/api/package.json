@@ -13,7 +13,8 @@
     "migrate:down": "node-pg-migrate down -m migrations --envPath ../../.env",
     "migrate:create": "node-pg-migrate create -m migrations",
     "seed": "node scripts/seed-demo.js",
-    "reset-demo": "node scripts/reset-demo.js"
+    "reset-demo": "node scripts/reset-demo.js",
+    "bootstrap-admin": "node scripts/bootstrap-admin.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",

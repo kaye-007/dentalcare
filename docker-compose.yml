@@ -7,7 +7,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dentalcare}
       POSTGRES_DB: ${POSTGRES_DB:-dentalcare}
     ports:
-      - "5432:5432"
+      # Host port is configurable so this stack can run alongside another
+      # Postgres already bound to 5432. Set POSTGRES_PORT in .env to change it.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -35,7 +37,9 @@ services:
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
       REMINDER_SCAN_INTERVAL_MS: ${REMINDER_SCAN_INTERVAL_MS:-60000}
     ports:
-      - "3000:3000"
+      # Same reasoning as postgres — avoids a clash with anything already on
+      # 3000. The container always listens on 3000 internally.
+      - "${API_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

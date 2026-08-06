@@ -29,8 +29,24 @@ Migration `0003` reads `APP_DB_USER` / `APP_DB_PASSWORD` and creates a
 the migration interpolates it into `CREATE ROLE` SQL.
 
 Then create the first superadmin. **Do not run `npm run seed` against
-production** — it upserts the demo credentials published in the README, and
-the guard will refuse anyway. Insert the row manually with a bcrypt hash.
+production** — it writes the demo credentials published in the README, and the
+guard refuses anyway. Use the bootstrap script, which is the one data script
+permitted to run in production:
+
+```bash
+PLATFORM_ADMIN_EMAIL=you@company.com \
+PLATFORM_ADMIN_NAME='Your Name' \
+PLATFORM_ADMIN_PASSWORD='a-long-random-passphrase' \
+npm run bootstrap-admin
+```
+
+It writes only that one account, requires at least 12 characters, rejects any
+credential published in this repository, and refuses to overwrite an existing
+administrator unless you pass `FORCE_RESET=yes` (which is also how you rotate
+a password later).
+
+On Render or Railway, run it as a one-off job or a shell against the deployed
+service so it uses the same `DATABASE_URL`.
 
 ## 2. API
 

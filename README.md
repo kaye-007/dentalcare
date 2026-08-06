@@ -27,7 +27,7 @@ JWT auth · Docker. Money is stored as integers in whole euros.
 - **Platform plane** (superadmin) uses the privileged connection because it
   must operate across all tenants. Reachable only behind the platform guard.
 
-This is the core of the design. See [ARCHITECTURE.md](ARCHITECTURE.md).
+This is the core of the design. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Getting started
 
@@ -40,6 +40,10 @@ npm install
 npm run migrate:up            # also creates the app_user role
 npm run seed                  # loads the demo clinic
 ```
+
+If ports 3000 or 5432 are already in use on your machine, set `API_PORT` and
+`POSTGRES_PORT` in `.env` — the containers are unaffected, only the host
+bindings change.
 
 Then, in three terminals:
 
@@ -85,6 +89,7 @@ API accepts an `X-Tenant-Subdomain` header — but only when
 | `npm run migrate:up` / `migrate:down` | Database migrations |
 | `npm run seed` | Load the demo clinic |
 | `npm run reset-demo` | Wipe all data |
+| `npm run bootstrap-admin` | Create the first platform admin (production) |
 
 ## Configuration
 
@@ -94,7 +99,7 @@ invalid one rather than running unsafely — most importantly, it will not
 start in production without `APP_DATABASE_URL`, or if that role can bypass
 Row-Level Security.
 
-Full reference: [DEPLOYMENT.md](DEPLOYMENT.md).
+Full reference: [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Deployment
 
@@ -104,19 +109,19 @@ persistent connection pools — it is deliberately not serverless.
 
 **The API must currently run at exactly one replica** — the reminder
 scheduler has no distributed lock. See
-[DEPLOYMENT.md](DEPLOYMENT.md#scaling-beyond-one-instance).
+[DEPLOYMENT.md](docs/DEPLOYMENT.md#scaling-beyond-one-instance).
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, tenancy model, data model |
-| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Folder map and conventions |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment, configuration, scaling limits |
-| [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Findings, fixes, what remains |
-| [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | RC1 readiness |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
-| [MASTER_REMEDIATION_PLAN.md](MASTER_REMEDIATION_PLAN.md) | Prioritised technical debt |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, tenancy model, data model |
+| [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | Folder map and conventions |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment, configuration, scaling limits |
+| [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | Findings, fixes, what remains |
+| [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | RC1 readiness |
+| [CHANGELOG.md](docs/CHANGELOG.md) | Release history |
+| [MASTER_REMEDIATION_PLAN.md](docs/MASTER_REMEDIATION_PLAN.md) | Prioritised technical debt |
 
 ## Tests
 
