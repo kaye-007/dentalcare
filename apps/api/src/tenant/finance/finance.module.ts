@@ -122,6 +122,9 @@ const mapInv = (r: InvRow) => ({
   patientName: r.patient_name,
 });
 
+/** Attempts at allocating a per-tenant invoice number before giving up. */
+const MAX_SEQ_ATTEMPTS = 2;
+
 function statusFor(total: number, paid: number): string {
   if (paid <= 0) return 'unpaid';
   if (paid >= total) return 'paid';
@@ -216,8 +219,15 @@ export class FinanceService {
       }
       const total = dto.items.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
 
-      // per-tenant sequential number; retry once on a rare concurrent clash
-      for (let attempt = 0; attempt < 2; attempt++) {
+      // Per-tenant sequential number, retried on a concurrent clash.
+      //
+      // Each attempt runs inside a SAVEPOINT. Without one the retry could not
+      // work: a 23505 aborts the enclosing transaction, so every following
+      // statement fails with 25P02 ("current transaction is aborted") and the
+      // second attempt turned a recoverable conflict into an opaque 500.
+      // ROLLBACK TO SAVEPOINT makes the transaction usable again.
+      for (let attempt = 0; attempt < MAX_SEQ_ATTEMPTS; attempt++) {
+        await client.query('SAVEPOINT invoice_seq');
         try {
           const seqRes = await client.query<{ next: number }>(
             'SELECT coalesce(max(seq), 0) + 1 AS next FROM invoices',
@@ -239,9 +249,13 @@ export class FinanceService {
                it.quantity, it.unitPrice, it.quantity * it.unitPrice],
             );
           }
+          await client.query('RELEASE SAVEPOINT invoice_seq');
           return this.getInvoiceWithin(client, invoiceId);
         } catch (err: unknown) {
-          if ((err as { code?: string }).code === '23505' && attempt === 0) continue;
+          await client.query('ROLLBACK TO SAVEPOINT invoice_seq');
+          const isClash = (err as { code?: string }).code === '23505';
+          if (isClash && attempt < MAX_SEQ_ATTEMPTS - 1) continue;
+          if (isClash) break;
           throw err;
         }
       }
