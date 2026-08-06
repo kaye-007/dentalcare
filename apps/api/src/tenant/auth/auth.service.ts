@@ -1,9 +1,14 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { UsersService, AuthUserRow } from '../users/users.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
+import { BCRYPT_ROUNDS } from '../../core/security/bcrypt';
 
 export interface AccessTokenPayload {
   sub: string;
@@ -72,6 +77,33 @@ export class AuthService {
     }
 
     return { accessToken: await this.signAccess(user) };
+  }
+
+  /**
+   * Change the caller's own password. Re-verifies the current password so a
+   * hijacked session cannot lock the real owner out of their account.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ changed: true }> {
+    const tenantId = this.tenant.getRequiredTenantId();
+    const user = await this.users.findForAuthById(tenantId, userId);
+    if (!user || user.user_status !== 'active') {
+      throw new UnauthorizedException();
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!ok) throw new UnauthorizedException('Current password is incorrect');
+
+    if (await bcrypt.compare(newPassword, user.password_hash)) {
+      throw new BadRequestException('New password must be different');
+    }
+
+    const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await this.users.updatePasswordHash(tenantId, userId, hash);
+    return { changed: true };
   }
 
   private async issueTokens(user: AuthUserRow) {

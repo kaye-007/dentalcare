@@ -2,12 +2,13 @@ import {
   Body,
   Controller,
   Get,
+  Patch,
   Post,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto } from './dto/login.dto';
+import { ChangePasswordDto, LoginDto, RefreshDto } from './dto/login.dto';
 import { JwtAuthGuard } from './jwt.guard';
 import { CurrentUser } from './current-user.decorator';
 import { AccessTokenPayload } from './auth.service';
@@ -30,6 +31,20 @@ export class AuthController {
   @Post('refresh')
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('password')
+  changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() current?: AccessTokenPayload,
+  ) {
+    if (!current) throw new UnauthorizedException();
+    return this.auth.changePassword(
+      current.sub,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

@@ -6,6 +6,7 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '../../core/database/database.service';
 import { AuditService, AuditActor } from '../audit/audit.service';
+import { BCRYPT_ROUNDS } from '../../core/security/bcrypt';
 import { CreateTenantDto } from './dto/tenant.dto';
 
 const RESERVED = ['www', 'admin', 'api', 'app', 'mail', 'static'];
@@ -81,7 +82,7 @@ export class TenantsService {
       );
       const tenantId = t.rows[0]!.id;
 
-      const hash = await bcrypt.hash(dto.ownerPassword, 10);
+      const hash = await bcrypt.hash(dto.ownerPassword, BCRYPT_ROUNDS);
       await client.query(
         `INSERT INTO users (tenant_id, email, password_hash, full_name, role, status)
          VALUES ($1, $2, $3, $4, 'owner', 'active')`,

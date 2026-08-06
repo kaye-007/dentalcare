@@ -35,6 +35,7 @@ import { OwnerGuard } from '../auth/owner.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AccessTokenPayload } from '../auth/auth.service';
 import { AuthModule } from '../auth/auth.module';
+import { BCRYPT_ROUNDS } from '../../core/security/bcrypt';
 
 /*
  * Staff = platform access + clinic personnel/payroll tracking.
@@ -89,6 +90,11 @@ export class UpdateStaffDto {
 
   @IsOptional() @IsString() @MaxLength(300)
   salaryNote?: string | null;
+}
+
+export class ResetStaffPasswordDto {
+  @IsString() @MinLength(8, { message: 'New password must be at least 8 characters' })
+  password!: string;
 }
 
 export class RecordSalaryPaymentDto {
@@ -154,7 +160,7 @@ export class StaffService {
   create(dto: CreateStaffDto) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const hash = await bcrypt.hash(dto.password, 10);
+      const hash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
       try {
         const { rows } = await client.query<StaffRow>(
           `INSERT INTO users (tenant_id, email, password_hash, full_name, role, status,
@@ -208,6 +214,23 @@ export class StaffService {
       );
       if (!rows[0]) throw new NotFoundException('Staff member not found');
       return mapStaff(rows[0], true);
+    });
+  }
+
+  /**
+   * Owner-initiated password reset for a staff member. The owner never sees
+   * the existing password, so this sets a new one outright — the recovery path
+   * for a locked-out colleague, since the clinic plane has no email flow.
+   */
+  resetPassword(staffId: string, newPassword: string) {
+    return this.tx(async (client) => {
+      const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+      const res = await client.query(
+        'UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1',
+        [staffId, hash],
+      );
+      if (!res.rowCount) throw new NotFoundException('Staff member not found');
+      return { reset: true };
     });
   }
 
@@ -287,6 +310,15 @@ export class StaffController {
   ) {
     if (!user) throw new UnauthorizedException();
     return this.staff.update(id, dto, user.sub);
+  }
+
+  @Post(':id/password')
+  @UseGuards(OwnerGuard)
+  resetPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResetStaffPasswordDto,
+  ) {
+    return this.staff.resetPassword(id, dto.password);
   }
 
   @Post(':id/salary-payments')

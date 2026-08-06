@@ -55,4 +55,19 @@ export class UsersService {
       return rows[0] ?? null;
     });
   }
+
+  /** Replace a user's password hash WITHIN the given tenant (RLS-scoped). */
+  async updatePasswordHash(
+    tenantId: string,
+    id: string,
+    passwordHash: string,
+  ): Promise<boolean> {
+    return this.db.withTenant(tenantId, async (client) => {
+      const res = await client.query(
+        'UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1',
+        [id, passwordHash],
+      );
+      return res.rowCount === 1;
+    });
+  }
 }
