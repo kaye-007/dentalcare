@@ -65,7 +65,7 @@ function applyTenantHeader(headers: Headers) {
   // we send it explicitly; defaults to the demo clinic. The API ignores this
   // header unless ALLOW_TENANT_HEADER=1 and NODE_ENV is not production.
   const tenant =
-    (import.meta.env.VITE_TENANT_SUBDOMAIN as string | undefined) ?? 'avicena';
+    (import.meta.env.VITE_TENANT_SUBDOMAIN as string | undefined) ?? 'demo';
   headers.set('X-Tenant-Subdomain', tenant);
 }
 

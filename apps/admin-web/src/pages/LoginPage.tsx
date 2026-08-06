@@ -47,7 +47,7 @@ export default function LoginPage() {
           <label className="field">
             <span>Email</span>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@nodex.al" autoComplete="username" required />
+              placeholder="admin@dentx.app" autoComplete="username" required />
           </label>
           <label className="field">
             <span>Password</span>
@@ -59,10 +59,12 @@ export default function LoginPage() {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <div className="auth__hint">
-          <p>Demo superadmin</p>
-          <code>admin@nodex.al · Admin123!</code>
-        </div>
+        {import.meta.env.DEV && (
+          <div className="auth__hint">
+            <p>Demo superadmin</p>
+            <code>admin@dentx.app · Demo@2026!</code>
+          </div>
+        )}
       </div>
     </div>
   );

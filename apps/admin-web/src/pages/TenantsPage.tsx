@@ -214,7 +214,7 @@ function CreateModal({
               <span>Subdomain</span>
               <div className="suffixed">
                 <input value={form.subdomain} onChange={(e) => set('subdomain', e.target.value)}
-                  placeholder="avicena" required />
+                  placeholder="northgate" required />
                 <span>.dentalcare.app</span>
               </div>
             </label>
@@ -228,7 +228,7 @@ function CreateModal({
             <label className="field">
               <span>Owner email</span>
               <input type="email" value={form.ownerEmail} onChange={(e) => set('ownerEmail', e.target.value)}
-                placeholder="owner@avicena.al" required />
+                placeholder="owner@northgate-dental.eu" required />
             </label>
             <label className="field">
               <span>Temporary password</span>

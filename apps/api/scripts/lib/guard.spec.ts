@@ -1,16 +1,20 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
-const { assertNotProduction } = require('./seed.js') as {
-  assertNotProduction: (connectionString: string) => void;
+const { assertNotProduction } = require('./guard.js') as {
+  assertNotProduction: (
+    connectionString: string,
+    opts?: { overrideVar?: string; action?: string },
+  ) => void;
 };
 
 /**
- * Regression tests for the seed guard.
+ * Regression tests for the shared data-script guard.
  *
- * seed.js upserts credentials published in the README (admin@nodex.al /
- * Admin123!) with ON CONFLICT ... DO UPDATE SET password_hash. Run once
- * against production it would overwrite the live superadmin password with a
- * public default and report success. The guard is the control that keeps it
- * away from anything that is not obviously local.
+ * seed-demo.js writes documented demo credentials with
+ * ON CONFLICT ... DO UPDATE, and reset-demo.js truncates every tenant and
+ * platform table. Run against a live database, either would be
+ * unrecoverable — the seed would overwrite real passwords with published
+ * defaults and report success. This guard is the control that keeps both
+ * away from anything that is not obviously a development database.
  */
 const LOCAL = 'postgres://dentalcare:dentalcare@localhost:5432/dentalcare';
 

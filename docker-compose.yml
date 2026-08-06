@@ -26,7 +26,7 @@ services:
       PORT: 3000
       DATABASE_URL: postgres://${POSTGRES_USER:-dentalcare}:${POSTGRES_PASSWORD:-dentalcare}@postgres:5432/${POSTGRES_DB:-dentalcare}
       APP_DATABASE_URL: postgres://${APP_DB_USER:-app_user}:${APP_DB_PASSWORD:-app_user_dev_pw}@postgres:5432/${POSTGRES_DB:-dentalcare}
-      DEV_TENANT_SUBDOMAIN: ${DEV_TENANT_SUBDOMAIN:-avicena}
+      DEV_TENANT_SUBDOMAIN: ${DEV_TENANT_SUBDOMAIN:-demo}
       ALLOW_TENANT_HEADER: ${ALLOW_TENANT_HEADER:-1}
       # Required by env validation — the container has no .env baked in
       # (.dockerignore excludes it), so it must be supplied here.

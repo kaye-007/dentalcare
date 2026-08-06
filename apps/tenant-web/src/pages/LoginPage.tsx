@@ -83,11 +83,13 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="auth__hint">
-          <p>Demo logins</p>
-          <code>owner@avicena.al · Owner123!</code>
-          <code>reception@avicena.al · Reception123!</code>
-        </div>
+        {import.meta.env.DEV && (
+          <div className="auth__hint">
+            <p>Demo logins</p>
+            <code>demo@dentx.app · Demo@2026!</code>
+            <code>m.novak@dentx.app · Demo@2026!</code>
+          </div>
+        )}
       </div>
     </div>
   );

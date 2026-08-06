@@ -1,73 +1,133 @@
 # DentalCare by NODE X
 
-Multi-tenant SaaS for dental clinics in Albania. One shared deployment;
-each clinic is a tenant reached by its own subdomain. Internal clinic-staff
-system only (no patient portal, no public site in MVP).
+Multi-tenant clinic management SaaS for dental practices. One shared
+deployment; each clinic is a tenant reached by its own subdomain. Internal
+clinic-staff system — no patient portal.
+
+Patients · scheduling · treatments & odontogram · staff and payroll ·
+invoicing & payments · expenses · owner analytics · appointment reminders.
 
 ## Apps
 
-- `apps/api` — NestJS API (clinic plane + platform plane)
-- `apps/tenant-web` — clinic SPA (owner / reception)  → http://localhost:5173
-- `apps/admin-web` — superadmin SPA (NODE X control)   → http://localhost:5174
+| Workspace | Purpose | Dev URL |
+|---|---|---|
+| `apps/api` | NestJS API — clinic plane + platform plane | http://localhost:3000 |
+| `apps/tenant-web` | Clinic SPA (owner / frontdesk) | http://localhost:5173 |
+| `apps/admin-web` | NODE X platform console | http://localhost:5174 |
 
-## Two planes, two DB roles
+**Stack.** NestJS 10 · PostgreSQL 16 (raw SQL, no ORM) · React 18 + Vite ·
+JWT auth · Docker. Money is stored as integers in whole euros.
 
-- **Clinic plane** uses `app_user` (non-superuser) — Row-Level Security enforced,
-  scoped by `app.current_tenant_id`.
-- **Platform plane** (superadmin) uses the privileged admin connection — it
-  operates across all tenants (list / create / suspend) and so bypasses RLS.
-  It is reachable only behind the superadmin guard.
+## Two planes, two database roles
 
-## Run it (local)
+- **Clinic plane** runs as `app_user`, a non-superuser role. Row-Level
+  Security is enforced on all 14 tenant tables and scoped per request by
+  `app.current_tenant_id`. Services never filter by `tenant_id` — the
+  database does it.
+- **Platform plane** (superadmin) uses the privileged connection because it
+  must operate across all tenants. Reachable only behind the platform guard.
+
+This is the core of the design. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Getting started
+
+Requires Node 20+ and Docker.
 
 ```bash
 cp .env.example .env          # Windows: Copy-Item .env.example .env
-docker compose up -d postgres redis
+docker compose up -d postgres
 npm install
-npm run migrate:up
-npm run seed
-npm run api:dev               # terminal 1 → API on :3000
-npm run web:dev               # terminal 2 → clinic SPA on :5173
-npm run admin:dev             # terminal 3 → superadmin SPA on :5174
+npm run migrate:up            # also creates the app_user role
+npm run seed                  # loads the demo clinic
 ```
 
-### Logins
+Then, in three terminals:
 
-Superadmin (admin-web, :5174): `admin@nodex.al` / `Admin123!`
+```bash
+npm run api:dev               # API on :3000
+npm run web:dev               # clinic SPA on :5173
+npm run admin:dev             # platform console on :5174
+```
 
-Clinics (tenant-web, :5173 — defaults to avicena):
+### Demo credentials
 
-| Clinic         | Owner            | Reception           | Passwords                 |
-|----------------|------------------|---------------------|---------------------------|
-| Avicena Clinic | owner@avicena.al | reception@avicena.al (Frontdesk) | Owner123! / Reception123! |
-| Smile Studio   | owner@smile.al   | reception@smile.al (Frontdesk)   | Owner123! / Reception123! |
+Created by `npm run seed`. Development only — the seed script refuses to run
+against a production database.
 
-## Reminders (M10) — how it works
+| App | Email | Password |
+|---|---|---|
+| Clinic (`:5173`) | `demo@dentx.app` | `Demo@2026!` |
+| Platform (`:5174`) | `admin@dentx.app` | `Demo@2026!` |
 
-A background scheduler inside the API scans every `REMINDER_SCAN_INTERVAL_MS`
-(default 60s) for scheduled appointments entering each clinic's reminder
-window, creates an automatic reminder (max one per appointment — enforced by
-a partial unique index, so scans are idempotent), and delivers it through the
-active **channel**. The MVP channel is the **internal log**: reminders are
-recorded and visible in Reservations → Reminders; no SMS/email is sent and
-the UI says so explicitly. SMS/email providers implement the same
-`ReminderChannel` interface (`apps/api/src/tenant/reminders/channels/`) and
-plug in without schema or UI changes. Manual reminders can be sent from any
-scheduled appointment by owner or reception; settings (enable + timing) are
-owner-only.
+The demo clinic (`Demo Dental Clinic`, subdomain `demo`) ships with 25
+patients, a full appointment calendar, a treatment catalogue, four months of
+invoices, payments and expenses, and staff payroll.
 
-## Milestone status
+```bash
+npm run reset-demo            # wipe all tenant + platform data
+npm run seed                  # reload the demo clinic
+```
 
-- [x] M1 — app shell & dashboard UI foundation
-- [x] M2 — auth & roles
-- [x] M3 — tenant resolution & isolation (RLS, app_user, subdomain routing, suspended gate)
-- [x] M4 — superadmin tenant management (list, create, owner+plan+trial, status, audit log)
-- [x] M5 — patients (list, create/edit, profile, contact info, notes, search & filters)
-- [x] UI consolidation pass — unified design system, semantic status pills, shared PageHeader/EmptyState/Modal, live dashboard
-- [x] M6 — reservations / appointments (day/week calendar, booking, overlap protection, statuses)
-- [x] M7 — treatments & medical record (catalog with owner-only pricing, odontogram, per-tooth records)
-- [x] Correction pass — real Staff management, real Settings (profile/hours/preferences), arch-based SVG odontogram
-- [x] M8 — invoices / payments / expenses (line items, partial payments, auto status, expenses, finance summary)
-- [x] M9 — reports (owner-only analytics: date ranges, monthly trend chart, revenue/expense/profit breakdowns)
-- [x] M10 — reminders & final polish (scheduler, reminder log, manual trigger, owner settings, channel abstraction)
-- [x] Correction pass 2 — Owner/Frontdesk roles only, staff positions + salary payment log, optional treatment visit type, anatomical odontogram glyphs, minimal patient registration (first + last name only)
+### Local tenant resolution
+
+In production the clinic comes from the subdomain
+(`demo.dentalcare.app` → `demo`). On localhost there is no subdomain, so the
+API accepts an `X-Tenant-Subdomain` header — but only when
+`ALLOW_TENANT_HEADER=1`, and never when `NODE_ENV=production`.
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm run api:dev` / `web:dev` / `admin:dev` | Development servers |
+| `npm run api:build` / `web:build` / `admin:build` | Production builds |
+| `npm test -w @dentalcare/api` | Test suite |
+| `npm run migrate:up` / `migrate:down` | Database migrations |
+| `npm run seed` | Load the demo clinic |
+| `npm run reset-demo` | Wipe all data |
+
+## Configuration
+
+`.env.example` for development, `.env.production.example` for deployment.
+The API validates configuration at boot and **refuses to start** on an
+invalid one rather than running unsafely — most importantly, it will not
+start in production without `APP_DATABASE_URL`, or if that role can bypass
+Row-Level Security.
+
+Full reference: [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Deployment
+
+Frontends on Vercel; the API as a Docker container on Render, Railway, or a
+VPS. The API is a long-running process with a resident scheduler and
+persistent connection pools — it is deliberately not serverless.
+
+**The API must currently run at exactly one replica** — the reminder
+scheduler has no distributed lock. See
+[DEPLOYMENT.md](DEPLOYMENT.md#scaling-beyond-one-instance).
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, tenancy model, data model |
+| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Folder map and conventions |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment, configuration, scaling limits |
+| [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Findings, fixes, what remains |
+| [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | RC1 readiness |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [MASTER_REMEDIATION_PLAN.md](MASTER_REMEDIATION_PLAN.md) | Prioritised technical debt |
+
+## Tests
+
+```bash
+npm test -w @dentalcare/api
+```
+
+47 regression tests covering the configuration gate, tenant status
+enforcement, subdomain resolution, token binding and cross-plane isolation,
+role guards, and the data-script production guard. No database required.
+
+## Licence
+
+Proprietary — © NODE X.

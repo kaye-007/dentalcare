@@ -54,43 +54,44 @@ export class ReportsService {
     return this.tx(async (client) => {
       const num = (r: { rows: { s?: string | null }[] }) => Number(r.rows[0]?.s ?? 0);
 
-      const [invoiced, collected, expenses, outstanding, newPatients, appts] =
-        await Promise.all([
-          client.query(
-            `SELECT coalesce(sum(total),0) AS s FROM invoices
-              WHERE status <> 'cancelled' AND issued_at BETWEEN $1 AND $2`,
-            [from, to],
-          ),
-          client.query(
-            `SELECT coalesce(sum(amount),0) AS s FROM payments
-              WHERE paid_at::date BETWEEN $1 AND $2`,
-            [from, to],
-          ),
-          client.query(
-            `SELECT coalesce(sum(amount),0) AS s FROM expenses
-              WHERE expense_date BETWEEN $1 AND $2`,
-            [from, to],
-          ),
-          client.query(
-            `SELECT coalesce(sum(i.total - coalesce(p.paid,0)),0) AS s
-               FROM invoices i
-               LEFT JOIN LATERAL (
-                 SELECT sum(amount) AS paid FROM payments WHERE invoice_id = i.id
-               ) p ON true
-              WHERE i.status IN ('unpaid','partially_paid')`,
-          ),
-          client.query(
-            `SELECT count(*)::int AS s FROM patients
-              WHERE created_at::date BETWEEN $1 AND $2`,
-            [from, to],
-          ),
-          client.query(
-            `SELECT count(*)::int AS total,
-                    count(*) FILTER (WHERE status = 'completed')::int AS completed
-               FROM appointments WHERE starts_at::date BETWEEN $1 AND $2`,
-            [from, to],
-          ),
-        ]);
+      // Sequential, not Promise.all: these all share one PoolClient, and a
+      // node-postgres client executes queries serially anyway. Issuing them
+      // concurrently on the same client is deprecated and removed in pg@9,
+      // so this is the same work without the warning.
+      const invoiced = await client.query(
+        `SELECT coalesce(sum(total),0) AS s FROM invoices
+          WHERE status <> 'cancelled' AND issued_at BETWEEN $1 AND $2`,
+        [from, to],
+      );
+      const collected = await client.query(
+        `SELECT coalesce(sum(amount),0) AS s FROM payments
+          WHERE paid_at::date BETWEEN $1 AND $2`,
+        [from, to],
+      );
+      const expenses = await client.query(
+        `SELECT coalesce(sum(amount),0) AS s FROM expenses
+          WHERE expense_date BETWEEN $1 AND $2`,
+        [from, to],
+      );
+      const outstanding = await client.query(
+        `SELECT coalesce(sum(i.total - coalesce(p.paid,0)),0) AS s
+           FROM invoices i
+           LEFT JOIN LATERAL (
+             SELECT sum(amount) AS paid FROM payments WHERE invoice_id = i.id
+           ) p ON true
+          WHERE i.status IN ('unpaid','partially_paid')`,
+      );
+      const newPatients = await client.query(
+        `SELECT count(*)::int AS s FROM patients
+          WHERE created_at::date BETWEEN $1 AND $2`,
+        [from, to],
+      );
+      const appts = await client.query(
+        `SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE status = 'completed')::int AS completed
+           FROM appointments WHERE starts_at::date BETWEEN $1 AND $2`,
+        [from, to],
+      );
 
       const trend = await client.query(
         `WITH months AS (
