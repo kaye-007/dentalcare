@@ -8,7 +8,12 @@ import {
   type ReactNode,
 } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { api, tokenStore, type AuthUser } from './api';
+import {
+  api,
+  setSessionExpiredHandler,
+  tokenStore,
+  type AuthUser,
+} from './api';
 
 interface AuthState {
   user: AuthUser | null;
@@ -54,6 +59,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     tokenStore.clear();
     setUser(null);
+  }, []);
+
+  // When a refresh fails the tokens are already gone; drop the user so the
+  // router sends them to /login instead of leaving a shell with dead data.
+  useEffect(() => {
+    setSessionExpiredHandler(() => setUser(null));
+    return () => setSessionExpiredHandler(null);
   }, []);
 
   const value = useMemo(

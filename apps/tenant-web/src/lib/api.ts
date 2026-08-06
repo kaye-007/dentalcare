@@ -24,23 +24,88 @@ export class ApiError extends Error {
   }
 }
 
+/** Called when the session cannot be recovered, so the app can log out. */
+let onSessionExpired: (() => void) | null = null;
+export function setSessionExpiredHandler(fn: (() => void) | null) {
+  onSessionExpired = fn;
+}
+
+/**
+ * In-flight refresh, shared by every request that gets a 401 at the same time.
+ * Without this a page that fires four parallel calls would trigger four
+ * refreshes and rotate the token out from under itself.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = tokenStore.refresh;
+  if (!refreshToken) return false;
+
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  applyTenantHeader(headers);
+
+  try {
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) return false;
+    const body = (await res.json()) as { accessToken?: string };
+    if (!body.accessToken) return false;
+    tokenStore.set(body.accessToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function applyTenantHeader(headers: Headers) {
+  // In production the subdomain (Host) identifies the clinic. For local dev
+  // we send it explicitly; defaults to the demo clinic. The API ignores this
+  // header unless ALLOW_TENANT_HEADER=1 and NODE_ENV is not production.
+  const tenant =
+    (import.meta.env.VITE_TENANT_SUBDOMAIN as string | undefined) ?? 'avicena';
+  headers.set('X-Tenant-Subdomain', tenant);
+}
+
+async function send(
+  path: string,
+  options: RequestInit,
+  auth: boolean,
+): Promise<Response> {
+  const headers = new Headers(options.headers);
+  headers.set('Content-Type', 'application/json');
+  applyTenantHeader(headers);
+  if (auth && tokenStore.access) {
+    headers.set('Authorization', `Bearer ${tokenStore.access}`);
+  }
+  return fetch(`/api${path}`, { ...options, headers });
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
   auth = true,
 ): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set('Content-Type', 'application/json');
-  // In production the subdomain (Host) identifies the clinic. For local dev
-  // we send it explicitly; defaults to the demo clinic.
-  const tenant =
-    (import.meta.env.VITE_TENANT_SUBDOMAIN as string | undefined) ?? 'avicena';
-  headers.set('X-Tenant-Subdomain', tenant);
-  if (auth && tokenStore.access) {
-    headers.set('Authorization', `Bearer ${tokenStore.access}`);
-  }
+  let res = await send(path, options, auth);
 
-  const res = await fetch(`/api${path}`, { ...options, headers });
+  // The access token is short-lived (15m). On expiry, refresh once and replay
+  // the original request rather than dumping the user back at the login page
+  // mid-task.
+  if (res.status === 401 && auth && tokenStore.refresh) {
+    refreshInFlight ??= refreshAccessToken().finally(() => {
+      refreshInFlight = null;
+    });
+    const refreshed = await refreshInFlight;
+
+    if (refreshed) {
+      res = await send(path, options, auth);
+    } else {
+      tokenStore.clear();
+      onSessionExpired?.();
+    }
+  }
 
   if (!res.ok) {
     let message = res.statusText;
@@ -128,6 +193,12 @@ export const api = {
   },
   me() {
     return request<AuthUser>('/auth/me');
+  },
+  changePassword(currentPassword: string, newPassword: string) {
+    return request<{ changed: true }>('/auth/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
   },
 
   listPatients(params: { q?: string; status?: string; page?: number }) {
@@ -328,6 +399,11 @@ export const staffApi = {
     position?: string | null; salaryAmount?: number | null; salaryNote?: string | null;
   }) {
     return request<StaffFull>(`/staff/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+  },
+  resetPassword(staffId: string, password: string) {
+    return request<{ reset: true }>(`/staff/${staffId}/password`, {
+      method: 'POST', body: JSON.stringify({ password }),
+    });
   },
   recordSalaryPayment(staffId: string, p: { amount: number; paidOn?: string; note?: string }) {
     return request<SalaryPayment>(`/staff/${staffId}/salary-payments`, {
