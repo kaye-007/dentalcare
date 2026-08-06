@@ -23,8 +23,6 @@ const envSchema = z.object({
   // when NODE_ENV=production. Set to '1' to enable.
   ALLOW_TENANT_HEADER: z.enum(['0', '1']).optional(),
 
-  REDIS_URL: z.string().min(1).optional(),
-
   // Comma-separated origins allowed to call the API cross-origin, e.g.
   // "https://app.dentalcare.app,https://*.dentalcare.app". localhost is
   // always allowed. Leave unset when the SPAs are same-origin with the API.

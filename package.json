@@ -4,8 +4,7 @@
   "private": true,
   "description": "DentalCare by NODE X \u2014 multi-tenant clinic management SaaS",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/*"
   ],
   "scripts": {
     "api:dev": "npm run start:dev -w @dentalcare/api",

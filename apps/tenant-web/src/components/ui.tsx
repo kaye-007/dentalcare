@@ -27,7 +27,7 @@ const PILL_MAP: Record<string, { kind: PillKind; label: string }> = {
   // patients
   active: { kind: 'ok', label: 'Active' },
   inactive: { kind: 'neutral', label: 'Inactive' },
-  // billing (sample widgets until M8)
+  // billing
   unpaid: { kind: 'danger', label: 'Unpaid' },
   partial: { kind: 'warn', label: 'Partial' },
   paid: { kind: 'ok', label: 'Paid' },

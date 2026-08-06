@@ -22,6 +22,11 @@ COPY apps/api/package.json ./apps/api/package.json
 RUN npm install --omit=dev
 
 COPY --from=build /app/apps/api/dist ./apps/api/dist
+# Migrations run from the container in deploy pipelines (npm run migrate:up).
+COPY apps/api/migrations ./apps/api/migrations
+
+# Drop privileges — the node image ships an unprivileged `node` user.
+USER node
 
 EXPOSE 3000
 CMD ["node", "apps/api/dist/main.js"]

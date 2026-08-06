@@ -16,13 +16,6 @@ services:
       timeout: 5s
       retries: 10
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    ports:
-      - "6379:6379"
-
   api:
     build:
       context: .
@@ -34,9 +27,21 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-dentalcare}:${POSTGRES_PASSWORD:-dentalcare}@postgres:5432/${POSTGRES_DB:-dentalcare}
       APP_DATABASE_URL: postgres://${APP_DB_USER:-app_user}:${APP_DB_PASSWORD:-app_user_dev_pw}@postgres:5432/${POSTGRES_DB:-dentalcare}
       DEV_TENANT_SUBDOMAIN: ${DEV_TENANT_SUBDOMAIN:-avicena}
-      REDIS_URL: redis://redis:6379
+      ALLOW_TENANT_HEADER: ${ALLOW_TENANT_HEADER:-1}
+      # Required by env validation — the container has no .env baked in
+      # (.dockerignore excludes it), so it must be supplied here.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      REMINDER_SCAN_INTERVAL_MS: ${REMINDER_SCAN_INTERVAL_MS:-60000}
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
