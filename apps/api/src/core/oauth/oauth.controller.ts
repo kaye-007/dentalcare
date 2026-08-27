@@ -1,33 +1,20 @@
-import {
-  Controller,
-  Get,
-  Module,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Req, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
-import { DatabaseService } from '../database/database.service';
-import { TenantContextService } from '../tenancy/tenant-context';
-import { ClinicAuditService } from '../audit/clinic-audit.service';
-import { AuthService } from '../../tenant/auth/auth.service';
-import { AuthModule } from '../../tenant/auth/auth.module';
-import { UsersService } from '../../tenant/users/users.service';
-import { UsersModule } from '../../tenant/users/users.module';
-import { PlatformAuthService } from '../../platform/platform-auth/platform-auth.service';
-import { PlatformAuthModule } from '../../platform/platform-auth/platform-auth.module';
+import { DatabaseService } from '@/core/database/database.service';
+import { TenantContextService } from '@/core/tenancy/tenant-context';
+import { ClinicAuditService } from '@/core/audit/clinic-audit.service';
+import { AuthService } from '@/modules/clinic/auth';
+import { UsersService } from '@/modules/clinic/users';
+import { PlatformAuthService } from '@/modules/platform/auth';
 import { GoogleIdentity } from './google.strategy';
-import { normalizeRole } from '../authz/permissions';
+import { normalizeRole } from '@/core/authz/permissions';
 import { decideGoogleLink } from './link-account';
 import type { OAuthState } from './oauth-state';
-import {
-  ClinicGoogleGuard,
-  GoogleCallbackGuard,
-  GoogleOAuthService,
-  PlatformGoogleGuard,
-  type RequestWithOAuth,
-} from './oauth.module';
+import { ClinicGoogleGuard } from './clinic-google.guard';
+import { GoogleCallbackGuard } from './google-callback.guard';
+import { GoogleOAuthService, type RequestWithOAuth } from './google-oauth.service';
+import { PlatformGoogleGuard } from './platform-google.guard';
 
 /**
  * Google sign-in for both planes.
@@ -54,6 +41,7 @@ import {
 /** The outcome of a sign-in attempt, once Google has done its part. */
 type SignInOutcome =
   | { ok: true; tokens: Record<string, unknown> }
+
   | { ok: false; reason: string };
 
 @Controller()
@@ -260,10 +248,3 @@ export class OAuthController {
     res.redirect(`${origin}/login?error=${encodeURIComponent(reason)}`);
   }
 }
-
-@Module({
-  imports: [AuthModule, UsersModule, PlatformAuthModule],
-  controllers: [OAuthController],
-  providers: [GoogleCallbackGuard],
-})
-export class OAuthRoutesModule {}

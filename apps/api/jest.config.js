@@ -9,5 +9,7 @@ module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/scripts'],
   testRegex: '\\.spec\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
+  // Mirrors compilerOptions.paths so specs resolve @/ the same way tsc does.
+  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
   collectCoverageFrom: ['src/**/*.ts'],
 };

@@ -1,8 +1,8 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PoolClient } from 'pg';
-import { DatabaseService } from '../database/database.service';
-import { TenantContextService } from '../tenancy/tenant-context';
-import { Role, normalizeRole } from '../authz/permissions';
+import { DatabaseService } from '@/core/database/database.service';
+import { TenantContextService } from '@/core/tenancy/tenant-context';
+import { Role, normalizeRole } from '@/core/authz/permissions';
 
 /**
  * The clinic-plane audit log.

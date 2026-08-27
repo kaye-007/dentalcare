@@ -1,0 +1,71 @@
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '@/modules/clinic/auth';
+import { PermissionsGuard } from '@/core/authz/permissions.guard';
+import { RequirePermissions } from '@/core/authz/permissions.decorator';
+import { can, normalizeRole } from '@/core/authz/permissions';
+import { CurrentUser } from '@/shared/decorators/current-user.decorator';
+import { AccessTokenPayload } from '@/shared/types/access-token';
+import { auditActor } from '@/core/audit/clinic-audit.service';
+import { CreateStaffDto, RecordSalaryPaymentDto, ResetStaffPasswordDto, UpdateStaffDto } from './dto/staff.dto';
+import { StaffService } from './staff.service';
+
+/* ── controller ──────────────────────────────────────────── */
+@Controller('staff')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class StaffController {
+  constructor(private readonly staff: StaffService) {}
+
+  /**
+   * All clinic users can read the team list. Salary columns are withheld
+   * unless the caller holds payroll:read — a data-shaping decision, so it
+   * consults the matrix directly rather than guarding the whole route.
+   */
+  @Get()
+  @RequirePermissions('staff:read')
+  list(@CurrentUser() user?: AccessTokenPayload) {
+    const role = normalizeRole(user?.role);
+    return this.staff.list(role !== null && can(role, 'payroll:read'));
+  }
+
+  @Get('salary-payments')
+  @RequirePermissions('payroll:read')
+  salaryLog() {
+    return this.staff.listSalaryPayments();
+  }
+
+  @Post()
+  @RequirePermissions('staff:manage')
+  create(@Body() dto: CreateStaffDto, @CurrentUser() user?: AccessTokenPayload) {
+    return this.staff.create(dto, auditActor(user));
+  }
+
+  @Patch(':id')
+  @RequirePermissions('staff:manage')
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateStaffDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.staff.update(id, dto, auditActor(user));
+  }
+
+  @Post(':id/password')
+  @RequirePermissions('staff:manage')
+  resetPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResetStaffPasswordDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.staff.resetPassword(id, dto.password, auditActor(user));
+  }
+
+  @Post(':id/salary-payments')
+  @RequirePermissions('payroll:manage')
+  recordSalary(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecordSalaryPaymentDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.staff.recordSalaryPayment(id, dto, auditActor(user));
+  }
+}

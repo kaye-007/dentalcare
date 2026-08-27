@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { RequestWithUser } from '../../tenant/auth/jwt.guard';
+import { RequestWithUser } from '@/shared/types/request-with-user';
 import { PERMISSIONS_METADATA_KEY } from './permissions.decorator';
 import { Permission, canAll, normalizeRole } from './permissions';
 

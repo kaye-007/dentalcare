@@ -4,7 +4,12 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "rootDir": "./src",
-    "declaration": true
+    "declaration": true,
+    "paths": {
+      "@/*": [
+        "src/*"
+      ]
+    }
   },
   "include": [
     "src/**/*"

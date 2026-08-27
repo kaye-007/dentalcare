@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NextFunction, Request, Response } from 'express';
-import { DatabaseService } from '../database/database.service';
+import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from './tenant-context';
 
 @Injectable()

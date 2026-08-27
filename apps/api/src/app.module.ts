@@ -3,83 +3,38 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
-import { AppConfigModule } from './core/config/config.module';
-import { AuthzModule } from './core/authz/authz.module';
-import { ClinicAuditModule } from './core/audit/clinic-audit.module';
-import { ReadOnlyGuard } from './core/tenancy/read-only.guard';
-import { OAuthModule } from './core/oauth/oauth.module';
-import { OAuthRoutesModule } from './core/oauth/oauth.controller';
-import { StorageModule } from './core/storage/storage.module';
-import { DatabaseModule } from './core/database/database.module';
-import { HealthModule } from './core/health/health.module';
-import { TenancyModule } from './core/tenancy/tenancy.module';
-import { TenantMiddleware } from './core/tenancy/tenant.middleware';
-import { AuthModule } from './tenant/auth/auth.module';
-import { AuthController } from './tenant/auth/auth.controller';
-import { PatientsModule, PatientsController } from './tenant/patients/patients.module';
-import {
-  PatientHistoryModule,
-  PatientHistoryController,
-  AllergiesController,
-  ConditionsController,
-  MedicationsController,
-} from './tenant/patient-history/patient-history.module';
-import {
-  DocumentsModule,
-  PatientDocumentsController,
-  DocumentsController,
-} from './tenant/documents/documents.module';
-import { AppointmentsModule, AppointmentsController } from './tenant/appointments/appointments.module';
-import {
-  SchedulingModule,
-  OperatoriesController,
-  AvailabilityController,
-} from './tenant/scheduling/scheduling.module';
-import { StaffModule, StaffController } from './tenant/staff/staff.module';
-import { TreatmentsModule, TreatmentsController } from './tenant/treatments/treatments.module';
-import {
-  ChartingModule,
-  ChartController,
-  ToothConditionsController,
-  ProcedureCodesController,
-  PatientProceduresController,
-  ProceduresController,
-} from './tenant/charting/charting.module';
-import {
-  PerioModule,
-  PatientPerioController,
-  PerioExamsController,
-} from './tenant/perio/perio.module';
-import {
-  TreatmentPlansModule,
-  PatientPlansController,
-  TreatmentPlansController,
-  PlanItemsController,
-} from './tenant/treatment-plans/treatment-plans.module';
-import { SettingsModule, SettingsController } from './tenant/settings/settings.module';
-import {
-  FinanceModule,
-  InvoicesController,
-  PaymentsController,
-  ExpensesController,
-  FinanceSummaryController,
-} from './tenant/finance/finance.module';
-import { ReportsModule, ReportsController } from './tenant/reports/reports.module';
-import {
-  BillingModule,
-  PlanInvoiceController,
-  PatientLedgerController,
-  BillingController,
-} from './tenant/billing/billing.module';
-import {
-  AnalyticsModule,
-  AnalyticsController,
-} from './tenant/analytics/analytics.module';
-import { RemindersModule, RemindersController } from './tenant/reminders/reminders.module';
-import { AuditController, AuditModule } from './tenant/audit/audit.module';
-import { PlatformAuthModule } from './platform/platform-auth/platform-auth.module';
-import { TenantsModule } from './platform/tenants/tenants.module';
-import { PlansModule } from './platform/plans/plans.module';
+import { AppConfigModule } from '@/core/config/config.module';
+import { AuthzModule } from '@/core/authz/authz.module';
+import { ClinicAuditModule } from '@/core/audit/clinic-audit.module';
+import { ReadOnlyGuard } from '@/core/tenancy/read-only.guard';
+import { OAuthModule } from '@/core/oauth/oauth.module';
+import { OAuthRoutesModule } from '@/core/oauth/oauth-routes.module';
+import { StorageModule } from '@/core/storage/storage.module';
+import { DatabaseModule } from '@/core/database/database.module';
+import { HealthModule } from '@/core/health/health.module';
+import { TenancyModule } from '@/core/tenancy/tenancy.module';
+import { TenantMiddleware } from '@/core/tenancy/tenant.middleware';
+import { AuthController, AuthModule } from '@/modules/clinic/auth';
+import { PatientsController, PatientsModule } from '@/modules/clinic/patients';
+import { AllergiesController, ConditionsController, MedicationsController, PatientHistoryController, PatientHistoryModule } from '@/modules/clinic/patient-history';
+import { DocumentsController, DocumentsModule, PatientDocumentsController } from '@/modules/clinic/documents';
+import { AppointmentsController, AppointmentsModule } from '@/modules/clinic/appointments';
+import { AvailabilityController, OperatoriesController, SchedulingModule } from '@/modules/clinic/scheduling';
+import { StaffController, StaffModule } from '@/modules/clinic/staff';
+import { TreatmentsController, TreatmentsModule } from '@/modules/clinic/treatments';
+import { ChartController, ChartingModule, PatientProceduresController, ProcedureCodesController, ProceduresController, ToothConditionsController } from '@/modules/clinic/charting';
+import { PatientPerioController, PerioExamsController, PerioModule } from '@/modules/clinic/perio';
+import { PatientPlansController, PlanItemsController, TreatmentPlansController, TreatmentPlansModule } from '@/modules/clinic/treatment-plans';
+import { SettingsController, SettingsModule } from '@/modules/clinic/settings';
+import { ExpensesController, FinanceModule, FinanceSummaryController, InvoicesController, PaymentsController } from '@/modules/clinic/finance';
+import { ReportsController, ReportsModule } from '@/modules/clinic/reports';
+import { BillingController, BillingModule, PatientLedgerController, PlanInvoiceController } from '@/modules/clinic/billing';
+import { AnalyticsController, AnalyticsModule } from '@/modules/clinic/analytics';
+import { RemindersController, RemindersModule } from '@/modules/clinic/reminders';
+import { AuditController, AuditModule } from '@/modules/clinic/audit';
+import { PlatformAuthModule } from '@/modules/platform/auth';
+import { TenantsModule } from '@/modules/platform/tenants';
+import { PlansModule } from '@/modules/platform/plans';
 
 /**
  * Cloudflare Workers changes what the process can do, not what the app does.

@@ -18,7 +18,7 @@ import { PERMISSIONS, Permission } from './permissions';
  * declared nothing, so invoice creation, payment recording and the finance
  * summary were reachable by any signed-in clinic user.
  *
- * This walks every controller under src/tenant and fails the build if a route
+ * This walks every controller under src/modules/clinic and fails the build if a route
  * handler resolves to no permission at all. A route that genuinely needs none
  * goes in ALLOWLIST below, with its reason, so the exception is a decision
  * somebody made rather than a decorator somebody dropped.
@@ -41,7 +41,7 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
     'Changes the caller OWN password, re-verifying the current one. Gating it on a permission would let an admin lock a user out of their own credentials.',
 };
 
-const TENANT_DIR = join(__dirname, '..', '..', 'tenant');
+const CLINIC_DIR = join(__dirname, '..', '..', 'modules', 'clinic');
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -74,7 +74,7 @@ function guardNames(target: object): string[] {
 function discoverRoutes(): Route[] {
   const routes: Route[] = [];
 
-  for (const file of sourceFiles(TENANT_DIR)) {
+  for (const file of sourceFiles(CLINIC_DIR)) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require(file) as Record<string, unknown>;
 

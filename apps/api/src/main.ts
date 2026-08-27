@@ -3,8 +3,8 @@ import { Logger as NestLogger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
-import { AppModule } from './app.module';
-import { configureApp } from './bootstrap';
+import { AppModule } from '@/app.module';
+import { configureApp } from '@/bootstrap';
 
 /**
  * The Node entrypoint — the container image and local development.

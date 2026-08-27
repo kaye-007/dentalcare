@@ -10,5 +10,6 @@ module.exports = {
   AppModule: require('../dist/app.module.js').AppModule,
   configureApp: require('../dist/bootstrap.js').configureApp,
   ReminderSchedulerService:
-    require('../dist/tenant/reminders/reminders.module.js').ReminderSchedulerService,
+    require('../dist/modules/clinic/reminders/reminder-scheduler.service.js')
+      .ReminderSchedulerService,
 };
