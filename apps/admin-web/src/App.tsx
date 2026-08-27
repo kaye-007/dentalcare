@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, RequireAuth } from './lib/auth';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import TenantsPage from './pages/TenantsPage';
 import TenantDetailPage from './pages/TenantDetailPage';
 
@@ -11,6 +12,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route
             element={
               <RequireAuth>

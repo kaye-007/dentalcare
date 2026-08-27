@@ -31,10 +31,17 @@ import { PoolClient } from 'pg';
 import { DatabaseService } from '../../core/database/database.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
 import { JwtAuthGuard } from '../auth/jwt.guard';
-import { OwnerGuard } from '../auth/owner.guard';
+import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { RequirePermissions } from '../../core/authz/permissions.decorator';
+import { ROLES, Role, can, normalizeRole } from '../../core/authz/permissions';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AccessTokenPayload } from '../auth/auth.service';
 import { AuthModule } from '../auth/auth.module';
+import {
+  ClinicAuditService,
+  ClinicAuditActor,
+  auditActor,
+} from '../../core/audit/clinic-audit.service';
 import { BCRYPT_ROUNDS } from '../../core/security/bcrypt';
 
 /*
@@ -59,8 +66,10 @@ export class CreateStaffDto {
   @IsString() @MinLength(8, { message: 'Temporary password must be at least 8 characters' })
   password!: string;
 
-  @IsIn(['owner', 'frontdesk'], { message: 'Access role must be Owner or Frontdesk' })
-  role!: 'owner' | 'frontdesk';
+  @IsIn(ROLES, {
+    message: 'Access role must be Admin, Dentist or Receptionist',
+  })
+  role!: Role;
 
   @IsOptional() @IsString() @MaxLength(80)
   position?: string;
@@ -76,8 +85,11 @@ export class UpdateStaffDto {
   @IsOptional() @IsString() @MinLength(2)
   fullName?: string;
 
-  @IsOptional() @IsIn(['owner', 'frontdesk'], { message: 'Access role must be Owner or Frontdesk' })
-  role?: 'owner' | 'frontdesk';
+  @IsOptional()
+  @IsIn(ROLES, {
+    message: 'Access role must be Admin, Dentist or Receptionist',
+  })
+  role?: Role;
 
   @IsOptional() @IsIn(['active', 'disabled'])
   status?: 'active' | 'disabled';
@@ -142,6 +154,7 @@ export class StaffService {
   constructor(
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
+    private readonly audit: ClinicAuditService,
   ) {}
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
@@ -157,7 +170,7 @@ export class StaffService {
     });
   }
 
-  create(dto: CreateStaffDto) {
+  create(dto: CreateStaffDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       const hash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
@@ -169,6 +182,13 @@ export class StaffService {
           [tenantId, dto.email, hash, dto.fullName, dto.role,
            dto.position?.trim() || null, dto.salaryAmount ?? null, dto.salaryNote?.trim() || null],
         );
+        await this.audit.record(client, actor, {
+          action: 'staff.created',
+          entityType: 'user',
+          entityId: rows[0]!.id,
+          summary: `Created ${dto.role === 'admin' ? 'Doctor' : 'Reception'} account for ${dto.fullName}`,
+          metadata: { email: dto.email, role: dto.role, position: dto.position ?? null },
+        });
         return mapStaff(rows[0]!, true);
       } catch (err: unknown) {
         if ((err as { code?: string }).code === '23505') {
@@ -179,8 +199,10 @@ export class StaffService {
     });
   }
 
-  update(id: string, dto: UpdateStaffDto, actorId: string) {
-    if (id === actorId && (dto.status === 'disabled' || dto.role === 'frontdesk')) {
+  update(id: string, dto: UpdateStaffDto, actor: ClinicAuditActor) {
+    // "Demotion" is any move off admin, not one named value.
+    const selfDemoting = dto.role !== undefined && dto.role !== 'admin';
+    if (id === actor.userId && (dto.status === 'disabled' || selfDemoting)) {
       throw new BadRequestException('You cannot disable or demote your own account');
     }
     const cols: Record<string, string> = {
@@ -206,6 +228,13 @@ export class StaffService {
         if (!r.rows[0]) throw new NotFoundException('Staff member not found');
         return mapStaff(r.rows[0], true);
       }
+      // Read the row BEFORE the write: "changed the role to admin" is worth
+      // little without what it was, and a salary that moves is the fact the
+      // doctor will want to see.
+      const before = await client.query<StaffRow>(
+        `SELECT ${FULL} FROM users WHERE id = $1`, [id],
+      );
+      if (!before.rows[0]) throw new NotFoundException('Staff member not found');
       params.push(id);
       const { rows } = await client.query<StaffRow>(
         `UPDATE users SET ${sets.join(', ')}, updated_at = now()
@@ -213,6 +242,26 @@ export class StaffService {
         params,
       );
       if (!rows[0]) throw new NotFoundException('Staff member not found');
+      const prev = before.rows[0];
+      const next = rows[0];
+      const changed = Object.keys(cols).filter((k) => (dto as unknown as Record<string, unknown>)[k] !== undefined);
+      const roleMoved = prev.role !== next.role;
+      const payMoved = prev.salary_amount !== next.salary_amount;
+      await this.audit.record(client, actor, {
+        action: 'staff.updated',
+        entityType: 'user',
+        entityId: id,
+        summary: roleMoved
+          ? `Changed ${next.full_name}'s access from ${prev.role} to ${next.role}`
+          : payMoved
+            ? `Changed ${next.full_name}'s salary from ${prev.salary_amount ?? 0} to ${next.salary_amount ?? 0}`
+            : `Updated ${next.full_name} (${changed.join(', ') || 'no fields'})`,
+        metadata: {
+          fields: changed,
+          ...(roleMoved ? { roleFrom: prev.role, roleTo: next.role } : {}),
+          ...(payMoved ? { salaryFrom: prev.salary_amount, salaryTo: next.salary_amount } : {}),
+        },
+      });
       return mapStaff(rows[0], true);
     });
   }
@@ -222,24 +271,31 @@ export class StaffService {
    * the existing password, so this sets a new one outright — the recovery path
    * for a locked-out colleague, since the clinic plane has no email flow.
    */
-  resetPassword(staffId: string, newPassword: string) {
+  resetPassword(staffId: string, newPassword: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
       const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-      const res = await client.query(
-        'UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1',
+      const res = await client.query<{ full_name: string }>(
+        `UPDATE users SET password_hash = $2, updated_at = now()
+          WHERE id = $1 RETURNING full_name`,
         [staffId, hash],
       );
       if (!res.rowCount) throw new NotFoundException('Staff member not found');
+      await this.audit.record(client, actor, {
+        action: 'staff.password_reset',
+        entityType: 'user',
+        entityId: staffId,
+        summary: `Reset the password for ${res.rows[0]!.full_name}`,
+      });
       return { reset: true };
     });
   }
 
   /* ── salary payment log (owner-only) ── */
-  recordSalaryPayment(staffId: string, dto: RecordSalaryPaymentDto, actorId: string) {
+  recordSalaryPayment(staffId: string, dto: RecordSalaryPaymentDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const staff = await client.query<{ position: string | null }>(
-        'SELECT position FROM users WHERE id = $1',
+      const staff = await client.query<{ position: string | null; full_name: string }>(
+        'SELECT position, full_name FROM users WHERE id = $1',
         [staffId],
       );
       if (!staff.rowCount) throw new NotFoundException('Staff member not found');
@@ -248,9 +304,16 @@ export class StaffService {
          VALUES ($1,$2,$3,$4, coalesce($5::date, CURRENT_DATE), $6, $7)
          RETURNING id, amount, paid_on::text AS paid_on, note, position`,
         [tenantId, staffId, staff.rows[0]!.position, dto.amount,
-         dto.paidOn ?? null, dto.note?.trim() || null, actorId],
+         dto.paidOn ?? null, dto.note?.trim() || null, actor.userId],
       );
       const r = rows[0]!;
+      await this.audit.record(client, actor, {
+        action: 'salary.recorded',
+        entityType: 'salary_payment',
+        entityId: r.id,
+        summary: `Paid ${r.amount} salary to ${staff.rows[0]!.full_name}`,
+        metadata: { staffId, amount: r.amount, paidOn: r.paid_on },
+      });
       return { id: r.id, staffId, amount: r.amount, paidOn: r.paid_on, note: r.note, position: r.position };
     });
   }
@@ -279,63 +342,68 @@ export class StaffService {
 
 /* ── controller ──────────────────────────────────────────── */
 @Controller('staff')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class StaffController {
   constructor(private readonly staff: StaffService) {}
 
-  /** All clinic users can read the team list; payroll fields are owner-only. */
+  /**
+   * All clinic users can read the team list. Salary columns are withheld
+   * unless the caller holds payroll:read — a data-shaping decision, so it
+   * consults the matrix directly rather than guarding the whole route.
+   */
   @Get()
+  @RequirePermissions('staff:read')
   list(@CurrentUser() user?: AccessTokenPayload) {
-    return this.staff.list(user?.role === 'owner');
+    const role = normalizeRole(user?.role);
+    return this.staff.list(role !== null && can(role, 'payroll:read'));
   }
 
   @Get('salary-payments')
-  @UseGuards(OwnerGuard)
+  @RequirePermissions('payroll:read')
   salaryLog() {
     return this.staff.listSalaryPayments();
   }
 
   @Post()
-  @UseGuards(OwnerGuard)
-  create(@Body() dto: CreateStaffDto) {
-    return this.staff.create(dto);
+  @RequirePermissions('staff:manage')
+  create(@Body() dto: CreateStaffDto, @CurrentUser() user?: AccessTokenPayload) {
+    return this.staff.create(dto, auditActor(user));
   }
 
   @Patch(':id')
-  @UseGuards(OwnerGuard)
+  @RequirePermissions('staff:manage')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateStaffDto,
     @CurrentUser() user?: AccessTokenPayload,
   ) {
-    if (!user) throw new UnauthorizedException();
-    return this.staff.update(id, dto, user.sub);
+    return this.staff.update(id, dto, auditActor(user));
   }
 
   @Post(':id/password')
-  @UseGuards(OwnerGuard)
+  @RequirePermissions('staff:manage')
   resetPassword(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ResetStaffPasswordDto,
+    @CurrentUser() user?: AccessTokenPayload,
   ) {
-    return this.staff.resetPassword(id, dto.password);
+    return this.staff.resetPassword(id, dto.password, auditActor(user));
   }
 
   @Post(':id/salary-payments')
-  @UseGuards(OwnerGuard)
+  @RequirePermissions('payroll:manage')
   recordSalary(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RecordSalaryPaymentDto,
     @CurrentUser() user?: AccessTokenPayload,
   ) {
-    if (!user) throw new UnauthorizedException();
-    return this.staff.recordSalaryPayment(id, dto, user.sub);
+    return this.staff.recordSalaryPayment(id, dto, auditActor(user));
   }
 }
 
 @Module({
   imports: [AuthModule],
   controllers: [StaffController],
-  providers: [StaffService, OwnerGuard],
+  providers: [StaffService],
 })
 export class StaffModule {}

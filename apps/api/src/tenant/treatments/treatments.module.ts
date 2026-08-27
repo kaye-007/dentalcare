@@ -26,8 +26,16 @@ import { PoolClient } from 'pg';
 import { DatabaseService } from '../../core/database/database.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
 import { JwtAuthGuard } from '../auth/jwt.guard';
-import { OwnerGuard } from '../auth/owner.guard';
+import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { RequirePermissions } from '../../core/authz/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { AccessTokenPayload } from '../auth/auth.service';
 import { AuthModule } from '../auth/auth.module';
+import {
+  ClinicAuditService,
+  ClinicAuditActor,
+  auditActor,
+} from '../../core/audit/clinic-audit.service';
 
 /* ── DTOs ────────────────────────────────────────────────── */
 export class CreateTreatmentDto {
@@ -88,6 +96,7 @@ export class TreatmentsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
+    private readonly audit: ClinicAuditService,
   ) {}
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
@@ -116,7 +125,7 @@ export class TreatmentsService {
     });
   }
 
-  create(dto: CreateTreatmentDto) {
+  create(dto: CreateTreatmentDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       try {
@@ -125,6 +134,13 @@ export class TreatmentsService {
            VALUES ($1,$2,$3,$4,$5,$6) RETURNING ${FULL}`,
           [tenantId, dto.name, dto.price, dto.durationMinutes, dto.visitType ?? null, dto.status ?? 'active'],
         );
+        await this.audit.record(client, actor, {
+          action: 'treatment.created',
+          entityType: 'treatment',
+          entityId: rows[0]!.id,
+          summary: `Added "${dto.name}" at ${dto.price}`,
+          metadata: { name: dto.name, price: dto.price },
+        });
         return map(rows[0]!);
       } catch (err: unknown) {
         if ((err as { code?: string }).code === '23505') {
@@ -135,7 +151,7 @@ export class TreatmentsService {
     });
   }
 
-  update(id: string, dto: UpdateTreatmentDto) {
+  update(id: string, dto: UpdateTreatmentDto, actor: ClinicAuditActor) {
     const cols: Record<string, string> = {
       name: 'name',
       price: 'price',
@@ -158,6 +174,10 @@ export class TreatmentsService {
         if (!r.rows[0]) throw new NotFoundException('Treatment not found');
         return map(r.rows[0]);
       }
+      // Repricing is the quietest way to move money in a clinic, so the old
+      // price is captured before the write, not inferred afterwards.
+      const before = await client.query<Row>(`SELECT ${FULL} FROM treatments WHERE id = $1`, [id]);
+      if (!before.rows[0]) throw new NotFoundException('Treatment not found');
       params.push(id);
       const { rows } = await client.query<Row>(
         `UPDATE treatments SET ${sets.join(', ')}, updated_at = now()
@@ -165,6 +185,21 @@ export class TreatmentsService {
         params,
       );
       if (!rows[0]) throw new NotFoundException('Treatment not found');
+      const prev = before.rows[0];
+      const next = rows[0];
+      const repriced = prev.price !== next.price;
+      await this.audit.record(client, actor, {
+        action: 'treatment.updated',
+        entityType: 'treatment',
+        entityId: id,
+        summary: repriced
+          ? `Repriced "${next.name}" from ${prev.price} to ${next.price}`
+          : `Updated "${next.name}"`,
+        metadata: {
+          name: next.name,
+          ...(repriced ? { priceFrom: prev.price, priceTo: next.price } : {}),
+        },
+      });
       return map(rows[0]);
     });
   }
@@ -172,31 +207,36 @@ export class TreatmentsService {
 
 /* ── controller ──────────────────────────────────────────── */
 @Controller('treatments')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TreatmentsController {
   constructor(private readonly treatments: TreatmentsService) {}
 
   @Get()
+  @RequirePermissions('treatments:read')
   list(@Query('q') q?: string, @Query('status') status?: string) {
     return this.treatments.list({ q, status });
   }
 
   @Post()
-  @UseGuards(OwnerGuard)
-  create(@Body() dto: CreateTreatmentDto) {
-    return this.treatments.create(dto);
+  @RequirePermissions('treatments:manage')
+  create(@Body() dto: CreateTreatmentDto, @CurrentUser() user?: AccessTokenPayload) {
+    return this.treatments.create(dto, auditActor(user));
   }
 
   @Patch(':id')
-  @UseGuards(OwnerGuard)
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTreatmentDto) {
-    return this.treatments.update(id, dto);
+  @RequirePermissions('treatments:manage')
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTreatmentDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.treatments.update(id, dto, auditActor(user));
   }
 }
 
 @Module({
   imports: [AuthModule],
   controllers: [TreatmentsController],
-  providers: [TreatmentsService, OwnerGuard],
+  providers: [TreatmentsService],
 })
 export class TreatmentsModule {}

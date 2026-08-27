@@ -1,6 +1,6 @@
 # Project Structure
 
-npm-workspace monorepo: one API, two SPAs. ~9,500 lines of application source.
+npm-workspace monorepo: one API, two SPAs. ~9,900 lines of application source.
 
 ```
 dentalcare/
@@ -19,8 +19,7 @@ dentalcare/
 
 ```
 apps/api/
-├── migrations/                 node-pg-migrate, 0001–0011, applied in order
-├── scripts/seed.js             local demo data (guarded against production)
+├── migrations/                 node-pg-migrate, 0001–0011, schema only — no data
 ├── Dockerfile                  multi-stage; the deployment artefact
 ├── jest.config.js
 └── src/

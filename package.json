@@ -12,14 +12,16 @@
     "api:start": "npm run start -w @dentalcare/api",
     "migrate:up": "npm run migrate:up -w @dentalcare/api",
     "migrate:down": "npm run migrate:down -w @dentalcare/api",
+    "migrate:reset": "npm run migrate:reset -w @dentalcare/api",
     "migrate:create": "npm run migrate:create -w @dentalcare/api",
-    "seed": "npm run seed -w @dentalcare/api",
-    "reset-demo": "npm run reset-demo -w @dentalcare/api",
-    "bootstrap-admin": "npm run bootstrap-admin -w @dentalcare/api",
     "web:dev": "npm run dev -w @dentalcare/tenant-web",
     "web:build": "npm run build -w @dentalcare/tenant-web",
     "admin:dev": "npm run dev -w @dentalcare/admin-web",
-    "admin:build": "npm run build -w @dentalcare/admin-web"
+    "admin:build": "npm run build -w @dentalcare/admin-web",
+    "dev:setup": "node scripts/dev-setup.js",
+    "dev:reset": "node scripts/dev-setup.js --reset",
+    "smoke": "node scripts/smoke-api.js",
+    "diagnose:login": "node scripts/diagnose-login.js"
   },
   "engines": {
     "node": ">=20"

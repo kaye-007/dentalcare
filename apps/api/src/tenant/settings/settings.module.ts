@@ -24,8 +24,16 @@ import { PoolClient } from 'pg';
 import { DatabaseService } from '../../core/database/database.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
 import { JwtAuthGuard } from '../auth/jwt.guard';
-import { OwnerGuard } from '../auth/owner.guard';
+import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { RequirePermissions } from '../../core/authz/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { AccessTokenPayload } from '../auth/auth.service';
 import { AuthModule } from '../auth/auth.module';
+import {
+  ClinicAuditService,
+  ClinicAuditActor,
+  auditActor,
+} from '../../core/audit/clinic-audit.service';
 
 export interface WorkingDay {
   day: number;          // 0 = Monday … 6 = Sunday
@@ -101,6 +109,7 @@ export class SettingsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
+    private readonly audit: ClinicAuditService,
   ) {}
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
@@ -136,7 +145,7 @@ export class SettingsService {
     });
   }
 
-  async update(dto: UpdateSettingsDto) {
+  async update(dto: UpdateSettingsDto, actor: ClinicAuditActor) {
     if (dto.workingHours) validateHours(dto.workingHours);
     const tenantId = this.tenant.getRequiredTenantId();
     await this.db.withTenant(tenantId, async (client) => {
@@ -176,31 +185,44 @@ export class SettingsService {
           dto.payrollLoggingEnabled ?? null,
         ],
       );
+      // Clinic configuration reaches billing (currency, VAT) and payroll
+      // visibility, so a change here is worth as much as a money entry.
+      const fields = Object.entries(dto)
+        .filter(([, v]) => v !== undefined)
+        .map(([k]) => k);
+      await this.audit.record(client, actor, {
+        action: 'settings.updated',
+        entityType: 'clinic_settings',
+        entityId: tenantId,
+        summary: `Changed clinic settings (${fields.join(', ') || 'no fields'})`,
+        metadata: { fields },
+      });
     });
     return this.get();
   }
 }
 
 @Controller('settings')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 
   @Get()
+  @RequirePermissions('settings:read')
   get() {
     return this.settings.get();
   }
 
   @Patch()
-  @UseGuards(OwnerGuard)
-  update(@Body() dto: UpdateSettingsDto) {
-    return this.settings.update(dto);
+  @RequirePermissions('settings:manage')
+  update(@Body() dto: UpdateSettingsDto, @CurrentUser() user?: AccessTokenPayload) {
+    return this.settings.update(dto, auditActor(user));
   }
 }
 
 @Module({
   imports: [AuthModule],
   controllers: [SettingsController],
-  providers: [SettingsService, OwnerGuard],
+  providers: [SettingsService],
 })
 export class SettingsModule {}

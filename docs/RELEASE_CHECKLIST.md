@@ -1,5 +1,19 @@
 # Release Checklist — RC1
 
+> **Historical document — the access model has changed twice since this was written.**
+> Roles here are the pre-0012 `owner` / `frontdesk` pair. Migration 0012 replaced them with
+> `admin` / `dentist` / `receptionist`, and migration 0017 collapsed those to `admin` (the
+> doctor) and `receptionist`. Read `apps/api/src/core/authz/permissions.ts` for what is
+> actually enforced; nothing on this page should be used to reason about current access.
+
+
+> **HISTORICAL RECORD — superseded.** This documents the RC1 demonstration
+> build as it stood before the cleanup pass. The demo tooling it describes
+> (`npm run seed`, `npm run reset-demo`, `npm run bootstrap-admin`,
+> `apps/api/scripts/`) **no longer exists**, and neither do the fixture
+> accounts and credentials listed below. Kept for the readiness assessment
+> and the deviation notes; do not follow its commands.
+
 DentalCare by NODE X · first public demonstration build.
 
 **Release Readiness: 7.5 / 10** — ready to demonstrate to dental clinics.
@@ -11,10 +25,10 @@ Not yet ready to onboard them as paying customers. Reasoning at the end.
 
 | App | Email | Password | Role |
 |---|---|---|---|
-| Clinic — `demo.<host>` or `:5173` | `demo@dentx.app` | `Demo@2026!` | Owner |
-| Platform console — `:5174` | `admin@dentx.app` | `Demo@2026!` | Platform admin |
+| Clinic — `demo.<host>` or `:5173` | `demo@dentx.app` | `<redacted>` | Owner |
+| Platform console — `:5174` | `admin@dentx.app` | `<redacted>` | Platform admin |
 
-Additional clinic staff, all `Demo@2026!`, for demonstrating permissions:
+Additional clinic staff, all `<redacted>`, for demonstrating permissions:
 
 | Name | Email | Access | Position |
 |---|---|---|---|

@@ -14,12 +14,32 @@ import {
   tokenStore,
   type AuthUser,
 } from './api';
+import { roleCan, type Permission } from './permissions';
 
 interface AuthState {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /**
+   * Adopt a session minted elsewhere — today, the Google callback. Re-reads
+   * /auth/me rather than trusting a decoded token, so the client's view of the
+   * user comes from the same endpoint a password login uses.
+   */
+  adoptSession: (access: string, refresh?: string) => Promise<void>;
   logout: () => void;
+  /**
+   * Does the signed-in user hold this permission? Prefers the list the API
+   * sent; falls back to the local matrix if an older session predates it.
+   * Hides UI only — the API enforces the same rule on every route.
+   */
+  can: (permission: Permission) => boolean;
+  /**
+   * The clinic's trial has ended: reads still work, writes will not. Kept
+   * beside `can` because callers need both to decide whether to show a
+   * control — permission says "may you", this says "may anyone, right now".
+   */
+  readOnly: boolean;
+  trialEndsAt: string | null;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -56,6 +76,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   }, []);
 
+  const adoptSession = useCallback(async (access: string, refresh?: string) => {
+    tokenStore.set(access, refresh);
+    try {
+      setUser(await api.me());
+    } catch (err) {
+      tokenStore.clear();
+      throw err;
+    }
+  }, []);
+
   const logout = useCallback(() => {
     tokenStore.clear();
     setUser(null);
@@ -68,9 +98,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setSessionExpiredHandler(null);
   }, []);
 
+  const granted = useMemo(
+    () => (user?.permissions?.length ? new Set(user.permissions) : null),
+    [user],
+  );
+
+  const can = useCallback(
+    (permission: Permission) =>
+      granted ? granted.has(permission) : roleCan(user?.role, permission),
+    [granted, user],
+  );
+
+  // A session minted before the trial work has no `trial` block. Treating a
+  // missing value as unrestricted is the right default here: the API refuses
+  // the write regardless, so the worst case is a button that returns 402
+  // rather than a paying clinic locked out by a stale token.
+  const readOnly = user?.trial?.readOnly ?? false;
+  const trialEndsAt = user?.trial?.endsAt ?? null;
+
   const value = useMemo(
-    () => ({ user, loading, login, logout }),
-    [user, loading, login, logout],
+    () => ({ user, loading, login, adoptSession, logout, can, readOnly, trialEndsAt }),
+    [user, loading, login, adoptSession, logout, can, readOnly, trialEndsAt],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

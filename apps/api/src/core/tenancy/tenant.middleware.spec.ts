@@ -16,7 +16,7 @@ import { TenantMiddleware } from './tenant.middleware';
  */
 function makeMiddleware(opts: {
   env?: Record<string, string | undefined>;
-  tenant?: { id: string; status: string } | null;
+  tenant?: { id: string; status: string; trial_ends_at?: Date | null } | null;
 }) {
   const rows = opts.tenant ? [opts.tenant] : [];
   const db = { query: jest.fn().mockResolvedValue({ rows }) } as unknown as DatabaseService;
@@ -145,5 +145,52 @@ describe('TenantMiddleware — subdomain resolution', () => {
         jest.fn(),
       ),
     ).rejects.toThrow(/determine the clinic/);
+  });
+});
+
+describe('TenantMiddleware — trial resolution', () => {
+  const env = { ALLOW_TENANT_HEADER: '1', DEV_TENANT_SUBDOMAIN: 'avicena' };
+  const DAY = 86_400_000;
+
+  /** Runs the middleware and hands back the context it established. */
+  async function contextFor(trial_ends_at: Date | null) {
+    const { middleware, ctx } = makeMiddleware({
+      env,
+      tenant: { id: 'tid-1', status: 'active', trial_ends_at },
+    });
+    let seen: ReturnType<TenantContextService['get']>;
+    await middleware.use(req(), res, () => { seen = ctx.get(); });
+    return seen!;
+  }
+
+  it('leaves a paying clinic unrestricted', async () => {
+    const c = await contextFor(null);
+    expect(c.trialEndsAt).toBeNull();
+    expect(c.readOnly).toBe(false);
+  });
+
+  it('leaves a running trial unrestricted', async () => {
+    const c = await contextFor(new Date(Date.now() + 3 * DAY));
+    expect(c.readOnly).toBe(false);
+    expect(c.trialEndsAt).not.toBeNull();
+  });
+
+  it('marks an expired trial read-only', async () => {
+    const c = await contextFor(new Date(Date.now() - 1 * DAY));
+    expect(c.readOnly).toBe(true);
+  });
+
+  it('does not confuse an expired trial with a suspension', async () => {
+    // The clinic still resolves and still gets a context. Losing writes is a
+    // different thing from losing the account, and the middleware must not
+    // collapse the two — an expired trial that 403s at the door can never
+    // show the prospect the data that would sell them the subscription.
+    const { middleware } = makeMiddleware({
+      env,
+      tenant: { id: 'tid-1', status: 'active', trial_ends_at: new Date(Date.now() - DAY) },
+    });
+    const next = jest.fn();
+    await middleware.use(req(), res, next);
+    expect(next).toHaveBeenCalled();
   });
 });

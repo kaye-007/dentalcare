@@ -44,7 +44,19 @@ export class CreatePatientDto {
   postalCode?: string;
 
   @IsOptional() @IsIn(['active', 'inactive'])
-  status?: 'active' | 'inactive';
+  status?: 'active' | 'inactive' | 'archived';
+
+  /* ── emergency contact ──
+     A name without a phone number is unusable in an emergency, and the
+     database enforces the same rule via patients_emergency_contact_usable. */
+  @IsOptional() @IsString() @MaxLength(120)
+  emergencyContactName?: string;
+
+  @IsOptional() @IsString() @MaxLength(60)
+  emergencyContactRelationship?: string;
+
+  @IsOptional() @IsString() @MaxLength(40)
+  emergencyContactPhone?: string;
 }
 
 export class UpdatePatientDto extends CreatePatientDto {
@@ -53,6 +65,12 @@ export class UpdatePatientDto extends CreatePatientDto {
 
   @IsOptional() @IsString() @MinLength(1)
   declare lastName: string;
+}
+
+export class ArchivePatientDto {
+  /** Why the record was archived. Recorded for audit; optional but urged. */
+  @IsOptional() @IsString() @MaxLength(300)
+  reason?: string;
 }
 
 export class CreateNoteDto {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Plus, TrendingDown, Trash2 } from 'lucide-react';
+import { Plus, TrendingDown, Undo2 } from 'lucide-react';
 import {
   financeApi,
   ApiError,
@@ -8,7 +8,9 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
+import VoidModal, { VoidedNote } from '../components/VoidModal';
 import { formatMoney } from '../lib/format';
+import { dateLocale } from '../lib/i18n';
 
 const CATEGORIES: { key: ExpenseCategory; label: string }[] = [
   { key: 'rent', label: 'Rent' },
@@ -21,15 +23,16 @@ const CATEGORIES: { key: ExpenseCategory; label: string }[] = [
 const CAT_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function ExpensesPage() {
-  const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
+  const { can } = useAuth();
+  const canVoid = can('expenses:void');
   const [category, setCategory] = useState('all');
   const [items, setItems] = useState<ExpenseRow[] | null>(null);
   const [creating, setCreating] = useState(false);
+  const [voiding, setVoiding] = useState<ExpenseRow | null>(null);
 
   async function load() {
     setItems(await financeApi.listExpenses(category));
@@ -40,22 +43,22 @@ export default function ExpensesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category]);
 
-  const total = (items ?? []).reduce((s, e) => s + e.amount, 0);
-
-  async function remove(id: string) {
-    try {
-      await financeApi.deleteExpense(id);
-      await load();
-    } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Could not delete.');
-    }
-  }
+  // A voided expense stays visible but is not spending, so it is out of the
+  // total the doctor's profit figure is built from.
+  const live = (items ?? []).filter((e) => !e.voidedAt);
+  const total = live.reduce((s, e) => s + e.amount, 0);
 
   return (
     <div className="page">
       <PageHeader
         title="Expenses"
-        meta={items ? `${items.length} entr${items.length === 1 ? 'y' : 'ies'} · ${formatMoney(total)} in view` : '…'}
+        meta={
+          items
+            ? `${live.length} entr${live.length === 1 ? 'y' : 'ies'} · ${formatMoney(total)} in view${
+                items.length - live.length ? ` · ${items.length - live.length} voided` : ''
+              }`
+            : '…'
+        }
         actions={
           <button className="btn btn--primary" onClick={() => setCreating(true)}>
             <Plus size={16} /> Add expense
@@ -89,21 +92,28 @@ export default function ExpensesPage() {
               <tr>
                 <th>Date</th><th>Category</th><th>Note</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
-                {isOwner && <th />}
+                {canVoid && <th />}
               </tr>
             </thead>
             <tbody>
               {items.map((e) => (
-                <tr key={e.id}>
+                <tr key={e.id} className={e.voidedAt ? 'tr--voided' : undefined}>
                   <td className="muted">{fmtDate(e.expenseDate)}</td>
                   <td><StatusPill status="neutral" label={CAT_LABEL[e.category]} /></td>
-                  <td className="muted">{e.note ?? '—'}</td>
+                  <td className="muted">
+                    {e.note ?? '—'}
+                    {e.voidedAt && (
+                      <VoidedNote at={e.voidedAt} by={e.voidedByName} reason={e.voidReason} />
+                    )}
+                  </td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(e.amount)}</td>
-                  {isOwner && (
+                  {canVoid && (
                     <td style={{ textAlign: 'right' }}>
-                      <button className="note__del" onClick={() => remove(e.id)} title="Delete expense">
-                        <Trash2 size={13} />
-                      </button>
+                      {!e.voidedAt && (
+                        <button className="iconbtn" onClick={() => setVoiding(e)} title="Void this expense">
+                          <Undo2 size={13} />
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -112,6 +122,20 @@ export default function ExpensesPage() {
           </table>
         )}
       </div>
+
+      {voiding && (
+        <VoidModal
+          title="Void this expense"
+          subtitle={`${formatMoney(voiding.amount)} · ${CAT_LABEL[voiding.category]} · ${fmtDate(voiding.expenseDate)}`}
+          confirmLabel={`Void ${formatMoney(voiding.amount)}`}
+          onClose={() => setVoiding(null)}
+          onConfirm={async (reason) => {
+            await financeApi.voidExpense(voiding.id, reason);
+            setVoiding(null);
+            await load();
+          }}
+        />
+      )}
 
       {creating && (
         <ExpenseModal

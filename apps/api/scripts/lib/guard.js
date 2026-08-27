@@ -28,7 +28,11 @@ function assertNotProduction(connectionString, opts = {}) {
     throw new Error('DATABASE_URL is not a valid connection string.');
   }
 
-  const host = url.hostname;
+  // WHATWG URL returns an IPv6 host wrapped in brackets — "[::1]" — so the
+  // "::1" entry in LOCAL_HOSTS could never match and an IPv6 loopback
+  // connection was refused as "non-local". Safe direction to fail in, but
+  // still wrong: strip the brackets before comparing.
+  const host = url.hostname.replace(/^\[|\]$/g, '');
   const dbName = url.pathname.replace(/^\//, '');
 
   if (/prod/i.test(dbName) || /prod/i.test(host)) {

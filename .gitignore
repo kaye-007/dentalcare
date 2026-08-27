@@ -1,18 +1,36 @@
+# ── dependencies ──────────────────────────────────────────
 node_modules/
+
+# ── build output ──────────────────────────────────────────
 dist/
 build/
 coverage/
-*.log
+*.tsbuildinfo
+
+# ── tool caches ───────────────────────────────────────────
+node_modules/.vite/
+node_modules/.tmp/
+.vite/
+
+# Cursor writes a semantic index into .git/ — never commit it
+.git/cursor/
+.cursor/
+
+# ── secrets ───────────────────────────────────────────────
 .env
 .env.local
 .env.*.local
+
+# ── logs & OS / editor noise ──────────────────────────────
+*.log
 .DS_Store
-*.tsbuildinfo
-
-*.tsbuildinfo
-vite.config.js
-vite.config.d.ts
-
-# Editor-local settings
+Thumbs.db
+*.swp
 .vscode/
 .idea/
+
+# ── cleanup quarantine (safe to delete) ───────────────────
+_to_delete/
+
+# local build-rig transfer archive
+.sync/

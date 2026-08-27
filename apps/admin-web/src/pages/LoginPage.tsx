@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { ApiError } from '../lib/api';
+import GoogleButton from '../components/GoogleButton';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -30,11 +31,11 @@ export default function LoginPage() {
       <div className="auth__panel">
         <div className="auth__brand">
           <svg viewBox="0 0 28 28" width="32" height="32" aria-hidden>
-            <circle cx="9" cy="9" r="4" fill="var(--teal)" />
-            <circle cx="19" cy="9" r="3" fill="var(--teal-300)" />
-            <circle cx="14" cy="19" r="3.4" fill="var(--ink)" />
-            <line x1="9" y1="9" x2="14" y2="19" stroke="var(--teal)" strokeWidth="1.6" />
-            <line x1="19" y1="9" x2="14" y2="19" stroke="var(--teal-300)" strokeWidth="1.6" />
+            <circle cx="9" cy="9" r="4" fill="var(--logo-1)" />
+            <circle cx="19" cy="9" r="3" fill="var(--logo-2)" />
+            <circle cx="14" cy="19" r="3.4" fill="var(--logo-3)" />
+            <line x1="9" y1="9" x2="14" y2="19" stroke="var(--logo-1)" strokeWidth="1.6" />
+            <line x1="19" y1="9" x2="14" y2="19" stroke="var(--logo-2)" strokeWidth="1.6" />
           </svg>
           <div>
             <p className="auth__name">DentalCare</p>
@@ -47,7 +48,7 @@ export default function LoginPage() {
           <label className="field">
             <span>Email</span>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@dentx.app" autoComplete="username" required />
+              placeholder="admin@yourdomain.com" autoComplete="username" required />
           </label>
           <label className="field">
             <span>Password</span>
@@ -59,12 +60,8 @@ export default function LoginPage() {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        {import.meta.env.DEV && (
-          <div className="auth__hint">
-            <p>Demo superadmin</p>
-            <code>admin@dentx.app · Demo@2026!</code>
-          </div>
-        )}
+
+        <GoogleButton />
       </div>
     </div>
   );

@@ -1,17 +1,24 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ChevronLeft, Pencil, Trash2 } from 'lucide-react';
+import { ChevronLeft, Pencil, Trash2, Archive, RotateCcw, Phone } from 'lucide-react';
 import { api, appointmentsApi, type Patient, type Appointment } from '../lib/api';
 import { Avatar, StatusPill, EmptyState } from '../components/ui';
-import MedicalRecordCard from '../components/MedicalRecordCard';
+import DentalChartCard from '../components/DentalChartCard';
+import TreatmentPlanCard from '../components/TreatmentPlanCard';
+import PerioChartCard from '../components/PerioChartCard';
+import PatientLedgerCard from '../components/PatientLedgerCard';
+import MedicalHistoryCard from '../components/MedicalHistoryCard';
+import DocumentsCard from '../components/DocumentsCard';
+import { useAuth } from '../lib/auth';
 import { CalendarDays } from 'lucide-react';
+import { dateLocale } from '../lib/i18n';
 
 function fmtDate(s: string | null) {
   if (!s) return '—';
-  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  return new Date(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
 }
 function fmtDateTime(s: string) {
-  return new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(s).toLocaleString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 function genderLabel(g: string | null) {
   return g ? g[0]!.toUpperCase() + g.slice(1) : '—';
@@ -24,6 +31,11 @@ export default function PatientProfilePage() {
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveReason, setArchiveReason] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { can } = useAuth();
+  const canEditPatient = can('patients:write');
 
   async function load() {
     if (!id) return;
@@ -53,6 +65,41 @@ export default function PatientProfilePage() {
     await load();
   }
 
+  async function archive() {
+    if (!id) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = await api.archivePatient(id, archiveReason.trim() || undefined);
+      setArchiving(false);
+      setArchiveReason('');
+      if (res.upcomingAppointmentsAffected > 0) {
+        setActionError(
+          `Archived. Note: this patient still has ${res.upcomingAppointmentsAffected} upcoming appointment(s) — cancel them from Reservations if they are no longer expected.`,
+        );
+      }
+      await load();
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restore() {
+    if (!id) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.restorePatient(id);
+      await load();
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <div className="page"><p className="muted">Loading…</p></div>;
   if (!p) return <div className="page"><p className="muted">Patient not found.</p></div>;
 
@@ -66,10 +113,77 @@ export default function PatientProfilePage() {
           <h2 className="section-title">{p.firstName} {p.lastName}</h2>
           <StatusPill status={p.status} />
         </div>
-        <Link to={`/patients/${p.id}/edit`} className="btn btn--ghost">
-          <Pencil size={15} /> Edit
-        </Link>
+        <div className="profile__actions">
+          {p.status !== 'archived' && (
+            <Link to={`/patients/${p.id}/edit`} className="btn btn--ghost">
+              <Pencil size={15} /> Edit
+            </Link>
+          )}
+          {canEditPatient && p.status !== 'archived' && (
+            <button className="btn btn--ghost" onClick={() => setArchiving(true)} disabled={busy}>
+              <Archive size={15} /> Archive
+            </button>
+          )}
+          {canEditPatient && p.status === 'archived' && (
+            <button className="btn btn--primary" onClick={restore} disabled={busy}>
+              <RotateCcw size={15} /> Restore
+            </button>
+          )}
+        </div>
       </div>
+
+      {p.status === 'archived' && (
+        <div className="alertbanner alertbanner--muted" role="status">
+          <Archive size={18} aria-hidden />
+          <div>
+            <strong>
+              This record is archived
+              {p.archivedByName ? ` by ${p.archivedByName}` : ''}
+              {p.archivedAt ? ` on ${fmtDate(p.archivedAt)}` : ''}.
+            </strong>
+            <p>
+              {p.archiveReason
+                ? `Reason: ${p.archiveReason}`
+                : 'No reason was recorded.'}{' '}
+              It is retained in full and can be restored at any time.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {actionError && <p className="formerror">{actionError}</p>}
+
+      {archiving && (
+        <div className="modal__overlay" role="dialog" aria-modal="true" aria-label="Archive patient">
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <header className="modal__head"><h2>Archive {p.firstName} {p.lastName}?</h2></header>
+            <div className="modal__body">
+              <p className="muted">
+                The record is kept in full — appointments, invoices and clinical
+                history are untouched. It is hidden from the patient list and can
+                be restored at any time. Dental records are never deleted outright.
+              </p>
+              <label className="field">
+                <span>Reason (optional, recorded for audit)</span>
+                <input
+                  value={archiveReason}
+                  onChange={(e) => setArchiveReason(e.target.value)}
+                  placeholder="Moved away, transferred to another practice…"
+                  autoFocus
+                />
+              </label>
+            </div>
+            <div className="modal__foot">
+              <button className="btn btn--ghost" onClick={() => setArchiving(false)} disabled={busy}>
+                Cancel
+              </button>
+              <button className="btn btn--primary" onClick={archive} disabled={busy}>
+                {busy ? 'Archiving…' : 'Archive patient'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid">
         <div className="card span-8">
@@ -84,6 +198,27 @@ export default function PatientProfilePage() {
             <div><span>Postal code</span><b>{p.postalCode ?? '—'}</b></div>
             <div><span>Registered</span><b>{fmtDate(p.createdAt)}</b></div>
           </div>
+
+          <div className="card__subhead">
+            <h3><Phone size={15} aria-hidden /> Emergency contact</h3>
+          </div>
+          {p.emergencyContact ? (
+            <div className="info">
+              <div><span>Name</span><b>{p.emergencyContact.name}</b></div>
+              <div>
+                <span>Relationship</span>
+                <b>{p.emergencyContact.relationship ?? '—'}</b>
+              </div>
+              <div><span>Phone</span><b>{p.emergencyContact.phone ?? '—'}</b></div>
+            </div>
+          ) : (
+            <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+              None recorded.{' '}
+              {canEditPatient && (
+                <Link to={`/patients/${p.id}/edit`}>Add one</Link>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="card span-4">
@@ -114,7 +249,21 @@ export default function PatientProfilePage() {
             ))}
           </ul>
         </div>
-        <MedicalRecordCard patientId={p.id} />
+        <div className="span-12">
+          <MedicalHistoryCard patientId={p.id} />
+        </div>
+
+        <DentalChartCard patientId={p.id} />
+
+        <PerioChartCard patientId={p.id} />
+
+        <TreatmentPlanCard patientId={p.id} />
+
+        <PatientLedgerCard patientId={p.id} />
+
+        <div className="span-12">
+          <DocumentsCard patientId={p.id} />
+        </div>
 
         <div className="card span-12">
           <div className="card__head"><h2>Appointments</h2></div>
@@ -131,12 +280,12 @@ export default function PatientProfilePage() {
               {history.map((a) => (
                 <li className="row" key={a.id}>
                   <span className="row__time">
-                    {new Date(a.startsAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                    {new Date(a.startsAt).toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short' })}
                   </span>
                   <span className="row__main">
                     <span className="row__title">{a.reason}</span>
                     <span className="row__sub">
-                      {new Date(a.startsAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(a.startsAt).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' })}
                       {a.staffName ? ` · ${a.staffName}` : ''}
                     </span>
                   </span>

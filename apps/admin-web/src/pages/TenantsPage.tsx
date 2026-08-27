@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Building2 } from 'lucide-react';
+import { Plus, Building2, Rocket, Copy, Check } from 'lucide-react';
 import {
   api,
   ApiError,
+  generatePassword,
+  trialState,
   type TenantRow,
   type TenantStatus,
   type Plan,
@@ -19,6 +21,24 @@ function StatusPill({ status }: { status: TenantStatus }) {
   return <span className={`pill pill--${status}`}>{STATUS_LABEL[status]}</span>;
 }
 
+/** The countdown, in the words the person reading it would use. */
+function TrialCell({ trialEndsAt }: { trialEndsAt: string | null }) {
+  const t = trialState(trialEndsAt);
+  if (t.kind === 'paid') return <span className="muted">Paid</span>;
+  if (t.kind === 'expired') {
+    return (
+      <span className="pill pill--suspended">
+        {t.daysAgo === 0 ? 'Expired today' : `Expired ${t.daysAgo}d ago`}
+      </span>
+    );
+  }
+  return (
+    <span className={`pill ${t.daysLeft <= 2 ? 'pill--warn' : 'pill--trial'}`}>
+      {t.daysLeft === 1 ? '1 day left' : `${t.daysLeft} days left`}
+    </span>
+  );
+}
+
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -32,7 +52,7 @@ export default function TenantsPage() {
   const [tenants, setTenants] = useState<TenantRow[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState<'clinic' | 'demo' | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   async function load() {
@@ -75,9 +95,14 @@ export default function TenantsPage() {
             {counts.archived} archived
           </p>
         </div>
-        <button className="btn btn--primary" onClick={() => setShowCreate(true)}>
-          <Plus size={16} /> New clinic
-        </button>
+        <div className="actions">
+          <button className="btn btn--ghost" onClick={() => setShowCreate('demo')}>
+            <Rocket size={16} /> New demo (7 days)
+          </button>
+          <button className="btn btn--primary" onClick={() => setShowCreate('clinic')}>
+            <Plus size={16} /> New clinic
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -95,6 +120,7 @@ export default function TenantsPage() {
                 <th>Clinic</th>
                 <th>Owner</th>
                 <th>Plan</th>
+                <th>Trial</th>
                 <th>Users</th>
                 <th>Status</th>
                 <th>Created</th>
@@ -110,6 +136,7 @@ export default function TenantsPage() {
                   </td>
                   <td className="muted">{t.owner_email ?? '—'}</td>
                   <td>{t.plan_name ?? '—'}</td>
+                  <td><TrialCell trialEndsAt={t.trial_ends_at} /></td>
                   <td>{t.user_count}</td>
                   <td><StatusPill status={t.status} /></td>
                   <td className="muted">{fmtDate(t.created_at)}</td>
@@ -139,9 +166,9 @@ export default function TenantsPage() {
       {showCreate && (
         <CreateModal
           plans={plans}
-          onClose={() => setShowCreate(false)}
+          demo={showCreate === 'demo'}
+          onClose={() => setShowCreate(null)}
           onCreated={async () => {
-            setShowCreate(false);
             await load();
           }}
         />
@@ -152,10 +179,12 @@ export default function TenantsPage() {
 
 function CreateModal({
   plans,
+  demo,
   onClose,
   onCreated,
 }: {
   plans: Plan[];
+  demo: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -164,12 +193,17 @@ function CreateModal({
     subdomain: '',
     ownerFullName: '',
     ownerEmail: '',
-    ownerPassword: '',
+    // A demo gets a generated password: it has to be handed over on a call,
+    // and a human choosing one on the spot picks the same weak one every time.
+    ownerPassword: demo ? generatePassword() : '',
     planId: plans[0]?.id ?? '',
-    trialDays: 14,
+    trialDays: demo ? 7 : 14,
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Set once the clinic exists, so the credentials can be read out. */
+  const [created, setCreated] = useState<{ subdomain: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const set = (k: keyof typeof form, v: string | number) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -179,7 +213,7 @@ function CreateModal({
     setError(null);
     setBusy(true);
     try {
-      await api.createTenant({
+      const res = await api.createTenant({
         clinicName: form.clinicName.trim(),
         subdomain: form.subdomain.trim().toLowerCase(),
         ownerFullName: form.ownerFullName.trim(),
@@ -188,6 +222,10 @@ function CreateModal({
         planId: form.planId || undefined,
         trialDays: Number(form.trialDays),
       });
+      // The password is not stored anywhere readable and cannot be shown
+      // again, so the modal stays open on the hand-over screen rather than
+      // closing over the one moment it exists in plain text.
+      setCreated({ subdomain: res.subdomain });
       onCreated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create clinic.');
@@ -196,12 +234,54 @@ function CreateModal({
     }
   }
 
+  if (created) {
+    const handover = [
+      `${created.subdomain}.dentalcare.app`,
+      `Email:    ${form.ownerEmail.trim()}`,
+      `Password: ${form.ownerPassword}`,
+    ].join('\n');
+    return (
+      <div className="modal__overlay" onClick={onClose}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal__head">
+            <h2>{form.clinicName} is live</h2>
+            <p className="muted">
+              {demo ? 'Seven days from now it locks to read-only. ' : ''}
+              This password is not stored in readable form — copy it now.
+            </p>
+          </div>
+          <div className="modal__body">
+            <pre className="handover">{handover}</pre>
+            <div className="modal__foot">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(handover);
+                  setCopied(true);
+                }}
+              >
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+                {copied ? 'Copied' : 'Copy details'}
+              </button>
+              <button className="btn btn--primary" onClick={onClose}>Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="modal__overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h2>New clinic</h2>
-          <p className="muted">Creates the tenant and its first owner account.</p>
+          <h2>{demo ? 'New demo clinic' : 'New clinic'}</h2>
+          <p className="muted">
+            {demo
+              ? 'A real clinic with a 7-day trial. It locks to read-only when the trial ends — their data stays visible.'
+              : 'Creates the tenant and its first doctor account.'}
+          </p>
         </div>
         <form className="modal__body" onSubmit={submit}>
           <div className="grid2">
@@ -220,13 +300,13 @@ function CreateModal({
             </label>
           </div>
           <label className="field">
-            <span>Owner name</span>
+            <span>Doctor's name</span>
             <input value={form.ownerFullName} onChange={(e) => set('ownerFullName', e.target.value)}
               placeholder="Dr. Adam H." required />
           </label>
           <div className="grid2">
             <label className="field">
-              <span>Owner email</span>
+              <span>Doctor's email</span>
               <input type="email" value={form.ownerEmail} onChange={(e) => set('ownerEmail', e.target.value)}
                 placeholder="owner@northgate-dental.eu" required />
             </label>

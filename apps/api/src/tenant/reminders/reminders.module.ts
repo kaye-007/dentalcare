@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Injectable,
@@ -16,10 +17,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { IsIn, IsOptional } from 'class-validator';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '../../core/database/database.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { RequirePermissions } from '../../core/authz/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AccessTokenPayload } from '../auth/auth.service';
 import { AuthModule } from '../auth/auth.module';
@@ -111,7 +115,20 @@ export class RemindersService {
   }
 
   /* request-scoped: manual trigger for one appointment */
-  async sendManual(appointmentId: string, userId: string) {
+  /**
+   * `channel` records HOW the clinic is contacting the patient.
+   *
+   *   'whatsapp' | 'email' — the staff member is opening their own WhatsApp or
+   *     mail app from the appointment screen. Nothing is delivered by this
+   *     server, so the row records a HAND-OFF, not a delivery. Only the person
+   *     who pressed send knows whether the message actually went.
+   *   'log' (default) — the built-in internal channel, delivered here.
+   */
+  async sendManual(
+    appointmentId: string,
+    userId: string,
+    channel: 'log' | 'whatsapp' | 'email' = 'log',
+  ) {
     const tenantId = this.tenant.getRequiredTenantId();
 
     const row = await this.db.withTenant(tenantId, async (client) => {
@@ -149,8 +166,21 @@ export class RemindersService {
       type: 'manual',
       message,
       createdBy: userId,
+      channel,
     });
-    await this.deliverAndRecord(tenantId, id, row.patient_phone, message);
+
+    if (channel === 'log') {
+      await this.deliverAndRecord(tenantId, id, row.patient_phone, message);
+    } else {
+      // Handed to the staff member's own app. Mark it as dispatched — there is
+      // no delivery receipt to wait for and nothing this server can retry.
+      await this.db.withTenant(tenantId, async (client) => {
+        await client.query(
+          `UPDATE reminders SET status = 'sent', sent_at = now() WHERE id = $1`,
+          [id],
+        );
+      });
+    }
 
     return this.db.withTenant(tenantId, async (client) => {
       const out = await client.query<ReminderRow>(`${SELECT} WHERE r.id = $1`, [id]);
@@ -228,14 +258,16 @@ export class RemindersService {
       type: 'automatic' | 'manual';
       message: string;
       createdBy: string | null;
+      /** Overrides the configured channel for manual hand-offs. */
+      channel?: string;
     },
   ): Promise<string> {
-    const channel = this.channels.active();
+    const channelId = opts.channel ?? this.channels.active().id;
     return this.db.withTenant(tenantId, async (client) => {
       const ins = await client.query<{ id: string }>(
         `INSERT INTO reminders (tenant_id, appointment_id, type, channel, status, message, created_by)
          VALUES ($1,$2,$3,$4,'pending',$5,$6) RETURNING id`,
-        [tenantId, opts.appointmentId, opts.type, channel.id, opts.message, opts.createdBy],
+        [tenantId, opts.appointmentId, opts.type, channelId, opts.message, opts.createdBy],
       );
       return ins.rows[0]!.id;
     });
@@ -345,23 +377,35 @@ export class ReminderSchedulerService implements OnModuleInit, OnModuleDestroy {
 }
 
 /* ════════ controller ════════ */
+export class SendReminderDto {
+  @IsOptional()
+  @IsIn(['log', 'whatsapp', 'email'])
+  channel?: 'log' | 'whatsapp' | 'email';
+}
+
+// Bare @Controller() on purpose: the two routes below live under different
+// resource roots ('reminders' and 'appointments/:id/reminders'), so each
+// carries its full path rather than sharing a prefix.
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class RemindersController {
   constructor(private readonly reminders: RemindersService) {}
 
   @Get('reminders')
+  @RequirePermissions('reminders:read')
   list(@Query('appointmentId') appointmentId?: string) {
     return this.reminders.list(appointmentId);
   }
 
   @Post('appointments/:id/reminders')
+  @RequirePermissions('reminders:send')
   sendManual(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: SendReminderDto,
     @CurrentUser() user?: AccessTokenPayload,
   ) {
     if (!user) throw new UnauthorizedException();
-    return this.reminders.sendManual(id, user.sub);
+    return this.reminders.sendManual(id, user.sub, body?.channel ?? 'log');
   }
 }
 

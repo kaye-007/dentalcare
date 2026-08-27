@@ -24,16 +24,36 @@ const { assertNotProduction } = require('./lib/guard');
  * demo data.
  */
 const TENANT_TABLES = [
+  // Phase 4 — clinical charting. tooth_records was here; migration 0015 drops
+  // that table, so truncating it threw and no reset ever completed.
+  'perio_measurements',
+  'perio_tooth_findings',
+  'perio_exams',
+  'treatment_plan_items',
+  'treatment_plans',
+  'clinical_procedures',
+  'tooth_conditions',
+  'procedure_codes',
+  // Phase 5 — billing ledger.
+  'ledger_entries',
   'reminders',
   'salary_payments',
   'payments',
   'invoice_line_items',
   'invoices',
   'expenses',
-  'tooth_records',
-  'treatments',
-  'appointments',
+  // Phase 2 — patient records.
+  'patient_documents',
+  'patient_medications',
+  'patient_conditions',
+  'patient_allergies',
   'patient_notes',
+  // Phase 3 — scheduling.
+  'appointment_status_events',
+  'appointments',
+  'staff_availability',
+  'operatories',
+  'treatments',
   'patients',
   'clinic_settings',
   'users',

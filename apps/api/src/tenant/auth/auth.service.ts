@@ -9,11 +9,12 @@ import * as bcrypt from 'bcryptjs';
 import { UsersService, AuthUserRow } from '../users/users.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
 import { BCRYPT_ROUNDS } from '../../core/security/bcrypt';
+import { Permission, Role, normalizeRole, permissionsFor } from '../../core/authz/permissions';
 
 export interface AccessTokenPayload {
   sub: string;
   tenantId: string;
-  role: 'owner' | 'frontdesk';
+  role: Role;
   email: string;
 }
 
@@ -21,9 +22,15 @@ export interface PublicUser {
   id: string;
   email: string;
   fullName: string;
-  role: 'owner' | 'frontdesk';
+  role: Role;
   tenantId: string;
   clinicName: string;
+  /**
+   * Resolved server-side so the SPA never re-derives the matrix. Purely for
+   * hiding UI the user cannot use — every route is still enforced by
+   * PermissionsGuard on the API.
+   */
+  permissions: Permission[];
 }
 
 @Injectable()
@@ -106,6 +113,38 @@ export class AuthService {
     return { changed: true };
   }
 
+  /**
+   * Issue a session for a user whose identity has already been proven by
+   * something other than a password — today, Google.
+   *
+   * It re-reads the row rather than trusting what the caller passes, so the
+   * account status, role and clinic status are all checked against the
+   * database at the moment the token is minted, exactly as password login
+   * does. The only thing skipped is the bcrypt comparison.
+   */
+  async issueSessionForUser(tenantId: string, userId: string) {
+    const user = await this.users.findForAuthById(tenantId, userId);
+    if (!user || user.user_status !== 'active') {
+      throw new UnauthorizedException();
+    }
+    if (user.tenant_status !== 'active') {
+      throw new UnauthorizedException('Clinic access is currently suspended');
+    }
+    return this.issueTokens(user);
+  }
+
+  /**
+   * Resolve the stored role to a current one. A row whose role cannot be
+   * resolved is a data fault; refuse the session rather than guessing.
+   */
+  private requireRole(user: AuthUserRow): Role {
+    const role = normalizeRole(user.role);
+    if (!role) {
+      throw new UnauthorizedException('Your account has no valid access role');
+    }
+    return role;
+  }
+
   private async issueTokens(user: AuthUserRow) {
     const accessToken = await this.signAccess(user);
     const refreshToken = await this.jwt.signAsync(
@@ -116,13 +155,15 @@ export class AuthService {
       },
     );
 
+    const role = this.requireRole(user);
     const publicUser: PublicUser = {
       id: user.id,
       email: user.email,
       fullName: user.full_name,
-      role: user.role,
+      role,
       tenantId: user.tenant_id,
       clinicName: user.clinic_name,
+      permissions: permissionsFor(role),
     };
     return { accessToken, refreshToken, user: publicUser };
   }
@@ -131,7 +172,7 @@ export class AuthService {
     const payload: AccessTokenPayload = {
       sub: user.id,
       tenantId: user.tenant_id,
-      role: user.role,
+      role: this.requireRole(user),
       email: user.email,
     };
     return this.jwt.signAsync(payload, {

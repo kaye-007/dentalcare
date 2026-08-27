@@ -14,6 +14,9 @@ const EMPTY: PatientPayload = {
   city: '',
   postalCode: '',
   status: 'active',
+  emergencyContactName: '',
+  emergencyContactRelationship: '',
+  emergencyContactPhone: '',
 };
 
 export default function PatientFormPage() {
@@ -40,7 +43,12 @@ export default function PatientFormPage() {
           address: p.address ?? '',
           city: p.city ?? '',
           postalCode: p.postalCode ?? '',
-          status: p.status,
+          // The form edits active/inactive only. Archiving is a separate,
+          // attributed action on the profile page.
+          status: p.status === 'archived' ? 'inactive' : p.status,
+          emergencyContactName: p.emergencyContact?.name ?? '',
+          emergencyContactRelationship: p.emergencyContact?.relationship ?? '',
+          emergencyContactPhone: p.emergencyContact?.phone ?? '',
         }),
       )
       .finally(() => setLoading(false));
@@ -106,6 +114,35 @@ export default function PatientFormPage() {
           <label className="field"><span>Postal code</span>
             <input value={form.postalCode} onChange={(e) => set('postalCode', e.target.value)} /></label>
         </div>
+        <fieldset className="fieldset">
+          <legend>Emergency contact</legend>
+          <p className="muted" style={{ fontSize: 12, margin: '0 0 12px' }}>
+            Who to call if something goes wrong during treatment. A name
+            requires a phone number — a contact you cannot reach is not one.
+          </p>
+          <div className="grid2">
+            <label className="field"><span>Name</span>
+              <input
+                value={form.emergencyContactName}
+                onChange={(e) => set('emergencyContactName', e.target.value)}
+                placeholder="Full name"
+              /></label>
+            <label className="field"><span>Relationship</span>
+              <input
+                value={form.emergencyContactRelationship}
+                onChange={(e) => set('emergencyContactRelationship', e.target.value)}
+                placeholder="Spouse, parent, friend…"
+              /></label>
+          </div>
+          <label className="field"><span>Phone{form.emergencyContactName ? ' (required)' : ''}</span>
+            <input
+              value={form.emergencyContactPhone}
+              onChange={(e) => set('emergencyContactPhone', e.target.value)}
+              placeholder="+355 …"
+              required={Boolean(form.emergencyContactName)}
+            /></label>
+        </fieldset>
+
         <label className="field"><span>Status</span>
           <select value={form.status} onChange={(e) => set('status', e.target.value)}>
             <option value="active">Active</option>

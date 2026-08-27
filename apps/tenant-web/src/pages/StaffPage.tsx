@@ -10,14 +10,16 @@ import {
 import { useAuth } from '../lib/auth';
 import { Avatar, PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
 import { formatMoney, plural } from '../lib/format';
+import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, type Role } from '../lib/permissions';
+import { dateLocale } from '../lib/i18n';
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function StaffPage() {
-  const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
+  const { user, can } = useAuth();
+  const canManage = can('staff:manage');
 
   const [tab, setTab] = useState<'team' | 'salary'>('team');
   const [items, setItems] = useState<StaffFull[] | null>(null);
@@ -33,19 +35,19 @@ export default function StaffPage() {
   }
   useEffect(() => {
     void load();
-    if (isOwner) {
+    if (canManage) {
       settingsApi.get().then((s) => setPayrollEnabled(s.payrollLoggingEnabled)).catch(() => undefined);
     }
-  }, [isOwner]);
+  }, [canManage]);
 
-  if (!isOwner) {
+  if (!canManage) {
     return (
       <div className="page">
         <EmptyState
           framed
           icon={<Lock size={22} />}
-          title="Owner access only"
-          body="Staff management and payroll are restricted to the clinic owner."
+          title="Administrator access only"
+          body="Staff management and payroll are restricted to clinic administrators."
         />
       </div>
     );
@@ -67,7 +69,7 @@ export default function StaffPage() {
     <div className="page">
       <PageHeader
         title="Staff"
-        meta={items ? `${plural(items.length, 'team member')} · ${items.filter((s) => s.status === 'active').length} active · access roles: Owner / Frontdesk` : '…'}
+        meta={items ? `${plural(items.length, 'team member')} · ${items.filter((s) => s.status === 'active').length} active · access roles: Doctor / Reception` : '…'}
         actions={
           <button className="btn btn--primary" onClick={() => setCreating(true)}>
             <Plus size={16} /> Add staff
@@ -123,8 +125,8 @@ export default function StaffPage() {
                       <td className="muted">{s.position ?? '—'}</td>
                       <td>
                         <StatusPill
-                          status={s.role === 'owner' ? 'info' : 'neutral'}
-                          label={s.role === 'owner' ? 'Owner' : 'Frontdesk'}
+                          status={s.role === 'admin' ? 'info' : 'neutral'}
+                          label={ROLE_LABELS[s.role]}
                         />
                       </td>
                       <td>
@@ -192,7 +194,7 @@ export default function StaffPage() {
   );
 }
 
-/* ── salary log (owner) ─────────────────────────────────── */
+/* ── salary log (requires payroll:read) ─────────────────── */
 function SalaryLog() {
   const [items, setItems] = useState<SalaryPayment[] | null>(null);
   useEffect(() => {
@@ -327,7 +329,7 @@ function StaffModal({
   const [fullName, setFullName] = useState(member?.fullName ?? '');
   const [email, setEmail] = useState(member?.email ?? '');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'owner' | 'frontdesk'>(member?.role ?? 'frontdesk');
+  const [role, setRole] = useState<Role>(member?.role ?? 'receptionist');
   const [position, setPosition] = useState(member?.position ?? '');
   const [salaryAmount, setSalaryAmount] = useState<string>(
     member?.salaryAmount ? String(member.salaryAmount) : '',
@@ -400,15 +402,16 @@ function StaffModal({
         )}
         <label className="field">
           <span>Access role</span>
-          <select value={role} onChange={(e) => setRole(e.target.value as 'owner' | 'frontdesk')}
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)}
             disabled={isSelf}>
-            <option value="frontdesk">Frontdesk</option>
-            <option value="owner">Owner</option>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+            ))}
           </select>
           <span className="muted" style={{ fontSize: 12 }}>
             {isSelf
               ? 'You cannot change your own access role.'
-              : 'Access is Owner or Frontdesk only — “position” above is descriptive and grants no permissions.'}
+              : ROLE_DESCRIPTIONS[role]}
           </span>
         </label>
         <div className="grid2">

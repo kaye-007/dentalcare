@@ -1,20 +1,24 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ChevronLeft, Wallet } from 'lucide-react';
+import { ChevronLeft, Wallet, Undo2 } from 'lucide-react';
 import {
   financeApi,
   ApiError,
   type InvoiceDetail,
+  type InvoicePayment,
   type PaymentMethod,
 } from '../lib/api';
 import { StatusPill, Modal, Avatar } from '../components/ui';
+import VoidModal, { VoidedNote } from '../components/VoidModal';
+import { useAuth } from '../lib/auth';
 import { formatMoney, plural } from '../lib/format';
+import { dateLocale } from '../lib/i18n';
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 function fmtDateTime(s: string) {
-  return new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return new Date(s).toLocaleString(dateLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 const METHOD_LABEL: Record<PaymentMethod, string> = { cash: 'Cash', card: 'Card', bank: 'Bank' };
@@ -24,7 +28,9 @@ export default function InvoiceDetailPage() {
   const [inv, setInv] = useState<InvoiceDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [voiding, setVoiding] = useState<InvoicePayment | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { can } = useAuth();
 
   async function load() {
     if (!id) return;
@@ -119,15 +125,24 @@ export default function InvoiceDetailPage() {
           ) : (
             <ul className="list">
               {inv.payments.map((p) => (
-                <li className="row" key={p.id}>
+                <li className={`row${p.voidedAt ? ' row--voided' : ''}`} key={p.id}>
                   <span className="row__main">
                     <span className="row__title">{formatMoney(p.amount)}</span>
                     <span className="row__sub">
                       {fmtDateTime(p.paidAt)}{p.recordedBy ? ` · ${p.recordedBy}` : ''}
                       {p.note ? ` · ${p.note}` : ''}
                     </span>
+                    {p.voidedAt && (
+                      <VoidedNote at={p.voidedAt} by={p.voidedByName} reason={p.voidReason} />
+                    )}
                   </span>
                   <StatusPill status="neutral" label={METHOD_LABEL[p.method]} />
+                  {!p.voidedAt && can('payments:void') && (
+                    <button className="iconbtn" title="Void this payment"
+                      onClick={() => setVoiding(p)}>
+                      <Undo2 size={14} />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -141,6 +156,20 @@ export default function InvoiceDetailPage() {
           onClose={() => setPaying(false)}
           onSaved={async () => { setPaying(false); await load(); }}
           invoiceId={inv.id}
+        />
+      )}
+
+      {voiding && (
+        <VoidModal
+          title="Void this payment"
+          subtitle={`${formatMoney(voiding.amount)} by ${METHOD_LABEL[voiding.method]} on ${fmtDateTime(voiding.paidAt)}`}
+          confirmLabel={`Void ${formatMoney(voiding.amount)}`}
+          onClose={() => setVoiding(null)}
+          onConfirm={async (reason) => {
+            await financeApi.voidPayment(voiding.id, reason);
+            setVoiding(null);
+            await load();
+          }}
         />
       )}
     </div>
@@ -217,16 +246,31 @@ function PaymentModal({
 /* ════════ Payments history page ════════ */
 export function PaymentsPage() {
   const [items, setItems] = useState<import('../lib/api').PaymentHistoryRow[] | null>(null);
-  useEffect(() => {
-    financeApi.listPayments().then(setItems);
-  }, []);
-  const total = (items ?? []).reduce((s, p) => s + p.amount, 0);
+  const [voiding, setVoiding] = useState<import('../lib/api').PaymentHistoryRow | null>(null);
+  const { can } = useAuth();
+
+  async function load() {
+    setItems(await financeApi.listPayments());
+  }
+  useEffect(() => { void load(); }, []);
+
+  // Voided payments stay in the list, struck through — but they are not money
+  // the clinic holds, so they must not be in the total.
+  const live = (items ?? []).filter((p) => !p.voidedAt);
+  const total = live.reduce((s, p) => s + p.amount, 0);
+  const voidedCount = (items ?? []).length - live.length;
   return (
     <div className="page">
       <div className="page__head">
         <div className="page__head-main">
           <h2 className="section-title">Payments</h2>
-          <p className="page__meta">{items ? `${plural(items.length, 'payment')} · ${formatMoney(total)} collected` : '…'}</p>
+          <p className="page__meta">
+            {items
+              ? `${plural(live.length, 'payment')} · ${formatMoney(total)} collected${
+                  voidedCount ? ` · ${voidedCount} voided` : ''
+                }`
+              : '…'}
+          </p>
         </div>
       </div>
       <div className="card">
@@ -237,24 +281,55 @@ export function PaymentsPage() {
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Date</th><th>Invoice</th><th>Patient</th><th>Method</th><th style={{ textAlign: 'right' }}>Amount</th></tr>
+              <tr>
+                <th>Date</th><th>Invoice</th><th>Patient</th><th>Method</th>
+                <th style={{ textAlign: 'right' }}>Amount</th>
+                {can('payments:void') && <th />}
+              </tr>
             </thead>
             <tbody>
               {items.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.id} className={p.voidedAt ? 'tr--voided' : undefined}>
                   <td className="muted">{fmtDateTime(p.paidAt)}</td>
                   <td><Link to={`/invoices/${p.invoiceId}`} className="link">{p.invoiceNumber}</Link></td>
                   <td>
                     <div className="namecell"><Avatar name={p.patientName} size={26} /><span>{p.patientName}</span></div>
+                    {p.voidedAt && (
+                      <VoidedNote at={p.voidedAt} by={p.voidedByName} reason={p.voidReason} />
+                    )}
                   </td>
                   <td><StatusPill status="neutral" label={METHOD_LABEL[p.method]} /></td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(p.amount)}</td>
+                  {can('payments:void') && (
+                    <td style={{ textAlign: 'right' }}>
+                      {!p.voidedAt && (
+                        <button className="iconbtn" title="Void this payment"
+                          onClick={() => setVoiding(p)}>
+                          <Undo2 size={14} />
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {voiding && (
+        <VoidModal
+          title="Void this payment"
+          subtitle={`${formatMoney(voiding.amount)} from ${voiding.patientName} on ${voiding.invoiceNumber}`}
+          confirmLabel={`Void ${formatMoney(voiding.amount)}`}
+          onClose={() => setVoiding(null)}
+          onConfirm={async (reason) => {
+            await financeApi.voidPayment(voiding.id, reason);
+            setVoiding(null);
+            await load();
+          }}
+        />
+      )}
     </div>
   );
 }

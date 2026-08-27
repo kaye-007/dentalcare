@@ -7,17 +7,20 @@ export interface AuthUserRow {
   email: string;
   password_hash: string;
   full_name: string;
-  role: 'owner' | 'frontdesk';
+  /** Raw DB value. Pass through normalizeRole() before trusting it. */
+  role: string;
   user_status: 'active' | 'disabled';
   /** Matches the tenants_status_check constraint set by migration 0004. */
   tenant_status: 'active' | 'suspended' | 'archived';
   clinic_name: string;
   subdomain: string;
+  /** Google's subject id, once this account has signed in with Google. */
+  google_sub: string | null;
 }
 
 const SELECT = `
   SELECT u.id, u.tenant_id, u.email, u.password_hash, u.full_name, u.role,
-         u.status AS user_status,
+         u.status AS user_status, u.google_sub,
          t.status AS tenant_status,
          t.name   AS clinic_name,
          t.subdomain AS subdomain

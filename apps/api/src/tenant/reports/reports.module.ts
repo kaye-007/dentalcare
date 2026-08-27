@@ -11,7 +11,8 @@ import { PoolClient } from 'pg';
 import { DatabaseService } from '../../core/database/database.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
 import { JwtAuthGuard } from '../auth/jwt.guard';
-import { OwnerGuard } from '../auth/owner.guard';
+import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { RequirePermissions } from '../../core/authz/permissions.decorator';
 import { AuthModule } from '../auth/auth.module';
 
 /**
@@ -65,19 +66,20 @@ export class ReportsService {
       );
       const collected = await client.query(
         `SELECT coalesce(sum(amount),0) AS s FROM payments
-          WHERE paid_at::date BETWEEN $1 AND $2`,
+          WHERE voided_at IS NULL AND paid_at::date BETWEEN $1 AND $2`,
         [from, to],
       );
       const expenses = await client.query(
         `SELECT coalesce(sum(amount),0) AS s FROM expenses
-          WHERE expense_date BETWEEN $1 AND $2`,
+          WHERE voided_at IS NULL AND expense_date BETWEEN $1 AND $2`,
         [from, to],
       );
       const outstanding = await client.query(
         `SELECT coalesce(sum(i.total - coalesce(p.paid,0)),0) AS s
            FROM invoices i
            LEFT JOIN LATERAL (
-             SELECT sum(amount) AS paid FROM payments WHERE invoice_id = i.id
+             SELECT sum(amount) AS paid FROM payments
+              WHERE invoice_id = i.id AND voided_at IS NULL
            ) p ON true
           WHERE i.status IN ('unpaid','partially_paid')`,
       );
@@ -103,10 +105,12 @@ export class ReportsService {
          )
          SELECT to_char(m, 'YYYY-MM') AS month,
                 coalesce((SELECT sum(amount) FROM payments
-                           WHERE date_trunc('month', paid_at) = m
+                           WHERE voided_at IS NULL
+                             AND date_trunc('month', paid_at) = m
                              AND paid_at::date BETWEEN $1 AND $2), 0)::int AS collected,
                 coalesce((SELECT sum(amount) FROM expenses
-                           WHERE date_trunc('month', expense_date) = m
+                           WHERE voided_at IS NULL
+                             AND date_trunc('month', expense_date) = m
                              AND expense_date BETWEEN $1 AND $2), 0)::int AS expenses
            FROM months ORDER BY m`,
         [from, to],
@@ -125,14 +129,16 @@ export class ReportsService {
 
       const byCategory = await client.query(
         `SELECT category AS label, sum(amount)::int AS value
-           FROM expenses WHERE expense_date BETWEEN $1 AND $2
+           FROM expenses
+          WHERE voided_at IS NULL AND expense_date BETWEEN $1 AND $2
           GROUP BY category ORDER BY value DESC`,
         [from, to],
       );
 
       const byMethod = await client.query(
         `SELECT method AS label, sum(amount)::int AS value
-           FROM payments WHERE paid_at::date BETWEEN $1 AND $2
+           FROM payments
+          WHERE voided_at IS NULL AND paid_at::date BETWEEN $1 AND $2
           GROUP BY method ORDER BY value DESC`,
         [from, to],
       );
@@ -184,7 +190,8 @@ export class ReportsService {
 }
 
 @Controller('reports')
-@UseGuards(JwtAuthGuard, OwnerGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('reports:read')
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 
@@ -197,6 +204,6 @@ export class ReportsController {
 @Module({
   imports: [AuthModule],
   controllers: [ReportsController],
-  providers: [ReportsService, OwnerGuard],
+  providers: [ReportsService],
 })
 export class ReportsModule {}

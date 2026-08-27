@@ -28,25 +28,35 @@ Migration `0003` reads `APP_DB_USER` / `APP_DB_PASSWORD` and creates a
 `NOSUPERUSER … NOBYPASSRLS` role. **Avoid single quotes in the password** —
 the migration interpolates it into `CREATE ROLE` SQL.
 
-Then create the first superadmin. **Do not run `npm run seed` against
-production** — it writes the demo credentials published in the README, and the
-guard refuses anyway. Use the bootstrap script, which is the one data script
-permitted to run in production:
+### First platform administrator
+
+Migrations create schema only — the database starts with no accounts. Create
+the first NODE X superadmin by hand; every clinic and clinic user is created
+from the platform console afterwards.
+
+Generate a bcrypt hash (work factor 10, matching
+`apps/api/src/core/security/bcrypt.ts`):
 
 ```bash
-PLATFORM_ADMIN_EMAIL=you@company.com \
-PLATFORM_ADMIN_NAME='Your Name' \
-PLATFORM_ADMIN_PASSWORD='a-long-random-passphrase' \
-npm run bootstrap-admin
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 10))" 'a-long-random-passphrase'
 ```
 
-It writes only that one account, requires at least 12 characters, rejects any
-credential published in this repository, and refuses to overwrite an existing
-administrator unless you pass `FORCE_RESET=yes` (which is also how you rotate
-a password later).
+Insert the account using the **privileged** connection — `platform_admins`
+carries no RLS and `app_user` is revoked from it:
 
-On Render or Railway, run it as a one-off job or a shell against the deployed
-service so it uses the same `DATABASE_URL`.
+```sql
+INSERT INTO platform_admins (email, password_hash, full_name, status)
+VALUES ('you@company.com', '<paste-the-hash>', 'Your Name', 'active');
+```
+
+Email uniqueness is enforced case-insensitively by
+`platform_admins_email_lower_unique`. To rotate the password later, `UPDATE`
+the `password_hash` column with a freshly generated hash.
+
+Use a passphrase of at least 12 characters from a password manager. On Render
+or Railway, run both steps from a shell against the deployed service so the
+`DATABASE_URL` matches.
+
 
 ## 2. API
 

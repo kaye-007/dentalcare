@@ -60,6 +60,59 @@ export class PlatformAuthService {
     };
   }
 
+  /** Look up a console administrator by email, for Google sign-in. */
+  async findForOAuth(email: string) {
+    const { rows } = await this.db.adminQuery<
+      AdminRow & { google_sub: string | null }
+    >(
+      `SELECT id, email, password_hash, full_name, status, google_sub
+         FROM platform_admins
+        WHERE lower(email) = lower($1)
+        LIMIT 1`,
+      [email],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Record the Google subject on first sign-in. */
+  async linkGoogle(id: string, googleSub: string): Promise<void> {
+    await this.db.adminQuery(
+      `UPDATE platform_admins
+          SET google_sub = $2, google_linked_at = now(), updated_at = now()
+        WHERE id = $1 AND google_sub IS NULL`,
+      [id, googleSub],
+    );
+  }
+
+  /**
+   * Mint a console token for an identity already proven by Google. Re-reads
+   * the row so status is checked at the moment of issue, exactly as password
+   * login does.
+   */
+  async issueForAdmin(id: string) {
+    const { rows } = await this.db.adminQuery<AdminRow>(
+      `SELECT id, email, password_hash, full_name, status
+         FROM platform_admins WHERE id = $1`,
+      [id],
+    );
+    const admin = rows[0];
+    if (!admin || admin.status !== 'active') throw new UnauthorizedException();
+
+    const payload: PlatformTokenPayload = {
+      sub: admin.id,
+      scope: 'platform',
+      email: admin.email,
+    };
+    const accessToken = await this.jwt.signAsync(payload, {
+      secret: this.config.get<string>('JWT_SECRET'),
+      expiresIn: this.config.get<string>('JWT_ACCESS_TTL'),
+    });
+    return {
+      accessToken,
+      admin: { id: admin.id, email: admin.email, fullName: admin.full_name },
+    };
+  }
+
   async me(id: string) {
     const { rows } = await this.db.adminQuery<AdminRow>(
       `SELECT id, email, full_name, status FROM platform_admins WHERE id = $1`,

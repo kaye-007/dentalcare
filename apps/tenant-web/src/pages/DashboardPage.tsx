@@ -6,13 +6,16 @@ import {
 import { useAuth } from '../lib/auth';
 import { api, appointmentsApi, financeApi, type Appointment, type PatientListItem, type InvoiceSummaryRow, type FinanceSummary } from '../lib/api';
 import { Avatar, StatusPill, EmptyState } from '../components/ui';
+import GettingStarted, { type Progress } from '../components/GettingStarted';
+import { useT } from '../lib/i18n';
 import { formatMoney, plural } from '../lib/format';
+import { dateLocale } from '../lib/i18n';
 
 function todayLabel() {
-  return new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  return new Date().toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' });
 }
 function fmtTime(s: string) {
-  return new Date(s).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return new Date(s).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 function relDate(s: string) {
   const d = new Date(s);
@@ -20,17 +23,22 @@ function relDate(s: string) {
   if (days <= 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 7) return `${days} days ago`;
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return d.toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short' });
 }
 
+/** Above this many patients, a clinic is past setup and the checklist goes. */
+const SETUP_PATIENT_CEILING = 5;
+
 export default function DashboardPage() {
-  const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
+  const { user, can, readOnly } = useAuth();
+  const t = useT();
+  const canAccess = can('reports:read');
 
   const [todayAppts, setTodayAppts] = useState<Appointment[] | null>(null);
   const [patients, setPatients] = useState<{ total: number; recent: PatientListItem[] } | null>(null);
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [openInvoices, setOpenInvoices] = useState<InvoiceSummaryRow[] | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
 
   useEffect(() => {
     const from = new Date(); from.setHours(0, 0, 0, 0);
@@ -40,7 +48,31 @@ export default function DashboardPage() {
       .then(setTodayAppts)
       .catch(() => setTodayAppts([]));
     api.listPatients({ status: 'active' })
-      .then((d) => setPatients({ total: d.total, recent: d.items.slice(0, 6) }))
+      .then(async (d) => {
+        setPatients({ total: d.total, recent: d.items.slice(0, 6) });
+
+        // The checklist is only for a clinic still setting up, and only then
+        // is the appointment count worth a request. A clinic past five
+        // patients is plainly using the thing; probing its whole calendar to
+        // decide whether to show a card it will never see is pure cost.
+        if (d.total > SETUP_PATIENT_CEILING) return;
+
+        const year = 365 * 86_400_000;
+        const [appts, invoices] = await Promise.all([
+          appointmentsApi
+            .list({
+              from: new Date(Date.now() - year).toISOString(),
+              to: new Date(Date.now() + year).toISOString(),
+            })
+            .catch(() => []),
+          financeApi.listInvoices({}).catch(() => []),
+        ]);
+        setProgress({
+          patients: d.total,
+          appointments: appts.length,
+          invoices: invoices.length,
+        });
+      })
       .catch(() => setPatients({ total: 0, recent: [] }));
     financeApi.summary('month').then(setSummary).catch(() => setSummary(null));
     financeApi.listInvoices({})
@@ -54,10 +86,10 @@ export default function DashboardPage() {
   const completedToday = todayAppts?.filter((a) => a.status === 'completed').length ?? null;
 
   const quickActions = [
-    { to: '/reservations', label: 'New appointment', icon: CalendarPlus, primary: true },
-    { to: '/patients/new', label: 'Add patient', icon: UserPlus },
-    { to: '/invoices', label: 'New invoice', icon: ReceiptText },
-    { to: '/expenses', label: 'Add expense', icon: TrendingDown },
+    { to: '/reservations', label: t('quick.newAppointment'), icon: CalendarPlus, primary: true },
+    { to: '/patients/new', label: t('quick.addPatient'), icon: UserPlus },
+    { to: '/invoices', label: t('quick.newInvoice'), icon: ReceiptText },
+    { to: '/expenses', label: t('quick.addExpense'), icon: TrendingDown },
   ];
 
   return (
@@ -66,9 +98,14 @@ export default function DashboardPage() {
         <p className="greeting">Good day, <strong>{user?.fullName}</strong> · {todayLabel()}</p>
       </div>
 
+      {/* Hidden once the trial expires: every button on it would 402, and
+          offering someone a control that cannot work is worse than offering
+          none. The banner above already explains why. */}
+      {progress && !readOnly && <GettingStarted progress={progress} />}
+
       {/* KPI row — live where modules exist, sample-tagged where not */}
       <section className="kpis">
-        <article className="kpi">
+        <article className="kpi kpi--lead">
           <div className="kpi__top"><span className="kpi__label">Today's appointments</span></div>
           <p className="kpi__value">{todayAppts === null ? '…' : todayAppts.length}</p>
           <div className="kpi__foot">
@@ -82,25 +119,25 @@ export default function DashboardPage() {
           <p className="kpi__value">{patients === null ? '…' : patients.total}</p>
           <div className="kpi__foot"><span className="kpi__caption">across this clinic</span></div>
         </article>
-        {isOwner ? (
+        {canAccess ? (
           <>
             <article className="kpi">
               <div className="kpi__top"><span className="kpi__label">Collected this month</span></div>
-              <p className="kpi__value">{summary === null ? '…' : formatMoney(summary.totalCollected)}</p>
+              <p className="kpi__value">{summary === null ? '…' : formatMoney(summary.totalCollected ?? 0)}</p>
               <div className="kpi__foot">
                 <span className="kpi__caption">
-                  {summary === null ? '' : `${formatMoney(summary.totalInvoiced)} invoiced`}
+                  {summary === null ? '' : `${formatMoney(summary.totalInvoiced ?? 0)} invoiced`}
                 </span>
               </div>
             </article>
             <article className="kpi">
               <div className="kpi__top"><span className="kpi__label">Profit this month</span></div>
               <p className="kpi__value">
-                {summary === null ? '…' : formatMoney(summary.totalCollected - summary.totalExpenses)}
+                {summary === null ? '…' : formatMoney((summary.totalCollected ?? 0) - (summary.totalExpenses ?? 0))}
               </p>
               <div className="kpi__foot">
                 <span className="kpi__caption">
-                  {summary === null ? 'collected − expenses' : `${formatMoney(summary.totalExpenses)} expenses`}
+                  {summary === null ? 'collected − expenses' : `${formatMoney(summary.totalExpenses ?? 0)} expenses`}
                 </span>
               </div>
             </article>
@@ -154,7 +191,13 @@ export default function DashboardPage() {
         {/* Right rail */}
         <div className="rail span-4">
           <div className="card">
-            <div className="card__head"><h2>Quick actions</h2></div>
+            <div className="card__head"><h2>{t('quick.title')}</h2></div>
+            {readOnly ? (
+              // Every one of these leads to a form that would 402 on save.
+              // Walking someone through filling it in first is a worse
+              // experience than telling them plainly up front.
+              <p className="quick__paused">{t('quick.paused')}</p>
+            ) : (
             <div className="quick">
               {quickActions.map((q) => {
                 const Icon = q.icon;
@@ -165,6 +208,7 @@ export default function DashboardPage() {
                 );
               })}
             </div>
+            )}
           </div>
 
           <div className="card">

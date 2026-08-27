@@ -9,6 +9,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateTenantDto {
@@ -46,4 +47,24 @@ export class CreateTenantDto {
 export class UpdateTenantStatusDto {
   @IsIn(['active', 'suspended', 'archived'])
   status!: 'active' | 'suspended' | 'archived';
+}
+
+export class SetTrialDto {
+  /**
+   * Days from now. `null` converts the clinic to paid and lifts the read-only
+   * lock — the difference between "give them another week" and "they bought
+   * it" is this one field, so it is explicitly nullable rather than optional:
+   * a missing field would be indistinguishable from a deliberate conversion.
+   */
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  days!: number | null;
+}
+
+export class ResetUserPasswordDto {
+  @IsString()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  password!: string;
 }

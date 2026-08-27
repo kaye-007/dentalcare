@@ -39,24 +39,30 @@ const PLATFORM_ADMIN = {
 };
 
 /**
- * The clinic team. Access roles are exactly 'owner' and 'frontdesk' —
- * `position` is a descriptive job title that grants no permissions, so a
- * dentist can hold either access level. Salaries are monthly, in euros.
+ * The clinic team. Access roles are 'admin' and 'receptionist' — migration
+ * 0017 collapsed the model to two, the doctor (who is also the administrator)
+ * and the front desk; the check constraint rejects every older word outright.
+ *
+ * `position` is a descriptive job title that grants no permissions, which is
+ * why the clinicians below are seeded as `admin` while still reading as
+ * dentists everywhere it matters clinically — and why `dentistIds` filters on
+ * position rather than role. Both roles are seeded so permission-gated UI has
+ * something to be tested against. Salaries are monthly, in euros.
  */
 const STAFF = [
   {
     email: 'demo@dentx.app',
     fullName: 'Demo Administrator',
-    role: 'owner',
+    role: 'admin',
     position: 'Clinic Director',
     salary: 6200,
     isPrimaryOwner: true,
   },
-  { email: 'l.brandt@dentx.app', fullName: 'Dr. Lukas Brandt', role: 'owner', position: 'Dentist', salary: 5400 },
-  { email: 's.ricci@dentx.app', fullName: 'Dr. Sofia Ricci', role: 'frontdesk', position: 'Dentist', salary: 4800 },
-  { email: 'j.moreau@dentx.app', fullName: 'Dr. Julien Moreau', role: 'frontdesk', position: 'Orthodontist', salary: 5100 },
-  { email: 'm.novak@dentx.app', fullName: 'Marta Novák', role: 'frontdesk', position: 'Receptionist', salary: 2600 },
-  { email: 'a.silva@dentx.app', fullName: 'Ana Silva', role: 'frontdesk', position: 'Dental Assistant', salary: 2400 },
+  { email: 'l.brandt@dentx.app', fullName: 'Dr. Lukas Brandt', role: 'admin', position: 'Dentist', salary: 5400 },
+  { email: 's.ricci@dentx.app', fullName: 'Dr. Sofia Ricci', role: 'admin', position: 'Dentist', salary: 4800 },
+  { email: 'j.moreau@dentx.app', fullName: 'Dr. Julien Moreau', role: 'admin', position: 'Orthodontist', salary: 5100 },
+  { email: 'm.novak@dentx.app', fullName: 'Marta Novák', role: 'receptionist', position: 'Receptionist', salary: 2600 },
+  { email: 'a.silva@dentx.app', fullName: 'Ana Silva', role: 'receptionist', position: 'Dental Assistant', salary: 2400 },
 ];
 
 /** name, price (EUR), duration (min), visit type */
@@ -326,37 +332,123 @@ async function main() {
           }
           seenToday.add(patientId);
 
+          // Migration 0014 makes a 'completed' appointment with no
+          // completed_at unrepresentable, so the terminal timestamp is written
+          // with the row rather than patched in afterwards. A cancellation is
+          // dated a day and a half out, which is when patients actually ring.
+          const completedAt = status === 'completed' ? end : null;
+          const cancelledAt = status === 'cancelled'
+            ? new Date(start.getTime() - 36 * 3600 * 1000)
+            : null;
           const r = await client.query(
             `INSERT INTO appointments
-               (tenant_id, patient_id, staff_id, reason, status, starts_at, ends_at, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-            [tenantId, patientId, pick(dentistIds), pick(REASONS), status, start, end, ownerId],
+               (tenant_id, patient_id, staff_id, reason, status, starts_at, ends_at,
+                completed_at, cancelled_at, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+            [tenantId, patientId, pick(dentistIds), pick(REASONS), status, start, end,
+             completedAt, cancelledAt, ownerId],
           );
           createdAppointments.push({ id: r.rows[0].id, status, offset });
         }
       }
     }
 
-    /* ── medical records (odontogram) for the first eight patients ── */
+    /* ── odontogram findings ────────────────────────────────────────────
+       Writes tooth_conditions, which is what the chart endpoint reads.
+       (The previous version of this block wrote tooth_records — a table
+       migration 0015 drops. The seed did not fail gracefully there; it threw
+       on the first SELECT and no demo data was created at all.)
+
+       Patient one gets a deliberately complete chart: every one of the
+       thirteen conditions, both O/I surface rules, a tooth that is crowned
+       AND root-treated, and a three-unit bridge charted the way a dentist
+       charts one — abutment, pontic, abutment. It is the fixture the chart
+       UI is demonstrated and tested against. */
     const recCount = await client.query(
-      'SELECT count(*)::int AS c FROM tooth_records WHERE tenant_id=$1',
+      'SELECT count(*)::int AS c FROM tooth_conditions WHERE tenant_id=$1',
       [tenantId],
     );
     if (recCount.rows[0].c === 0) {
-      const FDI = [11, 12, 13, 14, 16, 21, 23, 24, 26, 31, 33, 36, 37, 41, 44, 46];
-      for (const pid of patientIds.slice(0, 8)) {
-        for (let n = 0; n < int(2, 5); n++) {
-          const tName = pick(['Composite Filling', 'Root Canal Treatment', 'Porcelain Crown', 'Periodontal Treatment']);
-          await client.query(
-            `INSERT INTO tooth_records
-               (tenant_id, patient_id, tooth, condition, treatment_id, dentist_id, status, note, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-            [
-              tenantId, pid, pick(FDI), pick(CONDITIONS), treatmentIds[tName],
-              pick(dentistIds), rnd() < 0.65 ? 'done' : 'pending',
-              pick(['Reviewed at last visit.', 'Patient reports mild sensitivity.', 'Scheduled for follow-up.', 'Healing well.']),
-              ownerId,
-            ],
+      const WHOLE_TOOTH = [
+        'extracted', 'missing', 'implant', 'impacted', 'crown', 'bridge', 'root_canal',
+      ];
+      // Occlusal exists only on posteriors, incisal only on anteriors; the
+      // schema enforces it, so ask for the right one rather than be rejected.
+      const chewing = (tooth) => (tooth % 10 >= 4 ? 'O' : 'I');
+
+      const addFinding = async (patientId, tooth, condition, surface, note, status) => {
+        const whole = WHOLE_TOOTH.includes(condition);
+        await client.query(
+          `INSERT INTO tooth_conditions
+             (tenant_id, patient_id, tooth, surface, condition, status, note,
+              dentist_id, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           ON CONFLICT DO NOTHING`,
+          [
+            tenantId, patientId, tooth, whole ? null : surface, condition,
+            status || 'active', note || null, pick(dentistIds), ownerId,
+          ],
+        );
+      };
+
+      const SHOWCASE = [
+        [18, 'missing',    null,         'Never erupted.'],
+        [17, 'restored',   chewing(17),  'Composite, placed 2024.'],
+        [16, 'root_canal', null,         'Three canals, obturated.'],
+        [16, 'crown',      null,         'Zirconia over the root-treated tooth.'],
+        [15, 'sealant',    chewing(15),  'Preventive.'],
+        [14, 'caries',     chewing(14),  'Cavitated, needs restoring.'],
+        [14, 'caries',     'M',          'Extends mesially.'],
+        [13, 'veneer',     'F',          'Aesthetic facing.'],
+        [12, 'watch',      'M',          'Early demineralisation — review in 6 months.'],
+        [11, 'fractured',  chewing(11),  'Incisal chip after trauma.'],
+        [21, 'implant',    null,         'Titanium fixture, restored.'],
+        // Three-unit bridge: 22 and 24 are the abutments, 23 is the pontic.
+        [22, 'bridge',     null,         'Distal abutment, 22–24 bridge.'],
+        [23, 'missing',    null,         'Pontic of the 22–24 bridge.'],
+        [24, 'bridge',     null,         'Mesial abutment, 22–24 bridge.'],
+        [25, 'extracted',  null,         'Removed 2023, not replaced.'],
+        [26, 'impacted',   null,         'Mesioangular, under review.'],
+        [27, 'restored',   chewing(27),  'Amalgam, long-standing.'],
+        [27, 'caries',     'D',          'Recurrent at the distal margin.'],
+        [28, 'missing',    null,         'Agenesis.'],
+        [36, 'crown',      null,         'Full-coverage crown.'],
+        [37, 'restored',   chewing(37),  'Composite.'],
+        [46, 'restored',   chewing(46),  'Composite.'],
+        [47, 'caries',     chewing(47),  'Occlusal lesion.'],
+      ];
+      for (const [tooth, condition, surface, note] of SHOWCASE) {
+        await addFinding(patientIds[0], tooth, condition, surface, note);
+      }
+
+      /* Everyone else gets a plausible scatter, so the patient list does not
+         look like twelve copies of the same mouth. */
+      const POSTERIORS = [16, 17, 26, 27, 36, 37, 46, 47, 14, 15, 24, 25, 34, 35, 44, 45];
+      const ANTERIORS = [11, 12, 13, 21, 22, 23, 31, 32, 33, 41, 42, 43];
+      const SURFACE_CONDITIONS = ['caries', 'restored', 'restored', 'sealant', 'watch', 'fractured'];
+      const WHOLE_CONDITIONS = ['crown', 'root_canal', 'missing', 'extracted', 'veneer'];
+
+      for (const pid of patientIds.slice(1, 12)) {
+        const seen = new Set();
+        for (let n = 0; n < int(3, 7); n++) {
+          const posterior = rnd() < 0.7;
+          const tooth = pick(posterior ? POSTERIORS : ANTERIORS);
+          const whole = rnd() < 0.25;
+          const condition = whole ? pick(WHOLE_CONDITIONS) : pick(SURFACE_CONDITIONS);
+          const surface = WHOLE_TOOTH.includes(condition)
+            ? null
+            : pick([chewing(tooth), 'M', 'D', 'F', 'L']);
+          // The schema holds one active row per (tooth, surface, condition);
+          // skipping here keeps the seed silent rather than relying on the
+          // conflict clause to swallow a collision we could have avoided.
+          const key = `${tooth}|${surface ?? '*'}|${condition}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          await addFinding(
+            pid, tooth, condition, surface,
+            pick(['Reviewed at last visit.', 'Patient reports mild sensitivity.',
+                  'Scheduled for follow-up.', 'Healing well.']),
+            rnd() < 0.75 ? 'active' : 'treated',
           );
         }
       }

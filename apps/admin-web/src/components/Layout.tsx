@@ -5,11 +5,11 @@ import { useAuth } from '../lib/auth';
 function Logo() {
   return (
     <svg viewBox="0 0 28 28" width="26" height="26" aria-hidden>
-      <circle cx="9" cy="9" r="4" fill="var(--teal)" />
-      <circle cx="19" cy="9" r="3" fill="var(--teal-300)" />
-      <circle cx="14" cy="19" r="3.4" fill="var(--ink)" />
-      <line x1="9" y1="9" x2="14" y2="19" stroke="var(--teal)" strokeWidth="1.6" />
-      <line x1="19" y1="9" x2="14" y2="19" stroke="var(--teal-300)" strokeWidth="1.6" />
+      <circle cx="9" cy="9" r="4" fill="var(--logo-1)" />
+      <circle cx="19" cy="9" r="3" fill="var(--logo-2)" />
+      <circle cx="14" cy="19" r="3.4" fill="var(--logo-3)" />
+      <line x1="9" y1="9" x2="14" y2="19" stroke="var(--logo-1)" strokeWidth="1.6" />
+      <line x1="19" y1="9" x2="14" y2="19" stroke="var(--logo-2)" strokeWidth="1.6" />
     </svg>
   );
 }

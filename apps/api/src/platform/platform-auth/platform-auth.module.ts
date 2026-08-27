@@ -46,6 +46,6 @@ export class PlatformAuthController {
   ],
   controllers: [PlatformAuthController],
   providers: [PlatformAuthService, PlatformJwtGuard],
-  exports: [PlatformJwtGuard, JwtModule],
+  exports: [PlatformAuthService, PlatformJwtGuard, JwtModule],
 })
 export class PlatformAuthModule {}

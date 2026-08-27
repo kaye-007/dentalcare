@@ -5,6 +5,37 @@ All notable changes to this project. Format follows
 
 ## [Unreleased] — production-hardening branch
 
+### Cleanup pass
+
+Repository hygiene and removal of all demo/fixture tooling. **No feature was
+added or removed; no business logic or database schema changed.** Full test
+suite and all three builds verified green afterwards.
+
+- **Removed `apps/api/scripts/` entirely** — `seed-demo.js`, `reset-demo.js`,
+  `bootstrap-admin.js`, `lib/guard.js` and their specs. The repository now
+  ships no fixture data and no credentials. The first platform administrator
+  is created by hand; see DEPLOYMENT.md.
+- Dropped the `seed`, `reset-demo` and `bootstrap-admin` npm scripts from
+  both the root and API manifests.
+- **Removed the hardcoded demo-credential hints** from both login pages and
+  the dead `.auth__hint` CSS that styled them. Neutralised the platform
+  console's `admin@dentx.app` email placeholder.
+- **Fixed the root cause of stray `vite.config.js` / `vite.config.d.ts` /
+  `*.tsbuildinfo` emits**: `tsconfig.node.json` now writes to
+  `node_modules/.tmp/` instead of the app root. Previously these were
+  produced on every `tsc -b` and merely gitignored.
+- Purged build artefacts and tool caches (17.6 MB): three `dist/` trees, two
+  Vite dependency caches, four `.tsbuildinfo` files, and Cursor's semantic
+  index (`.git/cursor/crepe/**/index.bin`, `postings.bin`).
+- Removed two empty directories: `src/tenant/medical-record/dto`,
+  `src/tenant/treatments/dto`.
+- Scoped `jest.config.js` to `roots: ['<rootDir>/src']`. Suite is 36 tests
+  across 3 files (was 47 across 5; the 11 removed covered the deleted
+  scripts).
+- Rewrote `.gitignore` and `.dockerignore`; deleted five completed process
+  documents; marked `RELEASE_CHECKLIST.md` as a historical record.
+
+
 Security remediation, test coverage, and deployment preparation. **No feature
 was added or removed; no business logic changed.**
 

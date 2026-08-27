@@ -1,22 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Search, Users } from 'lucide-react';
+import { Plus, Search, Users, UserPlus } from 'lucide-react';
 import { api, type PatientListItem } from '../lib/api';
 import { Avatar, PageHeader, StatusPill, EmptyState } from '../components/ui';
+import { useAuth } from '../lib/auth';
+import { dateLocale } from '../lib/i18n';
 
+/**
+ * 'all' means all *live* records — the API excludes archived patients unless
+ * they are asked for explicitly, so reaching them needs its own tab.
+ */
 const TABS = [
   { key: 'active', label: 'Active' },
   { key: 'inactive', label: 'Inactive' },
   { key: 'all', label: 'All' },
+  { key: 'archived', label: 'Archived' },
 ] as const;
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function PatientsListPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('active');
+  const { readOnly } = useAuth();
+  const [status, setStatus] = useState<'active' | 'inactive' | 'archived' | 'all'>('active');
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [page, setPage] = useState(1);
@@ -87,8 +95,21 @@ export default function PatientsListPage() {
         ) : !data || data.items.length === 0 ? (
           <EmptyState
             icon={<Users size={22} />}
-            title="No patients found"
-            body={debouncedQ ? 'Try a different search.' : 'Add your first patient to get started.'}
+            title={debouncedQ ? 'No patients found' : 'No patients yet'}
+            body={
+              debouncedQ
+                ? 'Try a different search.'
+                : 'Start with a name and a phone number — everything else can be filled in later.'
+            }
+            action={
+              // Not while searching: the answer to an empty search is a
+              // different search, not a new patient record.
+              !debouncedQ && !readOnly ? (
+                <Link to="/patients/new" className="btn btn--primary">
+                  <UserPlus size={16} /> Add your first patient
+                </Link>
+              ) : undefined
+            }
           />
         ) : (
           <table className="table">

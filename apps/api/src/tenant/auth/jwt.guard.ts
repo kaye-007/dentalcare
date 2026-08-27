@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { AccessTokenPayload } from './auth.service';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
+import { normalizeRole } from '../../core/authz/permissions';
 
 export interface RequestWithUser extends Request {
   user?: AccessTokenPayload;
@@ -44,7 +45,15 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('Token does not match this clinic');
       }
 
-      req.user = payload;
+      // A session opened before migration 0012 still presents 'owner' or
+      // 'frontdesk'. Map it to the successor role of identical authority so
+      // the session keeps working; the next refresh mints the new value.
+      const role = normalizeRole(payload.role);
+      if (!role) {
+        throw new UnauthorizedException('Your account has no valid access role');
+      }
+
+      req.user = { ...payload, role };
       return true;
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;

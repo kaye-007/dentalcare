@@ -4,6 +4,12 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigModule } from './core/config/config.module';
+import { AuthzModule } from './core/authz/authz.module';
+import { ClinicAuditModule } from './core/audit/clinic-audit.module';
+import { ReadOnlyGuard } from './core/tenancy/read-only.guard';
+import { OAuthModule } from './core/oauth/oauth.module';
+import { OAuthRoutesModule } from './core/oauth/oauth.controller';
+import { StorageModule } from './core/storage/storage.module';
 import { DatabaseModule } from './core/database/database.module';
 import { HealthModule } from './core/health/health.module';
 import { TenancyModule } from './core/tenancy/tenancy.module';
@@ -11,10 +17,45 @@ import { TenantMiddleware } from './core/tenancy/tenant.middleware';
 import { AuthModule } from './tenant/auth/auth.module';
 import { AuthController } from './tenant/auth/auth.controller';
 import { PatientsModule, PatientsController } from './tenant/patients/patients.module';
+import {
+  PatientHistoryModule,
+  PatientHistoryController,
+  AllergiesController,
+  ConditionsController,
+  MedicationsController,
+} from './tenant/patient-history/patient-history.module';
+import {
+  DocumentsModule,
+  PatientDocumentsController,
+  DocumentsController,
+} from './tenant/documents/documents.module';
 import { AppointmentsModule, AppointmentsController } from './tenant/appointments/appointments.module';
+import {
+  SchedulingModule,
+  OperatoriesController,
+  AvailabilityController,
+} from './tenant/scheduling/scheduling.module';
 import { StaffModule, StaffController } from './tenant/staff/staff.module';
 import { TreatmentsModule, TreatmentsController } from './tenant/treatments/treatments.module';
-import { MedicalRecordModule, MedicalRecordController } from './tenant/medical-record/medical-record.module';
+import {
+  ChartingModule,
+  ChartController,
+  ToothConditionsController,
+  ProcedureCodesController,
+  PatientProceduresController,
+  ProceduresController,
+} from './tenant/charting/charting.module';
+import {
+  PerioModule,
+  PatientPerioController,
+  PerioExamsController,
+} from './tenant/perio/perio.module';
+import {
+  TreatmentPlansModule,
+  PatientPlansController,
+  TreatmentPlansController,
+  PlanItemsController,
+} from './tenant/treatment-plans/treatment-plans.module';
 import { SettingsModule, SettingsController } from './tenant/settings/settings.module';
 import {
   FinanceModule,
@@ -24,7 +65,18 @@ import {
   FinanceSummaryController,
 } from './tenant/finance/finance.module';
 import { ReportsModule, ReportsController } from './tenant/reports/reports.module';
+import {
+  BillingModule,
+  PlanInvoiceController,
+  PatientLedgerController,
+  BillingController,
+} from './tenant/billing/billing.module';
+import {
+  AnalyticsModule,
+  AnalyticsController,
+} from './tenant/analytics/analytics.module';
 import { RemindersModule, RemindersController } from './tenant/reminders/reminders.module';
+import { AuditController, AuditModule } from './tenant/audit/audit.module';
 import { PlatformAuthModule } from './platform/platform-auth/platform-auth.module';
 import { TenantsModule } from './platform/tenants/tenants.module';
 import { PlansModule } from './platform/plans/plans.module';
@@ -53,23 +105,41 @@ import { PlansModule } from './platform/plans/plans.module';
     // their own @Throttle — see AuthController / PlatformAuthController.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     DatabaseModule,
+    AuthzModule,
+    ClinicAuditModule,
+    OAuthModule,
+    OAuthRoutesModule,
+    StorageModule,
     TenancyModule,
     HealthModule,
     AuthModule,
     PatientsModule,
+    PatientHistoryModule,
+    DocumentsModule,
     AppointmentsModule,
+    SchedulingModule,
     StaffModule,
     TreatmentsModule,
-    MedicalRecordModule,
+    ChartingModule,
+    PerioModule,
+    TreatmentPlansModule,
     SettingsModule,
     FinanceModule,
     ReportsModule,
+    BillingModule,
+    AnalyticsModule,
     RemindersModule,
+    AuditModule,
     PlatformAuthModule,
     TenantsModule,
     PlansModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Global, so a controller written next month is covered without anyone
+    // remembering to opt in. Outside the clinic plane it is a no-op.
+    { provide: APP_GUARD, useClass: ReadOnlyGuard },
+  ],
 })
 export class AppModule implements NestModule {
   // Tenant resolution applies to clinic (tenant-plane) routes. Health stays
@@ -80,17 +150,39 @@ export class AppModule implements NestModule {
       .forRoutes(
         AuthController,
         PatientsController,
+        PatientHistoryController,
+        AllergiesController,
+        ConditionsController,
+        MedicationsController,
+        PatientDocumentsController,
+        DocumentsController,
         AppointmentsController,
+        OperatoriesController,
+        AvailabilityController,
         StaffController,
         TreatmentsController,
-        MedicalRecordController,
+        ChartController,
+        ToothConditionsController,
+        ProcedureCodesController,
+        PatientProceduresController,
+        ProceduresController,
+        PatientPerioController,
+        PerioExamsController,
+        PatientPlansController,
+        TreatmentPlansController,
+        PlanItemsController,
         SettingsController,
         InvoicesController,
         PaymentsController,
         ExpensesController,
         FinanceSummaryController,
         ReportsController,
+        PlanInvoiceController,
+        PatientLedgerController,
+        BillingController,
+        AnalyticsController,
         RemindersController,
+        AuditController,
       );
   }
 }

@@ -41,10 +41,17 @@ against production it would overwrite the live superadmin password with a
 public default — granting cross-tenant access to anyone who has read the
 repo — and report "Seed complete."
 
-**Fix.** Refuses to run when `NODE_ENV=production`, when the host or database
-name contains `prod`, or against any non-local host without
-`ALLOW_REMOTE_SEED=yes`. The upsert itself is unchanged: it is what makes
-re-seeding restore the local demo dataset, and the guard is the control.
+**Fix.** Originally mitigated by a production guard: refused to run when
+`NODE_ENV=production`, when the host or database name contains `prod`, or
+against any non-local host without `ALLOW_REMOTE_SEED=yes`.
+
+**Now eliminated at the root.** The cleanup pass deleted `apps/api/scripts/`
+entirely — `seed-demo.js`, `reset-demo.js`, `bootstrap-admin.js` and the
+shared guard. No script in this repository writes credentials, and no
+credential appears anywhere in the tree. The first platform administrator is
+created by hand; see
+[DEPLOYMENT.md § First platform administrator](DEPLOYMENT.md#first-platform-administrator).
+This finding is closed by removal rather than by control.
 
 **Verified.** 9 tests in `seed.spec.ts` covering every refusal path and the
 override; manually exercised all four cases against the CLI.

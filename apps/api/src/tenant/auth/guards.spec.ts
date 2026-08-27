@@ -4,7 +4,9 @@ import { JwtService } from '@nestjs/jwt';
 import { TenantContextService } from '../../core/tenancy/tenant-context';
 import { PlatformJwtGuard } from '../../platform/platform-auth/platform-jwt.guard';
 import { JwtAuthGuard } from './jwt.guard';
-import { OwnerGuard } from './owner.guard';
+import { Reflector } from '@nestjs/core';
+import { PermissionsGuard } from '../../core/authz/permissions.guard';
+import { PERMISSIONS_METADATA_KEY } from '../../core/authz/permissions.decorator';
 
 const SECRET = 'test-secret-at-least-32-characters-long';
 const config = { get: () => SECRET } as unknown as ConfigService;
@@ -14,6 +16,9 @@ function ctxWith(headers: Record<string, string>, store: Record<string, unknown>
   const req = { headers, ...store };
   return {
     switchToHttp: () => ({ getRequest: () => req }),
+    // Reflector-based guards read metadata off the handler and class.
+    getHandler: () => function handler() { /* route stand-in */ },
+    getClass: () => class Controller {},
   } as unknown as ExecutionContext;
 }
 
@@ -91,20 +96,90 @@ describe('PlatformJwtGuard', () => {
   });
 });
 
-describe('OwnerGuard', () => {
-  const guard = new OwnerGuard();
+describe('PermissionsGuard', () => {
+  /** Builds a guard whose reflector reports `required` for any handler. */
+  function guardRequiring(required?: string[]) {
+    const reflector = {
+      getAllAndOverride: (key: string) =>
+        key === PERMISSIONS_METADATA_KEY ? required : undefined,
+    } as unknown as Reflector;
+    return new PermissionsGuard(reflector);
+  }
 
-  it('allows an owner', () => {
-    expect(guard.canActivate(ctxWith({}, { user: { role: 'owner' } }))).toBe(true);
+  it('allows a route that declares no permissions', () => {
+    expect(guardRequiring(undefined).canActivate(ctxWith({}, { user: { role: 'receptionist' } }))).toBe(true);
+    expect(guardRequiring([]).canActivate(ctxWith({}, { user: { role: 'receptionist' } }))).toBe(true);
   });
 
-  it('denies frontdesk', () => {
+  it('allows admin through every gate', () => {
+    for (const perm of ['staff:manage', 'payroll:manage', 'reports:read', 'invoices:delete', 'settings:manage']) {
+      expect(
+        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'admin' } })),
+      ).toBe(true);
+    }
+  });
+
+  it('lets reception read AND write the clinical chart', () => {
+    for (const perm of ['clinical:read', 'clinical:write']) {
+      expect(
+        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'receptionist' } })),
+      ).toBe(true);
+    }
+  });
+
+  it('denies reception wages and the aggregate finances', () => {
+    for (const perm of ['payroll:read', 'payroll:manage', 'reports:read']) {
+      expect(() =>
+        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'receptionist' } })),
+      ).toThrow(ForbiddenException);
+    }
+  });
+
+  it('admits a still-valid dentist token as the doctor', () => {
+    // 0017 promoted those rows to admin. A token minted before the deploy has
+    // to resolve the same way, or a live session would outrank its own row.
+    for (const perm of ['clinical:write', 'payroll:read', 'reports:read']) {
+      expect(
+        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'dentist' } })),
+      ).toBe(true);
+    }
+  });
+
+  it('denies a receptionist the reports dashboard and treatment repricing', () => {
+    for (const perm of ['reports:read', 'treatments:manage', 'invoices:delete', 'settings:manage']) {
+      expect(() =>
+        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'receptionist' } })),
+      ).toThrow(ForbiddenException);
+    }
+  });
+
+  it('requires ALL listed permissions, not merely one', () => {
+    // A receptionist holds invoices:write but not invoices:delete.
     expect(() =>
-      guard.canActivate(ctxWith({}, { user: { role: 'frontdesk' } })),
+      guardRequiring(['invoices:write', 'invoices:delete']).canActivate(
+        ctxWith({}, { user: { role: 'receptionist' } }),
+      ),
     ).toThrow(ForbiddenException);
   });
 
-  it('denies an unauthenticated request', () => {
-    expect(() => guard.canActivate(ctxWith({}))).toThrow(ForbiddenException);
+  it('accepts legacy roles at their equivalent authority', () => {
+    expect(
+      guardRequiring(['payroll:manage']).canActivate(ctxWith({}, { user: { role: 'owner' } })),
+    ).toBe(true);
+    expect(() =>
+      guardRequiring(['reports:read']).canActivate(ctxWith({}, { user: { role: 'frontdesk' } })),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('fails closed on an unknown role', () => {
+    expect(() =>
+      guardRequiring(['patients:read']).canActivate(ctxWith({}, { user: { role: 'superuser' } })),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('rejects an unauthenticated request', () => {
+    expect(() => guardRequiring(['patients:read']).canActivate(ctxWith({}))).toThrow(
+      UnauthorizedException,
+    );
   });
 });

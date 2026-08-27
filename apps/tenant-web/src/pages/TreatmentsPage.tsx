@@ -17,8 +17,8 @@ const TABS = [
 ] as const;
 
 export default function TreatmentsPage() {
-  const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
+  const { can } = useAuth();
+  const canAccess = can('treatments:manage');
 
   const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('active');
   const [q, setQ] = useState('');
@@ -47,7 +47,7 @@ export default function TreatmentsPage() {
         title="Treatments"
         meta={items ? `${items.length} in catalogue` : '…'}
         actions={
-          isOwner ? (
+          canAccess ? (
             <button className="btn btn--primary" onClick={() => setCreating(true)}>
               <Plus size={16} /> Add treatment
             </button>
@@ -76,7 +76,7 @@ export default function TreatmentsPage() {
           <EmptyState
             icon={<Stethoscope size={22} />}
             title="No treatments found"
-            body={isOwner ? 'Add your first treatment to build the catalogue.' : 'The owner manages the treatment catalogue.'}
+            body={canAccess ? 'Add your first treatment to build the catalogue.' : 'An administrator manages the treatment catalogue.'}
           />
         ) : (
           <table className="table">
@@ -87,7 +87,7 @@ export default function TreatmentsPage() {
                 <th>Duration</th>
                 <th>Visit type</th>
                 <th>Status</th>
-                {isOwner && <th />}
+                {canAccess && <th />}
               </tr>
             </thead>
             <tbody>
@@ -107,7 +107,7 @@ export default function TreatmentsPage() {
                     )}
                   </td>
                   <td><StatusPill status={t.status} /></td>
-                  {isOwner && (
+                  {canAccess && (
                     <td style={{ textAlign: 'right' }}>
                       <button className="iconbtn" style={{ width: 30, height: 30 }} onClick={() => setEditing(t)} title="Edit">
                         <Pencil size={14} />

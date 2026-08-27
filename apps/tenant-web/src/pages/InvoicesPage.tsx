@@ -11,21 +11,25 @@ import {
 } from '../lib/api';
 import { PageHeader, StatusPill, EmptyState, Modal, Avatar } from '../components/ui';
 import PatientPicker from '../components/PatientPicker';
+import { useAuth } from '../lib/auth';
 import { formatMoney } from '../lib/format';
+import { dateLocale, useT, type MessageKey } from '../lib/i18n';
 
-const TABS = [
-  { key: 'all', label: 'All' },
-  { key: 'unpaid', label: 'Unpaid' },
-  { key: 'partially_paid', label: 'Partial' },
-  { key: 'paid', label: 'Paid' },
-] as const;
+const TABS: { key: string; label: MessageKey }[] = [
+  { key: 'all', label: 'invoice.all' },
+  { key: 'unpaid', label: 'invoice.status.unpaid' },
+  { key: 'partially_paid', label: 'invoice.status.partially_paid' },
+  { key: 'paid', label: 'invoice.status.paid' },
+];
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function InvoicesPage() {
   const navigate = useNavigate();
+  const { readOnly } = useAuth();
+  const t = useT();
   const [status, setStatus] = useState<string>('all');
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -57,17 +61,17 @@ export default function InvoicesPage() {
         meta={items ? `${items.length} in view · ${formatMoney(outstanding)} outstanding` : '…'}
         actions={
           <button className="btn btn--primary" onClick={() => setCreating(true)}>
-            <Plus size={16} /> New invoice
+            <Plus size={16} /> {t('invoice.new')}
           </button>
         }
       />
 
       <div className="toolbar">
         <div className="tabs">
-          {TABS.map((t) => (
-            <button key={t.key} className={`tab${status === t.key ? ' tab--active' : ''}`}
-              onClick={() => setStatus(t.key)}>
-              {t.label}
+          {TABS.map((tab) => (
+            <button key={tab.key} className={`tab${status === tab.key ? ' tab--active' : ''}`}
+              onClick={() => setStatus(tab.key)}>
+              {t(tab.label)}
             </button>
           ))}
         </div>
@@ -81,19 +85,29 @@ export default function InvoicesPage() {
         {items === null ? (
           <div className="pad muted">Loading…</div>
         ) : items.length === 0 ? (
-          <EmptyState icon={<ReceiptText size={22} />} title="No invoices found"
-            body="Create an invoice after a finished appointment or treatment." />
+          <EmptyState
+            icon={<ReceiptText size={22} />}
+            title={t('invoice.empty.title')}
+            body={t('invoice.empty.body')}
+            action={
+              !readOnly ? (
+                <button className="btn btn--primary" onClick={() => setCreating(true)}>
+                  <Plus size={16} /> {t('invoice.empty.cta')}
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <table className="table">
             <thead>
               <tr>
-                <th>Invoice</th>
-                <th>Patient</th>
-                <th>Date</th>
-                <th>Total</th>
-                <th>Paid</th>
-                <th>Balance</th>
-                <th>Status</th>
+                <th>{t('invoice.col.invoice')}</th>
+                <th>{t('invoice.col.patient')}</th>
+                <th>{t('invoice.col.date')}</th>
+                <th>{t('invoice.col.total')}</th>
+                <th>{t('invoice.col.paid')}</th>
+                <th>{t('invoice.col.balance')}</th>
+                <th>{t('invoice.col.status')}</th>
               </tr>
             </thead>
             <tbody>

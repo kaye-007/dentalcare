@@ -14,6 +14,8 @@ interface AuthState {
   admin: Admin | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /** Adopt a session minted by the Google callback. */
+  adoptSession: (access: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -47,14 +49,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAdmin(res.admin);
   }, []);
 
+  const adoptSession = useCallback(async (access: string) => {
+    token.set(access);
+    try {
+      setAdmin(await api.me());
+    } catch (err) {
+      token.clear();
+      throw err;
+    }
+  }, []);
+
   const logout = useCallback(() => {
     token.clear();
     setAdmin(null);
   }, []);
 
   const value = useMemo(
-    () => ({ admin, loading, login, logout }),
-    [admin, loading, login, logout],
+    () => ({ admin, loading, login, adoptSession, logout }),
+    [admin, loading, login, adoptSession, logout],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

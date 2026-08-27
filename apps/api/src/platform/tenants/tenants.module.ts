@@ -11,7 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
-import { CreateTenantDto, UpdateTenantStatusDto } from './dto/tenant.dto';
+import {
+  CreateTenantDto,
+  ResetUserPasswordDto,
+  SetTrialDto,
+  UpdateTenantStatusDto,
+} from './dto/tenant.dto';
 import { PlatformAuthModule } from '../platform-auth/platform-auth.module';
 import {
   PlatformJwtGuard,
@@ -53,6 +58,27 @@ export class TenantsController {
     @CurrentAdmin() admin?: PlatformTokenPayload,
   ) {
     return this.tenants.updateStatus(id, dto.status, actorOf(admin));
+  }
+
+  /** Start, extend, or end a trial. `days: null` means they have paid. */
+  @Patch(':id/trial')
+  setTrial(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetTrialDto,
+    @CurrentAdmin() admin?: PlatformTokenPayload,
+  ) {
+    return this.tenants.setTrial(id, dto.days, actorOf(admin));
+  }
+
+  /** Recovery for a locked-out doctor. Recorded in the clinic's own trail too. */
+  @Post(':id/users/:userId/password')
+  resetUserPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: ResetUserPasswordDto,
+    @CurrentAdmin() admin?: PlatformTokenPayload,
+  ) {
+    return this.tenants.resetUserPassword(id, userId, dto.password, actorOf(admin));
   }
 }
 

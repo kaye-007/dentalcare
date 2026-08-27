@@ -4,6 +4,7 @@ import { reportsApi, type ReportOverview, type ReportBreakdownRow } from '../lib
 import { useAuth } from '../lib/auth';
 import { PageHeader, EmptyState } from '../components/ui';
 import { formatMoney, plural } from '../lib/format';
+import { dateLocale } from '../lib/i18n';
 
 /* ── date helpers ───────────────────────────────────────── */
 function iso(d: Date) {
@@ -40,13 +41,13 @@ const PRESETS = [
 
 const MONTH_LABEL = (m: string) => {
   const [y, mo] = m.split('-');
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('en-GB', { month: 'short' });
+  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString(dateLocale(), { month: 'short' });
 };
 
 /* ── page ───────────────────────────────────────────────── */
 export default function ReportsPage() {
-  const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
+  const { can } = useAuth();
+  const canAccess = can('reports:read');
 
   const [preset, setPreset] = useState<string>('last_6');
   const [range, setRange] = useState(() => presetRange('last_6'));
@@ -54,14 +55,14 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isOwner) return;
+    if (!canAccess) return;
     setLoading(true);
     reportsApi.overview(range.from, range.to)
       .then(setData)
       .finally(() => setLoading(false));
-  }, [isOwner, range.from, range.to]);
+  }, [canAccess, range.from, range.to]);
 
-  if (!isOwner) {
+  if (!canAccess) {
     return (
       <div className="page">
         <EmptyState framed icon={<Lock size={22} />} title="Owner access only"
@@ -214,12 +215,12 @@ function TrendChart({ points }: { points: ReportOverview['monthlyTrend'] }) {
             <g key={p.month}>
               <rect x={cx - barW - 2} width={barW}
                 y={Math.min(yOf(p.collected), zeroY)} height={Math.abs(zeroY - yOf(p.collected)) || 1}
-                rx={3} fill="var(--teal)" opacity={0.9}>
+                rx={3} fill="var(--data-1)" opacity={0.9}>
                 <title>{`${p.month} collected: ${p.collected}`}</title>
               </rect>
               <rect x={cx + 2} width={barW}
                 y={Math.min(yOf(p.expenses), zeroY)} height={Math.abs(zeroY - yOf(p.expenses)) || 1}
-                rx={3} fill="#d9a05b" opacity={0.9}>
+                rx={3} fill="var(--data-2)" opacity={0.9}>
                 <title>{`${p.month} expenses: ${p.expenses}`}</title>
               </rect>
               <text x={cx} y={H - 8} textAnchor="middle" fontSize={11} fill="var(--muted)">

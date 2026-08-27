@@ -2,9 +2,13 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { ApiError } from '../lib/api';
+import { useT } from '../lib/i18n';
+import LanguageToggle from '../components/LanguageToggle';
+import GoogleButton from '../components/GoogleButton';
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
   const from =
@@ -24,9 +28,7 @@ export default function LoginPage() {
       await login(email, password);
       navigate(from, { replace: true });
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : 'Something went wrong. Try again.',
-      );
+      setError(err instanceof ApiError ? err.message : t('login.error'));
     } finally {
       setBusy(false);
     }
@@ -35,13 +37,17 @@ export default function LoginPage() {
   return (
     <div className="auth">
       <div className="auth__panel">
+        <div className="auth__top">
+          <LanguageToggle size="sm" />
+        </div>
+
         <div className="auth__brand">
           <svg viewBox="0 0 28 28" width="34" height="34" aria-hidden>
-            <circle cx="9" cy="9" r="4" fill="var(--teal)" />
-            <circle cx="19" cy="9" r="3" fill="var(--teal-300)" />
-            <circle cx="14" cy="19" r="3.4" fill="var(--ink)" />
-            <line x1="9" y1="9" x2="14" y2="19" stroke="var(--teal)" strokeWidth="1.6" />
-            <line x1="19" y1="9" x2="14" y2="19" stroke="var(--teal-300)" strokeWidth="1.6" />
+            <circle cx="9" cy="9" r="4" fill="var(--logo-1)" />
+            <circle cx="19" cy="9" r="3" fill="var(--logo-2)" />
+            <circle cx="14" cy="19" r="3.4" fill="var(--logo-3)" />
+            <line x1="9" y1="9" x2="14" y2="19" stroke="var(--logo-1)" strokeWidth="1.6" />
+            <line x1="19" y1="9" x2="14" y2="19" stroke="var(--logo-2)" strokeWidth="1.6" />
           </svg>
           <div>
             <p className="auth__name">DentalCare</p>
@@ -49,12 +55,12 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <h1 className="auth__title">Sign in to your clinic</h1>
-        <p className="auth__sub">Manage patients, appointments, and billing.</p>
+        <h1 className="auth__title">{t('login.title')}</h1>
+        <p className="auth__sub">{t('login.subtitle')}</p>
 
         <form className="auth__form" onSubmit={onSubmit}>
           <label className="field">
-            <span>Email</span>
+            <span>{t('login.email')}</span>
             <input
               type="email"
               autoComplete="username"
@@ -65,7 +71,7 @@ export default function LoginPage() {
             />
           </label>
           <label className="field">
-            <span>Password</span>
+            <span>{t('login.password')}</span>
             <input
               type="password"
               autoComplete="current-password"
@@ -79,17 +85,12 @@ export default function LoginPage() {
           {error && <p className="auth__error">{error}</p>}
 
           <button className="btn btn--primary" type="submit" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
+            {busy ? t('login.submitting') : t('login.submit')}
           </button>
         </form>
 
-        {import.meta.env.DEV && (
-          <div className="auth__hint">
-            <p>Demo logins</p>
-            <code>demo@dentx.app · Demo@2026!</code>
-            <code>m.novak@dentx.app · Demo@2026!</code>
-          </div>
-        )}
+        <GoogleButton next={from} />
+
       </div>
     </div>
   );

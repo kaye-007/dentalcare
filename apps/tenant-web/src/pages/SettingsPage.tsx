@@ -3,38 +3,73 @@ import { Lock, Check } from 'lucide-react';
 import { settingsApi, ApiError, type ClinicSettings, type WorkingDay } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { PageHeader, EmptyState } from '../components/ui';
+import LanguageToggle from '../components/LanguageToggle';
+import { useT, useI18n, LOCALE_NAMES } from '../lib/i18n';
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
+  const t = useT();
+  const { can } = useAuth();
+  const canAccess = can('settings:manage');
   const [settings, setSettings] = useState<ClinicSettings | null>(null);
 
   useEffect(() => {
-    if (isOwner) settingsApi.get().then(setSettings);
-  }, [isOwner]);
+    if (canAccess) settingsApi.get().then(setSettings);
+  }, [canAccess]);
 
-  if (!isOwner) {
+  if (!canAccess) {
+    // Language is a per-device preference, not clinic configuration, so it
+    // stays available to reception even though everything below is not.
     return (
-      <div className="page">
-        <EmptyState framed icon={<Lock size={22} />} title="Owner access only"
-          body="Clinic settings are restricted to the clinic owner." />
+      <div className="page page--narrow">
+        <PageHeader title={t('nav.settings')} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <LanguageCard />
+          <EmptyState framed icon={<Lock size={22} />} title="Owner access only"
+            body="Clinic settings are restricted to the clinic owner." />
+        </div>
       </div>
     );
   }
 
-  if (!settings) return <div className="page"><p className="muted">Loading…</p></div>;
+  if (!settings) return <div className="page"><p className="muted">{t('common.loading')}</p></div>;
 
   return (
     <div className="page page--narrow">
-      <PageHeader title="Settings" meta="Clinic profile, working hours, and preferences" />
+      <PageHeader title={t('nav.settings')} meta="Clinic profile, working hours, and preferences" />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <LanguageCard />
         <ProfileCard initial={settings} />
         <HoursCard initial={settings.workingHours} />
         <RemindersCard initial={settings} />
         <PreferencesCard initial={settings.defaultAppointmentDuration} payrollInitial={settings.payrollLoggingEnabled} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The language picker. Saved to `dentalcare_locale` on this device only —
+ * a shared front-desk machine and the doctor's laptop can differ, which is
+ * usually what a bilingual clinic actually wants.
+ */
+function LanguageCard() {
+  const t = useT();
+  const { locale } = useI18n();
+  return (
+    <div className="card">
+      <div className="card__head"><h2>{t('settings.language.title')}</h2></div>
+      <div className="pad">
+        <div className="langrow">
+          <div>
+            <p className="langrow__label">{t('settings.language.label')}</p>
+            <p className="langrow__hint">{t('settings.language.hint')}</p>
+          </div>
+          <LanguageToggle />
+        </div>
+        <p className="langrow__current">{LOCALE_NAMES[locale]}</p>
       </div>
     </div>
   );

@@ -25,14 +25,25 @@ exports.up = (pgm) => {
     'CREATE UNIQUE INDEX users_tenant_email_unique ON users (tenant_id, lower(email));',
   );
 
-  // 2) Runtime application role (idempotent).
-  pgm.sql(`DO $$
+  // 2) Runtime application role.
+  //
+  // Converge, do not merely create. A ROLE lives in the cluster while a
+  // DATABASE does not, so dropping and recreating the database leaves this
+  // role behind carrying whatever password it was born with. The previous
+  // version only ran CREATE when the role was absent, so a rebuilt database
+  // inherited a stale password that no amount of re-migrating could correct.
+  // The symptom was every authenticated request returning 500, which looks
+  // nothing like a credentials problem and cost a day to find.
+  pgm.sql(`DO $do$
     BEGIN
       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${appUser}') THEN
         CREATE ROLE ${appUser} LOGIN PASSWORD '${appPass}'
           NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+      ELSE
+        ALTER ROLE ${appUser} WITH LOGIN PASSWORD '${appPass}'
+          NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
       END IF;
-    END $$;`);
+    END $do$;`);
 
   pgm.sql(`DO $$
     BEGIN

@@ -21,12 +21,24 @@ type PillKind = 'ok' | 'info' | 'warn' | 'danger' | 'neutral';
 const PILL_MAP: Record<string, { kind: PillKind; label: string }> = {
   // appointments
   scheduled: { kind: 'info', label: 'Scheduled' },
+  checked_in: { kind: 'info', label: 'Checked in' },
+  // Treatment underway — the one status that should catch the eye on a busy day.
+  in_progress: { kind: 'warn', label: 'In progress' },
   completed: { kind: 'ok', label: 'Completed' },
   cancelled: { kind: 'neutral', label: 'Cancelled' },
   no_show: { kind: 'warn', label: 'No-show' },
   // patients
   active: { kind: 'ok', label: 'Active' },
   inactive: { kind: 'neutral', label: 'Inactive' },
+  archived: { kind: 'neutral', label: 'Archived' },
+  // allergy severity — the only pill whose colour carries clinical meaning
+  severe: { kind: 'danger', label: 'Severe' },
+  moderate: { kind: 'warn', label: 'Moderate' },
+  mild: { kind: 'neutral', label: 'Mild' },
+  // medical history
+  resolved: { kind: 'neutral', label: 'Resolved' },
+  current: { kind: 'ok', label: 'Current' },
+  stopped: { kind: 'neutral', label: 'Stopped' },
   // billing
   unpaid: { kind: 'danger', label: 'Unpaid' },
   partial: { kind: 'warn', label: 'Partial' },

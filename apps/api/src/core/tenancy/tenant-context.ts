@@ -5,6 +5,15 @@ export interface TenantCtx {
   id: string;
   subdomain: string;
   status: string;
+  /** null for a paying clinic; a date for one on trial. */
+  trialEndsAt: string | null;
+  /**
+   * The trial ran out. The clinic keeps every read — their own data is the
+   * best argument for paying — and loses every write. Resolved once per
+   * request from `trialEndsAt` rather than stored, so there is no second
+   * flag to fall out of step with the date.
+   */
+  readOnly: boolean;
 }
 
 /**
@@ -32,5 +41,10 @@ export class TenantContextService {
     const id = this.getTenantId();
     if (!id) throw new Error('Tenant context is not available for this request');
     return id;
+  }
+
+  /** True only inside a request whose clinic is past its trial. */
+  isReadOnly(): boolean {
+    return this.als.getStore()?.readOnly ?? false;
   }
 }

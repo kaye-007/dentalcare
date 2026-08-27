@@ -26,10 +26,11 @@ export class TenantMiddleware implements NestMiddleware {
       );
     }
 
-    const { rows } = await this.db.query<{ id: string; status: string }>(
-      'SELECT id, status FROM resolve_tenant($1)',
-      [subdomain],
-    );
+    const { rows } = await this.db.query<{
+      id: string;
+      status: string;
+      trial_ends_at: Date | null;
+    }>('SELECT id, status, trial_ends_at FROM resolve_tenant($1)', [subdomain]);
     const tenant = rows[0];
     if (!tenant) {
       throw new NotFoundException('Clinic not found.');
@@ -47,9 +48,20 @@ export class TenantMiddleware implements NestMiddleware {
       });
     }
 
+    // A trial that has run out is NOT a suspension: the clinic still signs in
+    // and still sees everything it entered. ReadOnlyGuard turns that into a
+    // refusal on writes. Comparing against the database's own clock would be
+    // better still, but resolve_tenant hands back an absolute timestamp and
+    // the process clock is the same one every other expiry here uses.
+    const trialEndsAt = tenant.trial_ends_at
+      ? new Date(tenant.trial_ends_at).toISOString()
+      : null;
+    const readOnly = trialEndsAt !== null && new Date(trialEndsAt) < new Date();
+
     // Everything downstream runs inside this tenant's context.
-    this.ctx.run({ id: tenant.id, subdomain, status: tenant.status }, () =>
-      next(),
+    this.ctx.run(
+      { id: tenant.id, subdomain, status: tenant.status, trialEndsAt, readOnly },
+      () => next(),
     );
   }
 
