@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dentalcare-admin-web",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-04",
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // The platform console has no clinic subdomain, but it still calls /api on
+  // its own origin, so it proxies the same way.
+  "services": [{ "binding": "API", "service": "dentalcare-api" }],
+
+  "routes": [{ "pattern": "admin.dentalcare.com", "custom_domain": true }],
+
+  "observability": { "enabled": true }
+}

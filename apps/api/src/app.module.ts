@@ -81,16 +81,30 @@ import { PlatformAuthModule } from './platform/platform-auth/platform-auth.modul
 import { TenantsModule } from './platform/tenants/tenants.module';
 import { PlansModule } from './platform/plans/plans.module';
 
+/**
+ * Cloudflare Workers changes what the process can do, not what the app does.
+ * Read once here so the module graph below stays declarative.
+ */
+const IS_WORKERS = process.env.RUNTIME === 'workers';
+
 @Module({
   imports: [
     AppConfigModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+        // pino-pretty formats in a worker thread, which a Cloudflare Worker
+        // does not have. It was only ever a development convenience.
         transport:
-          process.env.NODE_ENV === 'production'
+          IS_WORKERS || process.env.NODE_ENV === 'production'
             ? undefined
             : { target: 'pino-pretty', options: { singleLine: true } },
+        // Given no stream, pino writes through sonic-boom to a file
+        // descriptor — a Worker has neither. Hand it console instead, which
+        // is exactly what Cloudflare's Workers Logs reads.
+        stream: IS_WORKERS
+          ? { write: (line: string) => console.log(line.trim()) }
+          : undefined,
         genReqId: (req, res) => {
           const incoming = req.headers['x-request-id'];
           const id =

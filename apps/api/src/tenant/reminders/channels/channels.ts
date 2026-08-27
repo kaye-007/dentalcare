@@ -6,8 +6,8 @@ import { Injectable, Logger } from '@nestjs/common';
  * Every reminder is delivered through a channel implementing this interface,
  * and the channel id is recorded on the reminder row. For the MVP exactly one
  * channel ships: the internal LOG channel. It does NOT send anything to the
- * patient — it records the rendered message in the tenant's reminder log and
- * the server log, and the UI says so explicitly.
+ * patient — it records the rendered message on the tenant's reminder row,
+ * where RLS protects it, and the UI says so explicitly.
  *
  * Connecting a real provider post-MVP means adding e.g. SmsChannel
  * (Twilio/Vonage) or EmailChannel (SES/Resend) implementing this same
@@ -33,9 +33,16 @@ export class LogChannel implements ReminderChannel {
   readonly label = 'Internal log';
   private readonly logger = new Logger('ReminderLogChannel');
 
-  async send(payload: ReminderPayload): Promise<void> {
-    // Recording happens on the reminder row itself; this is the delivery side.
-    this.logger.log(`reminder delivered to internal log (to=${payload.to ?? 'n/a'}): ${payload.message}`);
+  async send(_payload: ReminderPayload): Promise<void> {
+    // Deliberately logs nothing about the patient.
+    //
+    // The rendered message names the patient, their phone number, their
+    // clinic and their treatment — a medical record in one line — and this
+    // ran for every due reminder on every scan. The reminder row already
+    // holds the message under RLS, which is the right place for it. The
+    // application log is not, and on Cloudflare that log leaves the
+    // database's trust boundary altogether.
+    this.logger.log('reminder recorded on the internal log channel');
   }
 }
 

@@ -7,19 +7,12 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadBucketCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { AwsClient } from 'aws4fetch';
 
 /**
  * Object storage for patient documents.
  *
- * Three rules shape this class:
+ * Four rules shape this class:
  *
  * 1. THE BUCKET IS PRIVATE. Nothing is ever public-read. Downloads go out as
  *    short-lived pre-signed URLs minted per request, after the caller has
@@ -38,16 +31,32 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
  *    constructs in a disabled state and the API boots normally. A clinic that
  *    has not set up a bucket yet still gets patients, appointments and
  *    billing; only the documents endpoints answer 503.
+ *
+ * 4. SIGNING IS DONE BY HAND, over fetch. This used to be @aws-sdk/client-s3
+ *    plus @aws-sdk/s3-request-presigner. Both are large, and a Cloudflare
+ *    Worker bundle is capped at 3 MiB compressed on the free plan — the SDK
+ *    alone does not leave room for NestJS. aws4fetch is a few kilobytes, signs
+ *    SigV4 with WebCrypto, and runs unchanged on Node 20 and on Workers, so
+ *    the container image and the Worker share one implementation. The four
+ *    operations this application actually performs (PUT, presigned GET,
+ *    DELETE, HEAD bucket) are plain REST calls.
  */
 @Injectable()
 export class StorageService implements OnModuleInit {
   private readonly log = new Logger(StorageService.name);
-  private readonly client: S3Client | null;
+
+  private readonly aws: AwsClient | null;
   private readonly bucket: string | null;
+  private readonly endpoint: string | null;
+  private readonly region: string;
+  private readonly pathStyle: boolean;
   private readonly signedUrlTtl: number;
 
   constructor(private readonly config: ConfigService) {
     this.signedUrlTtl = Number(this.config.get('S3_SIGNED_URL_TTL') ?? 300);
+    this.region = this.config.get<string>('S3_REGION') ?? 'auto';
+    this.pathStyle = this.config.get('S3_FORCE_PATH_STYLE') === '1';
+    this.endpoint = this.config.get<string>('S3_ENDPOINT') ?? null;
 
     const bucket = this.config.get<string>('S3_BUCKET');
     const accessKeyId = this.config.get<string>('S3_ACCESS_KEY_ID');
@@ -57,25 +66,22 @@ export class StorageService implements OnModuleInit {
     // reaching here with one missing means storage is deliberately off.
     if (!bucket || !accessKeyId || !secretAccessKey) {
       this.bucket = null;
-      this.client = null;
+      this.aws = null;
       return;
     }
 
     this.bucket = bucket;
-    const endpoint = this.config.get<string>('S3_ENDPOINT');
-    this.client = new S3Client({
-      region: this.config.get<string>('S3_REGION') ?? 'auto',
-      // Set for R2/MinIO/Spaces; omitted for AWS S3 proper.
-      ...(endpoint ? { endpoint } : {}),
-      // R2 and MinIO address buckets by path, not by virtual host.
-      forcePathStyle: this.config.get('S3_FORCE_PATH_STYLE') === '1',
-      credentials: { accessKeyId, secretAccessKey },
+    this.aws = new AwsClient({
+      accessKeyId,
+      secretAccessKey,
+      service: 's3',
+      region: this.region,
     });
   }
 
   /** Whether patient documents are available in this deployment. */
   get isConfigured(): boolean {
-    return this.client !== null && this.bucket !== null;
+    return this.aws !== null && this.bucket !== null;
   }
 
   /**
@@ -83,14 +89,41 @@ export class StorageService implements OnModuleInit {
    * A 503 naming the missing configuration beats a 500 saying "Could not
    * store the file" when the real answer is that no bucket exists.
    */
-  private requireStorage(): { client: S3Client; bucket: string } {
-    if (!this.client || !this.bucket) {
+  private requireStorage(): { aws: AwsClient; bucket: string } {
+    if (!this.aws || !this.bucket) {
       throw new ServiceUnavailableException(
         'Document storage is not configured on this server. Set S3_BUCKET, ' +
           'S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY to enable patient documents.',
       );
     }
-    return { client: this.client, bucket: this.bucket };
+    return { aws: this.aws, bucket: this.bucket };
+  }
+
+  /**
+   * The REST URL for one object.
+   *
+   * Path style (`S3_FORCE_PATH_STYLE=1`) puts the bucket in the path, which is
+   * what R2 and MinIO want; virtual-host style puts it in the hostname, which
+   * is what AWS S3 wants. Each path segment is encoded separately so the
+   * slashes in a key survive while everything else is escaped.
+   */
+  private objectUrl(bucket: string, key = ''): string {
+    const encoded = key
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+
+    if (this.endpoint) {
+      const base = this.endpoint.replace(/\/+$/, '');
+      if (this.pathStyle) return `${base}/${bucket}/${encoded}`;
+      const url = new URL(base);
+      url.hostname = `${bucket}.${url.hostname}`;
+      return `${url.origin}/${encoded}`;
+    }
+
+    return this.pathStyle
+      ? `https://s3.${this.region}.amazonaws.com/${bucket}/${encoded}`
+      : `https://${bucket}.s3.${this.region}.amazonaws.com/${encoded}`;
   }
 
   /**
@@ -100,7 +133,7 @@ export class StorageService implements OnModuleInit {
    * appointments and billing with it.
    */
   async onModuleInit(): Promise<void> {
-    if (!this.client || !this.bucket) {
+    if (!this.aws || !this.bucket) {
       this.log.warn(
         'Object storage is not configured — patient document upload and ' +
           'download are disabled. Every other module is unaffected.',
@@ -108,7 +141,10 @@ export class StorageService implements OnModuleInit {
       return;
     }
     try {
-      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      const res = await this.aws.fetch(this.objectUrl(this.bucket), {
+        method: 'HEAD',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.log.log(`Object storage ready (bucket "${this.bucket}")`);
     } catch (err) {
       this.log.error(
@@ -137,20 +173,28 @@ export class StorageService implements OnModuleInit {
     contentType: string,
     meta: Record<string, string> = {},
   ): Promise<void> {
-    const { client, bucket } = this.requireStorage();
+    const { aws, bucket } = this.requireStorage();
+    const headers: Record<string, string> = {
+      'content-type': contentType,
+      // Server-side encryption at rest. Honoured by S3 and R2; harmless
+      // where unsupported.
+      'x-amz-server-side-encryption': 'AES256',
+    };
+    // Header values must be ASCII. Percent-encoding keeps an Albanian
+    // filename or caption from producing an unsendable request.
+    for (const [name, value] of Object.entries(meta)) {
+      headers[`x-amz-meta-${name.toLowerCase()}`] = encodeURIComponent(value);
+    }
+
     try {
-      await client.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Body: body,
-          ContentType: contentType,
-          // Server-side encryption at rest. Honoured by S3 and R2; harmless
-          // where unsupported.
-          ServerSideEncryption: 'AES256',
-          Metadata: meta,
-        }),
-      );
+      const res = await aws.fetch(this.objectUrl(bucket, key), {
+        method: 'PUT',
+        body: new Uint8Array(body),
+        headers,
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${await safeBody(res)}`);
+      }
     } catch (err) {
       this.log.error(`Upload failed for ${key}: ${String(err)}`);
       throw new InternalServerErrorException('Could not store the file');
@@ -162,40 +206,51 @@ export class StorageService implements OnModuleInit {
    * dialog, so the patient gets a sensible filename rather than a UUID.
    */
   async signedDownloadUrl(key: string, downloadName?: string): Promise<string> {
-    const { client, bucket } = this.requireStorage();
-    const command = new GetObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      ...(downloadName
+    return this.presign(
+      key,
+      downloadName
         ? {
-            ResponseContentDisposition: `attachment; filename="${sanitizeHeaderFilename(
+            'response-content-disposition': `attachment; filename="${sanitizeHeaderFilename(
               downloadName,
             )}"`,
           }
-        : {}),
-    });
-    try {
-      return await getSignedUrl(client, command, {
-        expiresIn: this.signedUrlTtl,
-      });
-    } catch (err) {
-      this.log.error(`Could not sign URL for ${key}: ${String(err)}`);
-      throw new InternalServerErrorException('Could not prepare the download');
-    }
+        : {},
+      'Could not prepare the download',
+    );
   }
 
   /** Inline variant — lets the SPA render an X-ray without a download prompt. */
   async signedViewUrl(key: string): Promise<string> {
-    const { client, bucket } = this.requireStorage();
+    return this.presign(key, {}, 'Could not prepare the preview');
+  }
+
+  /**
+   * Mint a query-signed GET URL valid for S3_SIGNED_URL_TTL seconds.
+   *
+   * The response-* parameters are part of the signed query string, so a
+   * recipient cannot alter the disposition or the content type of what they
+   * are served by editing the link.
+   */
+  private async presign(
+    key: string,
+    query: Record<string, string>,
+    failureMessage: string,
+  ): Promise<string> {
+    const { aws, bucket } = this.requireStorage();
     try {
-      return await getSignedUrl(
-        client,
-        new GetObjectCommand({ Bucket: bucket, Key: key }),
-        { expiresIn: this.signedUrlTtl },
-      );
+      const url = new URL(this.objectUrl(bucket, key));
+      url.searchParams.set('X-Amz-Expires', String(this.signedUrlTtl));
+      for (const [name, value] of Object.entries(query)) {
+        url.searchParams.set(name, value);
+      }
+      const signed = await aws.sign(url.toString(), {
+        method: 'GET',
+        aws: { signQuery: true },
+      });
+      return signed.url;
     } catch (err) {
-      this.log.error(`Could not sign view URL for ${key}: ${String(err)}`);
-      throw new InternalServerErrorException('Could not prepare the preview');
+      this.log.error(`Could not sign URL for ${key}: ${String(err)}`);
+      throw new InternalServerErrorException(failureMessage);
     }
   }
 
@@ -205,11 +260,16 @@ export class StorageService implements OnModuleInit {
    * leave the user staring at an error after the delete already succeeded.
    */
   async remove(key: string): Promise<void> {
-    const client = this.client;
-    const bucket = this.bucket;
-    if (!client || !bucket) return;
+    if (!this.aws || !this.bucket) return;
     try {
-      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      const res = await this.aws.fetch(this.objectUrl(this.bucket, key), {
+        method: 'DELETE',
+      });
+      // S3 answers 204 for a delete, and 404 for an object that was already
+      // gone — both mean the bucket no longer holds it.
+      if (!res.ok && res.status !== 404) {
+        throw new Error(`HTTP ${res.status}`);
+      }
     } catch (err) {
       this.log.warn(
         `Orphaned object — row deleted but ${key} remains in the bucket: ${String(err)}`,
@@ -228,4 +288,13 @@ export class StorageService implements OnModuleInit {
  */
 function sanitizeHeaderFilename(name: string): string {
   return name.replace(/[\r\n"\\]/g, '_').slice(0, 120) || 'download';
+}
+
+/** S3 explains its refusals in the body; read it, but never fail on reading. */
+async function safeBody(res: Response): Promise<string> {
+  try {
+    return (await res.text()).slice(0, 300);
+  } catch {
+    return '';
+  }
 }

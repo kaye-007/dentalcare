@@ -6,6 +6,10 @@
   "scripts": {
     "build": "nest build",
     "typecheck": "tsc --noEmit",
+    "typecheck:worker": "npm run build && tsc -p tsconfig.worker.json",
+    "cf:dev": "npm run build && wrangler dev",
+    "cf:deploy": "npm run build && wrangler deploy",
+    "cf:dry-run": "npm run build && wrangler deploy --dry-run --outdir=.wrangler/dry-run",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "test": "jest",
@@ -19,8 +23,6 @@
     "bootstrap-admin": "node scripts/bootstrap-admin.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.665.0",
-    "@aws-sdk/s3-request-presigner": "^3.665.0",
     "@nestjs/common": "^10.4.4",
     "@nestjs/config": "^3.2.3",
     "@nestjs/core": "^10.4.4",
@@ -28,6 +30,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^10.4.4",
     "@nestjs/throttler": "^6.5.0",
+    "aws4fetch": "^1.0.20",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -35,13 +38,14 @@
     "nestjs-pino": "^4.1.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "pg": "^8.13.0",
+    "pg": "^8.16.3",
     "pino-http": "^10.3.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260827.1",
     "@nestjs/cli": "^10.4.5",
     "@nestjs/schematics": "^10.1.4",
     "@types/bcryptjs": "^2.4.6",
@@ -56,6 +60,7 @@
     "node-pg-migrate": "^7.7.0",
     "pino-pretty": "^11.2.2",
     "ts-jest": "^29.4.12",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "wrangler": "^4.127.0"
   }
 }

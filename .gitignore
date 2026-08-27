@@ -8,6 +8,7 @@ coverage/
 *.tsbuildinfo
 
 # ── tool caches ───────────────────────────────────────────
+.wrangler/
 node_modules/.vite/
 node_modules/.tmp/
 .vite/

@@ -21,6 +21,8 @@
     "build": "npm run api:build && npm run web:build && npm run admin:build",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test -w @dentalcare/api",
+    "cf:deploy": "npm run cf:deploy -w @dentalcare/api && npm run cf:deploy -w @dentalcare/tenant-web && npm run cf:deploy -w @dentalcare/admin-web",
+    "cf:dry-run": "npm run cf:dry-run -w @dentalcare/api && npm run cf:dry-run -w @dentalcare/tenant-web && npm run cf:dry-run -w @dentalcare/admin-web",
     "dev:setup": "node scripts/dev-setup.js",
     "dev:reset": "node scripts/dev-setup.js --reset",
     "smoke": "node scripts/smoke-api.js",

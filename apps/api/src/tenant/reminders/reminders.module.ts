@@ -323,12 +323,22 @@ export class RemindersService {
 }
 
 /* ════════ scheduler ════════
- * A real server-side background job: every REMINDER_SCAN_INTERVAL_MS it scans
- * all active tenants with reminders enabled and creates+delivers due
- * automatic reminders. It runs in-process in the API for the MVP single-VPS
- * deployment; because the scan is idempotent (partial unique index on
- * automatic reminders), it can be lifted into a dedicated worker process or a
- * BullMQ repeatable job post-MVP without any schema or logic change. */
+ * Scans every active tenant with reminders enabled and creates + delivers the
+ * automatic reminders that have come due.
+ *
+ * WHO CALLS tick() DEPENDS ON THE RUNTIME:
+ *
+ *   node    — this service owns a setInterval, as it always has. That is what
+ *             a long-running container should do.
+ *   workers — nothing here runs it. A Worker has no resident process between
+ *             requests to hold a timer, so the hourly Cron Trigger declared in
+ *             wrangler.jsonc calls tick() through the scheduled handler in
+ *             apps/api/worker/index.ts.
+ *
+ * Either way the scan is idempotent — a partial unique index on automatic
+ * reminders means a duplicate or overlapping pass claims nothing and delivers
+ * nothing — so nothing about the schema or the logic changes between the
+ * two runtimes. */
 @Injectable()
 export class ReminderSchedulerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ReminderSchedulerService.name);
@@ -342,6 +352,12 @@ export class ReminderSchedulerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (this.config.get<string>('RUNTIME') === 'workers') {
+      this.logger.log(
+        'reminder scheduler idle in-process — driven by the Cloudflare Cron Trigger',
+      );
+      return;
+    }
     const interval = this.config.get<number>('REMINDER_SCAN_INTERVAL_MS') ?? 60_000;
     this.timer = setInterval(() => void this.tick(), interval);
     this.logger.log(`reminder scheduler started (every ${interval}ms, channel: internal log)`);

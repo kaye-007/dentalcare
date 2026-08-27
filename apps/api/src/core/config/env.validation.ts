@@ -10,6 +10,12 @@ const envSchema = z.object({
     .default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
+  // Which host this process is running on. 'workers' switches DatabaseService
+  // to per-request connections (Hyperdrive owns the pool), silences the
+  // in-process reminder scheduler in favour of the Cron Trigger, and routes
+  // pino at console instead of a file descriptor. Set by wrangler.jsonc.
+  RUNTIME: z.enum(['node', 'workers']).default('node'),
+
   // Admin connection — used by migrations and seed (privileged, bypasses RLS).
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   // Runtime connection — the non-superuser app_user role (RLS enforced).

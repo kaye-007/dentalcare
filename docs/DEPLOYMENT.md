@@ -1,18 +1,36 @@
 # Deployment
 
-Frontend and backend deploy separately, and deliberately so.
+Everything runs on Cloudflare. The container path is kept, tested and
+supported as a fallback — see the last section.
 
-| Component | Target | Why |
+| Component | Target | Notes |
 |---|---|---|
-| `apps/tenant-web`, `apps/admin-web` | **Vercel** | Static Vite builds. Wildcard subdomains for per-tenant hosting. |
-| `apps/api` | **Docker** — Render / Railway / VPS | Long-running process with a resident scheduler and persistent pg pools. Not serverless. |
-| PostgreSQL | Managed (Render/Neon/Supabase) or self-hosted | RLS is the isolation boundary. Needs transaction-mode pooling if pooled. |
+| `apps/tenant-web` | Worker + static assets, `*.dentalcare.com/*` | One clinic per subdomain. Proxies `/api/*` to the API Worker. |
+| `apps/admin-web` | Worker + static assets, `admin.dentalcare.com` | Same proxy, no tenant subdomain. |
+| `apps/api` | Worker, `nodejs_compat` | NestJS over `httpServerHandler`. Hourly Cron Trigger for reminders. |
+| PostgreSQL | Supabase, fronted by **two** Hyperdrive configs | RLS is the isolation boundary. Direct port 5432, not the 6543 pooler. |
+| Patient documents | Any S3-compatible bucket (R2, S3, MinIO) | Signed with `aws4fetch`; private bucket, pre-signed URLs only. |
 
-**The API is not adapted for serverless, and should not be.** It owns an
-in-process reminder scheduler (`setInterval`) and two persistent connection
-pools. On a serverless platform the scheduler would never run and concurrent
-invocations would exhaust the connection limit. The existing `Dockerfile`
-builds correctly and serves Render, Railway, and a plain VPS unchanged.
+## What changed, and why it works now
+
+`DEPLOYMENT.md` used to say the API was not adapted for serverless and should
+not be. Two things made that true, and both have been dealt with:
+
+- **The resident scheduler.** `ReminderSchedulerService` held a `setInterval`.
+  On Workers it holds nothing; the Cron Trigger in `apps/api/wrangler.jsonc`
+  calls `tick()` through the `scheduled` handler instead. The scan was already
+  idempotent behind a partial unique index, so nothing about the logic moved.
+- **The two persistent pg pools.** A Worker may not reuse a socket opened
+  during a different request. `DatabaseService` now keeps resident pools only
+  on Node; on Workers each operation borrows a single connection from
+  Hyperdrive and closes it. Callers see the same `PoolClient` on both, so no
+  service knows which runtime it is on.
+
+The third obstacle was size. A Worker bundle is capped at 3 MiB compressed on
+the free plan and `@aws-sdk/client-s3` alone did not leave room for NestJS, so
+object storage was rewritten over `aws4fetch` — a few kilobytes, WebCrypto
+SigV4, identical on both runtimes. **The API Worker currently bundles to
+2.6 MiB raw / 747 KiB gzipped.**
 
 ---
 
@@ -27,6 +45,9 @@ npm run migrate:up
 Migration `0003` reads `APP_DB_USER` / `APP_DB_PASSWORD` and creates a
 `NOSUPERUSER … NOBYPASSRLS` role. **Avoid single quotes in the password** —
 the migration interpolates it into `CREATE ROLE` SQL.
+
+Migrations run from your machine or CI against Supabase directly. They are not
+run from the Worker.
 
 ### First platform administrator
 
@@ -53,112 +74,175 @@ Email uniqueness is enforced case-insensitively by
 `platform_admins_email_lower_unique`. To rotate the password later, `UPDATE`
 the `password_hash` column with a freshly generated hash.
 
-Use a passphrase of at least 12 characters from a password manager. On Render
-or Railway, run both steps from a shell against the deployed service so the
-`DATABASE_URL` matches.
+## 2. Two Hyperdrive configs
 
+The tenant plane and the platform plane connect as **different database
+roles**, and that difference is the entire isolation model. One Hyperdrive
+config per role, never one shared:
 
-## 2. API
+```bash
+wrangler hyperdrive create dentalcare-app --caching-disabled \
+  --connection-string="postgres://app_user:PASSWORD@db.PROJECT.supabase.co:5432/postgres"
 
-### Render
+wrangler hyperdrive create dentalcare-admin --caching-disabled \
+  --connection-string="postgres://postgres:PASSWORD@db.PROJECT.supabase.co:5432/postgres"
+```
 
-`render.yaml` is a working blueprint. After the first deploy, set the two
-`sync: false` variables by hand:
+Paste the two ids into `apps/api/wrangler.jsonc`, replacing
+`REPLACE_WITH_HYPERDRIVE_APP_ID` and `REPLACE_WITH_HYPERDRIVE_ADMIN_ID`.
 
-- `APP_DATABASE_URL` — the `app_user` connection string. Render cannot derive
-  a non-owner role, and the database's own `connectionString` is the owner.
-- `CORS_ORIGINS` — only needed if the SPAs are not proxied same-origin.
+Three things here are not optional:
 
-### Railway / VPS
+- **`--caching-disabled`.** Hyperdrive's result cache is keyed on the query
+  text, not on the transaction that set `app.current_tenant_id`. With caching
+  on, one clinic's rows can be served to another. Caching is a property of the
+  config, not of the binding, so it can only be set here.
+- **Port 5432, the direct host.** Not Supabase's 6543 transaction pooler.
+  Hyperdrive *is* the pooler, and `set_config('app.current_tenant_id', …, true)`
+  needs the session that a transaction-mode pooler will not keep.
+- **`app_user`, not `postgres`, on `dentalcare-app`.** The API verifies this at
+  boot: if the tenant role turns out to be a superuser or to hold `BYPASSRLS`,
+  it refuses to start in production rather than serve unisolated data.
 
-Same image, same variables:
+## 3. Secrets
+
+Non-secret configuration lives in `vars` in `apps/api/wrangler.jsonc`. Anything
+sensitive is a Worker secret:
+
+```bash
+cd apps/api
+wrangler secret put JWT_SECRET            # >= 32 chars, not the example value
+wrangler secret put GOOGLE_CLIENT_ID      # optional — all three or none
+wrangler secret put GOOGLE_CLIENT_SECRET
+wrangler secret put GOOGLE_CALLBACK_URL
+wrangler secret put S3_BUCKET             # optional — all three or none
+wrangler secret put S3_ACCESS_KEY_ID
+wrangler secret put S3_SECRET_ACCESS_KEY
+wrangler secret put S3_ENDPOINT           # set for R2/MinIO, omit for AWS S3
+```
+
+The API validates every variable at boot and **refuses to start** on a bad
+config rather than running unsafely:
+
+| Variable | Failure if wrong |
+|---|---|
+| `APP_DATABASE_URL` (from `HYPERDRIVE_APP`) | Missing → boot refused. Points at a superuser or `BYPASSRLS` role → boot refused. Either would silently disable RLS and expose every clinic's data to every other clinic. |
+| `JWT_SECRET` | Missing, under 32 chars, or the `.env.example` placeholder → boot refused. |
+| `DATABASE_URL` (from `HYPERDRIVE_ADMIN`) | Missing → boot refused. |
+| `NODE_ENV` | Must be `production`. It disables the client-supplied tenant header and switches logging to JSON. |
+| `RUNTIME` | `workers` on Cloudflare, `node` in the container. Chooses the connection strategy and silences the in-process scheduler. |
+
+## 4. Deploy
+
+Order matters — both SPA Workers hold a service binding to the API Worker, so
+it has to exist first.
+
+```bash
+npm run cf:dry-run    # bundles all three, uploads nothing
+npm run cf:deploy     # api → tenant-web → admin-web
+```
+
+`cf:deploy` on the API runs `nest build` first: NestJS needs
+`emitDecoratorMetadata`, which esbuild cannot produce, so tsc compiles the
+application into `dist/` and the Worker entry at `apps/api/worker/index.ts`
+wraps that. `apps/api/worker/stubs/nest-optional.js` stands in for
+`@nestjs/websockets` and `@nestjs/microservices`, which Nest requires
+optionally and this application does not use.
+
+### Domains and routing
+
+- `apps/tenant-web` → route `*.dentalcare.com/*` (wildcard DNS + wildcard TLS)
+- `apps/admin-web` → custom domain `admin.dentalcare.com`
+- `apps/api` → custom domain `api.dentalcare.com`
+
+More specific routes win, so the two custom domains are not swallowed by the
+wildcard. The apex is deliberately unrouted: the clinic app needs a subdomain
+to resolve a tenant.
+
+**`/api/*` is same-origin on purpose.** Each SPA Worker forwards it to the API
+over a service binding rather than letting the browser call
+`api.dentalcare.com` directly. The API reads the clinic from the first label of
+the `Host` header — `avicena.dentalcare.com` → `avicena` — and the
+`X-Tenant-Subdomain` override is hard-disabled in production. A cross-origin
+call would arrive with the wrong host and resolve no clinic at all. Keeping the
+hop internal also means no CORS preflight and no token leaving its origin.
+
+`api.dentalcare.com` exists for one reason: Google allows a single fixed
+redirect URI, so `GOOGLE_CALLBACK_URL` needs a stable public host.
+
+### Reminders
+
+`"triggers": { "crons": ["0 * * * *"] }` runs the reminder sweep hourly. Run it
+by hand to test:
+
+```bash
+curl "http://localhost:8787/__scheduled?cron=0+*+*+*+*"   # under `wrangler dev`
+```
+
+Clinics choose their own lead time (`clinic_settings.reminder_hours_before`),
+so a coarser cron means reminders land within the hour rather than the minute.
+Tighten the schedule if that matters more than invocation count.
+
+## Local development
+
+Two ways, both supported:
+
+```bash
+npm run api:dev     # plain Node against docker-compose Postgres — fastest loop
+npm run cf:dev -w @dentalcare/api   # the real Workers runtime, via wrangler dev
+```
+
+`wrangler dev` uses the `localConnectionString` on each Hyperdrive binding, so
+it talks to the same local Postgres without touching Supabase.
+
+## Health, logging, observability
+
+- `GET /api/health` — reports DB reachability.
+- Logs are JSON (pino) with `x-request-id` correlation; `authorization` and
+  `cookie` headers are redacted. On Workers pino writes through `console`,
+  which is what Workers Logs reads; `observability` is enabled in
+  `wrangler.jsonc` at full sampling.
+- **No patient data is written to the log.** The reminder log channel records
+  the message on the reminder row, under RLS, and nothing about the patient in
+  the application log — on Cloudflare that log leaves the database's trust
+  boundary entirely.
+
+## Scaling
+
+The constraint that pinned the API to one replica is gone. The scheduler no
+longer runs in-process, so Worker concurrency is unbounded from this
+application's point of view; Hyperdrive owns the connection ceiling.
+
+`withTenant()` sets `app.current_tenant_id` via `set_config(..., true)` —
+**transaction-local**. Any pooler in front of Postgres must run in
+**transaction mode**, and must not be stacked underneath Hyperdrive.
+
+---
+
+## Fallback: the container
+
+`apps/api/Dockerfile` and `docker-compose.yml` are unchanged and still work.
+Nothing in the Cloudflare port removed the Node path — `RUNTIME` defaults to
+`node`, which restores the resident pools and the in-process scheduler.
 
 ```bash
 docker build -f apps/api/Dockerfile -t dentalcare-api .
 docker run -p 3000:3000 --env-file .env.production dentalcare-api
 ```
 
-### Required configuration
-
-Copy `.env.production.example`. The API validates everything at boot and
-**refuses to start** on a bad config rather than running unsafely:
-
-| Variable | Failure if wrong |
-|---|---|
-| `APP_DATABASE_URL` | Missing → boot refused. Points at a superuser or `BYPASSRLS` role → boot refused. Either would silently disable RLS and expose every clinic's data to every other clinic. |
-| `JWT_SECRET` | Missing, under 32 chars, or the `.env.example` placeholder → boot refused. |
-| `DATABASE_URL` | Missing → boot refused. |
-| `NODE_ENV` | Must be `production`. It disables the client-supplied tenant header and switches logging to JSON. |
-
-## 3. Frontends
-
-Two Vercel projects, both with **Root Directory** set to the repo root (the
-build commands are workspace-aware).
-
-Edit the API host in each `vercel.json` before deploying — Vercel does not
-interpolate environment variables into rewrite destinations, so the value is
-a literal:
-
-```json
-{ "source": "/api/:path*", "destination": "https://api.dentalcare.app/api/:path*" }
-```
-
-Proxying through the rewrite keeps the SPA and API same-origin, which means
-`CORS_ORIGINS` can stay unset. If you point the SPA directly at the API host
-instead, you must set it.
-
-### Domains
-
-- `admin-web` → `admin.dentalcare.app`
-- `tenant-web` → `*.dentalcare.app` (wildcard)
-
-The wildcard is what makes multi-tenancy work: the API reads the first label
-of the `Host` header (`avicena.dentalcare.app` → `avicena`) and resolves it to
-a tenant. Requires a wildcard DNS record and a wildcard TLS certificate.
-
-`www` is explicitly not treated as a tenant.
-
----
-
-## Scaling beyond one instance
-
-**The API must currently run at exactly one replica.**
-
-`ReminderSchedulerService` runs `setInterval` in-process with no distributed
-lock. A second replica scans the same tenants concurrently. The partial unique
-index `reminders_auto_unique` prevents duplicate rows, so this is not a
-correctness disaster — each claim now runs in its own transaction and a
-conflict is skipped cleanly — but it is wasted work and noisy logs.
-
-To scale horizontally, extract the scheduler into a separate single-replica
-worker or a platform cron job, then let the API scale freely. This is the
-single highest-leverage structural change available and is tracked in
-[`MASTER_REMEDIATION_PLAN.md`](MASTER_REMEDIATION_PLAN.md) (issue H6).
-
-`render.yaml` pins `numInstances: 1` with this reason inline.
-
-## Connection pooling
-
-`withTenant()` sets `app.current_tenant_id` via `set_config(..., true)` —
-**transaction-local**. If you put PgBouncer or any pooler in front of
-Postgres it must run in **transaction mode**. Session or statement mode would
-break tenant scoping, potentially leaking context between requests. This is a
-subtle, high-consequence setting; verify it explicitly.
-
-## Health, shutdown, logging
-
-- `GET /api/health` — reports DB reachability. Wired as Render's health check
-  and as the compose healthcheck.
-- `enableShutdownHooks()` closes both pools and stops the scheduler on
-  SIGTERM, so rolling deploys drain cleanly.
-- Logs are JSON (pino) in production, with `x-request-id` correlation.
-  `authorization` and `cookie` headers are redacted.
+With the scheduler back in-process there is still no distributed lock, so the
+container path remains **single-replica**. The duplicate-claim path is safe —
+`reminders_auto_unique` refuses the second insert and each claim runs in its
+own transaction — but a second replica is wasted work.
 
 ## Before first paying customer
 
 - [ ] `NODE_ENV=production`, `JWT_SECRET` rotated off any shared value
-- [ ] `APP_DATABASE_URL` verified — boot logs no RLS warning
+- [ ] Both Hyperdrive configs created with `--caching-disabled`
+- [ ] `HYPERDRIVE_APP` verified as `app_user` — boot logs no RLS warning
 - [ ] Automated backups enabled, **and a restore rehearsed**
-- [ ] Wildcard DNS + TLS in place
+- [ ] Wildcard DNS + TLS in place for `*.dentalcare.com`
 - [ ] Superadmin created manually, not seeded
+- [ ] Cron Trigger observed firing once in production
+- [ ] Google sign-in exercised end to end on the deployed Worker
 - [ ] Uptime and error alerting on `/api/health`

@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dentalcare-tenant-web",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-04",
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // Client-side routing: every unknown path is the app, not a 404.
+    "not_found_handling": "single-page-application",
+    // Without this, /api/... would be answered with index.html by the asset
+    // server before the Worker ever ran.
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Internal hop to the API Worker, so /api stays same-origin and the clinic
+  // subdomain survives on the Host header. Deploy dentalcare-api first.
+  "services": [{ "binding": "API", "service": "dentalcare-api" }],
+
+  // One clinic per subdomain: avicena.dentalcare.com, elezi.dentalcare.com...
+  // More specific routes win, so the api. and admin. custom domains are not
+  // swallowed by this wildcard. The apex is deliberately not routed here —
+  // the app needs a clinic subdomain to resolve a tenant.
+  "routes": [{ "pattern": "*.dentalcare.com/*", "zone_name": "dentalcare.com" }],
+
+  "observability": { "enabled": true }
+}

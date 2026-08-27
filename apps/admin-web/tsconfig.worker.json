@@ -1,0 +1,18 @@
+{
+  // The proxy Worker is a different runtime from the SPA it serves: Workers
+  // globals, no DOM. Kept in its own project so the two type worlds — and
+  // their two definitions of Request and Response — never mix.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["worker/**/*.ts"]
+}

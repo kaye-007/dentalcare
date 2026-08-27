@@ -1,0 +1,87 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dentalcare-api",
+
+  // The Nest application is compiled by `nest build` into ./dist first; this
+  // entry is the thin ESM shim that wraps it. See worker/index.ts for why the
+  // two steps cannot be collapsed into one.
+  "main": "worker/index.ts",
+
+  // Anything after 2025-08-15 turns on node:http / node:https server support,
+  // which is what lets Express — and therefore Nest — run here at all.
+  "compatibility_date": "2026-08-04",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "minify": true,
+
+  // See worker/stubs/nest-optional.js — these are Nest's optional peers, never
+  // installed here, and esbuild will not build with an unresolved require.
+  "alias": {
+    "@nestjs/websockets/socket-module": "./worker/stubs/nest-optional.js",
+    "@nestjs/microservices/microservices-module": "./worker/stubs/nest-optional.js",
+    "@nestjs/microservices": "./worker/stubs/nest-optional.js"
+  },
+
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "placement": { "mode": "smart" },
+
+  // ── Database ────────────────────────────────────────────────────────────
+  //
+  // TWO bindings, deliberately. The tenant plane connects as app_user, which
+  // migration 0003 creates NOSUPERUSER / NOBYPASSRLS, so Row-Level Security is
+  // enforced; the platform plane connects with the privileged role and
+  // bypasses RLS by design. Pointing both at one Hyperdrive config would mean
+  // every clinic reads every other clinic's records.
+  //
+  // Create both before the first deploy and paste the ids in. --caching-
+  // disabled is not optional here: Hyperdrive's result cache is keyed on the
+  // query, not on the transaction that set app.current_tenant_id, so a cached
+  // row from one clinic could be served to another. Caching lives on the
+  // config, not on the binding, which is why it is a flag and not a field.
+  //
+  //   wrangler hyperdrive create dentalcare-app --caching-disabled \
+  //     --connection-string="postgres://app_user:PASSWORD@db.PROJECT.supabase.co:5432/postgres"
+  //
+  //   wrangler hyperdrive create dentalcare-admin --caching-disabled \
+  //     --connection-string="postgres://postgres:PASSWORD@db.PROJECT.supabase.co:5432/postgres"
+  //
+  // Use Supabase's DIRECT host on port 5432, not the 6543 pooler. Hyperdrive
+  // is the pooler, and Supabase's transaction-mode pooler does not hold the
+  // session state that set_config('app.current_tenant_id', ..., true) needs.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE_APP",
+      "id": "REPLACE_WITH_HYPERDRIVE_APP_ID",
+      "localConnectionString": "postgres://app_user:app_user_dev_pw@localhost:5432/dentalcare"
+    },
+    {
+      "binding": "HYPERDRIVE_ADMIN",
+      "id": "REPLACE_WITH_HYPERDRIVE_ADMIN_ID",
+      "localConnectionString": "postgres://dentalcare:dentalcare@localhost:5432/dentalcare"
+    }
+  ],
+
+  // ── Background work ─────────────────────────────────────────────────────
+  //
+  // Hourly automatic appointment reminders. This replaces the in-process
+  // setInterval in ReminderSchedulerService, which a Worker cannot run: there
+  // is no resident process between requests to hold a timer.
+  "triggers": { "crons": ["0 * * * *"] },
+
+  // The SPAs reach the API through a service binding on their own origin, so
+  // this public hostname exists for one thing: GOOGLE_CALLBACK_URL, which
+  // Google requires to be a single fixed URI.
+  "routes": [{ "pattern": "api.dentalcare.com", "custom_domain": true }],
+
+  // Non-secret configuration only. JWT_SECRET, GOOGLE_CLIENT_SECRET and the S3
+  // credentials are secrets:  wrangler secret put JWT_SECRET
+  "vars": {
+    "NODE_ENV": "production",
+    "RUNTIME": "workers",
+    "CORS_ORIGINS": "https://*.dentalcare.com,https://admin.dentalcare.com",
+    "APP_BASE_URL": "https://dentalcare.com",
+    "ADMIN_BASE_URL": "https://admin.dentalcare.com",
+    "S3_REGION": "auto",
+    "S3_FORCE_PATH_STYLE": "1"
+  }
+}
