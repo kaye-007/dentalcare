@@ -1,13 +1,13 @@
 # Security Audit
 
 Audit of the DentalCare API and SPAs, with the remediation applied on the
-`production-hardening` branch. Findings are carried forward from
-[`MASTER_REMEDIATION_PLAN.md`](MASTER_REMEDIATION_PLAN.md); this document
+`production-hardening` branch. Findings were carried forward from a
+remediation plan that has since been deleted from the repository; this document
 records what was fixed, how it was verified, and what remains.
 
-**Scope:** this repository snapshot. See the note at the end of
-[`CLEANUP_REPORT.md`](CLEANUP_REPORT.md) regarding a divergent copy of the
-project.
+**Scope:** this repository snapshot, which diverges from another copy of the
+project. The cleanup report that described the divergence was deleted in the
+2026-08 documentation sweep.
 
 ---
 
@@ -146,8 +146,8 @@ Checked explicitly so they are not "fixed" into breakage later.
 
 ## Outstanding
 
-Not addressed here. Rationale and estimates in
-[`MASTER_REMEDIATION_PLAN.md`](MASTER_REMEDIATION_PLAN.md).
+Not addressed here. The remediation plan that carried the rationale and the
+estimates has been deleted from the repository.
 
 | Severity | Issue | Note |
 |---|---|---|

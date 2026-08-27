@@ -9,8 +9,13 @@ Describes the system as built.
 > [`DEPLOYMENT.md`](DEPLOYMENT.md). Structure is catalogued in
 > [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md).
 >
-> This repository is a snapshot that diverges from another copy of the
-> project — see the note at the end of [`CLEANUP_REPORT.md`](CLEANUP_REPORT.md).
+> Section 7 is doubly stale: the platform is Cloudflare now, not Vercel, and
+> the Vercel manifests have been deleted. See [`DEPLOYMENT.md`](DEPLOYMENT.md).
+>
+> This repository is a snapshot that diverges from another copy of the project.
+> The cleanup report that recorded the divergence in detail was deleted in the
+> 2026-08 documentation sweep, and the divergence has not been re-verified
+> since — treat it as an open question, not a settled one.
 
 ---
 

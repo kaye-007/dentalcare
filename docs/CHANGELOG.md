@@ -5,6 +5,47 @@ All notable changes to this project. Format follows
 
 ## [Unreleased] — production-hardening branch
 
+### Cloudflare migration — 2026-08-27
+
+The API runs on Cloudflare Workers; both SPAs are static-asset Workers. The
+container path is retained and still works — `RUNTIME` defaults to `node`.
+
+- **Reminder scheduler → Cron Trigger.** `ReminderSchedulerService` stands down
+  when `RUNTIME=workers`; the hourly trigger in `apps/api/wrangler.jsonc` calls
+  `tick()` through the `scheduled` handler. The scan was already idempotent
+  behind `reminders_auto_unique`, so no logic changed. **This removes the
+  single-replica constraint** recorded under Known limitations below.
+- **`DatabaseService` is runtime-aware.** Resident pools on Node; on Workers
+  each operation borrows one connection from Hyperdrive and closes it, because
+  a Worker may not reuse a socket opened during another request. Callers still
+  receive a `PoolClient`, so no service changed.
+- **Two Hyperdrive bindings, not one.** `HYPERDRIVE_APP` connects as `app_user`
+  with RLS enforced, `HYPERDRIVE_ADMIN` privileged for the platform plane. Both
+  must be created with `--caching-disabled`: Hyperdrive keys its cache on query
+  text, not on the transaction that set `app.current_tenant_id`.
+- **Object storage rewritten over `aws4fetch`.** `@aws-sdk/client-s3` and the
+  presigner left no room for NestJS under the 3 MiB compressed Worker cap. Same
+  private-bucket, pre-signed-URL contract; identical on both runtimes.
+- **`/api/*` stays same-origin.** Each SPA Worker forwards it to the API over a
+  service binding. Not an optimisation: the API resolves the clinic from the
+  `Host` subdomain and the `X-Tenant-Subdomain` override is hard-disabled in
+  production, so a cross-origin call would resolve no clinic at all.
+- **pino is Node-only.** Its browser build — which a Workers bundler resolves —
+  exports no `symbols`, which `pino-http` reads at module scope. `WorkersLogger`
+  routes Nest's logger at `console` and a middleware keeps `x-request-id`.
+- **Security:** the reminder log channel no longer writes the patient's name,
+  phone number, clinic or treatment reason to the application log. It did so at
+  INFO on every scan; on Cloudflare that log leaves the database's trust
+  boundary. The message already lives on the reminder row under RLS.
+- Removed `render.yaml` and both `vercel.json`. Dropped `ts-node`. Added
+  workspace-wide `build`, `test` and `typecheck` scripts, which did not exist.
+
+Verified on the real workerd runtime against PostgreSQL 16, not only at build
+time: health, login (tenant resolved from the Host subdomain), an RLS-scoped
+patient read, and one cron sweep that delivered two due reminders. Worker
+bundle 2477 KiB raw / 708 KiB gzipped.
+
+
 ### Cleanup pass
 
 Repository hygiene and removal of all demo/fixture tooling. **No feature was
@@ -113,8 +154,10 @@ was added or removed; no business logic changed.**
 
 No npm dependency was removed: all four apparently-unused packages
 (`reflect-metadata`, `rxjs`, `pino-http`, `react-dom`) are required via
-side-effect imports, subpath imports, or peer dependencies. See
-[`REMOVED_DEPENDENCIES.md`](REMOVED_DEPENDENCIES.md).
+side-effect imports, subpath imports, or peer dependencies. (The companion
+`REMOVED_DEPENDENCIES.md` was itself deleted in the 2026-08 documentation
+sweep; the finding is recorded here instead. The 2026-08-27 pass below did
+remove `ts-node`, and replaced the AWS SDK with `aws4fetch`.)
 
 ### Documentation
 
@@ -122,11 +165,19 @@ side-effect imports, subpath imports, or peer dependencies. See
 `CLEANUP_REPORT.md`, `REMOVED_FILES.md`, `REMOVED_DEPENDENCIES.md`,
 `DEPLOYMENT.md`, `MASTER_REMEDIATION_PLAN.md`.
 
+Four of those are gone: `CLEANUP_REPORT.md`, `REMOVED_FILES.md`,
+`REMOVED_DEPENDENCIES.md` and `MASTER_REMEDIATION_PLAN.md` were deleted in the
+2026-08 documentation sweep. The list is left as written because this entry
+records what shipped at the time, not what is on disk today.
+
 ### Known limitations
 
-- **The API must run at exactly one replica.** The reminder scheduler has no
-  distributed lock. Extracting it to a single-replica worker is the highest
-  -leverage remaining change. `render.yaml` pins `numInstances: 1`.
+- ~~**The API must run at exactly one replica.**~~ Superseded by the Cloudflare
+  migration above: the scheduler no longer runs in-process, so Worker
+  concurrency is unbounded from this application's point of view. The
+  constraint still holds for the container fallback, where the scheduler is
+  back in-process and has no distributed lock. (`render.yaml`, which pinned
+  `numInstances: 1`, has been deleted.)
 - No refresh-token rotation or revocation; logout is client-side only.
 - One `JWT_SECRET` shared across both planes.
 - No CI pipeline. Tests exist but nothing runs them automatically.
