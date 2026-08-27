@@ -52,10 +52,11 @@ Repository hygiene and removal of all demo/fixture tooling. **No feature was
 added or removed; no business logic or database schema changed.** Full test
 suite and all three builds verified green afterwards.
 
-- **Removed `apps/api/scripts/` entirely** — `seed-demo.js`, `reset-demo.js`,
-  `bootstrap-admin.js`, `lib/guard.js` and their specs. The repository now
-  ships no fixture data and no credentials. The first platform administrator
-  is created by hand; see DEPLOYMENT.md.
+- ~~**Removed `apps/api/scripts/` entirely**~~ — **this did not happen.** The
+  entry was written but the deletion never landed: `seed-demo.js`,
+  `reset-demo.js`, `bootstrap-admin.js` and `lib/guard.js` are all still in
+  the tree and still wired to npm scripts. What protects production is the
+  guard in `scripts/lib/guard.js`, not their absence. See SECURITY_AUDIT.md.
 - Dropped the `seed`, `reset-demo` and `bootstrap-admin` npm scripts from
   both the root and API manifests.
 - **Removed the hardcoded demo-credential hints** from both login pages and

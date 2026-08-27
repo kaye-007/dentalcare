@@ -45,16 +45,30 @@ repo — and report "Seed complete."
 `NODE_ENV=production`, when the host or database name contains `prod`, or
 against any non-local host without `ALLOW_REMOTE_SEED=yes`.
 
-**Now eliminated at the root.** The cleanup pass deleted `apps/api/scripts/`
-entirely — `seed-demo.js`, `reset-demo.js`, `bootstrap-admin.js` and the
-shared guard. No script in this repository writes credentials, and no
-credential appears anywhere in the tree. The first platform administrator is
-created by hand; see
-[DEPLOYMENT.md § First platform administrator](DEPLOYMENT.md#first-platform-administrator).
-This finding is closed by removal rather than by control.
+**Closed by control, not by removal.** An earlier revision of this document
+claimed `apps/api/scripts/` had been deleted entirely. It had not been, and
+saying so was worse than saying nothing: a reader would conclude the seed
+tooling could not run against production because it no longer existed.
 
-**Verified.** 9 tests in `seed.spec.ts` covering every refusal path and the
-override; manually exercised all four cases against the CLI.
+What is actually true: `seed-demo.js`, `reset-demo.js`, `migrate-reset.js`,
+`bootstrap-admin.js` and `lib/guard.js` are all present. Every script that
+writes credentials or destroys data calls `assertNotProduction()` from
+`scripts/lib/guard.js` first, which refuses when
+
+- `NODE_ENV=production`, or
+- the host or database name matches `/prod/i`, or
+- the host is not loopback and the override variable is unset.
+
+`bootstrap-admin.js` is the deliberate exception and is allowed to run against
+production. It writes only the one account passed to it, demands a password of
+at least 12 characters, and refuses to overwrite an existing account without
+`FORCE_RESET=yes`. It is how the first superadmin is created on a live
+deployment — see
+[DEPLOYMENT.md § First platform administrator](DEPLOYMENT.md#first-platform-administrator).
+
+**Verified.** 11 tests in `scripts/lib/guard.spec.ts` covering every refusal
+path and the override. (The earlier claim of "9 tests in `seed.spec.ts`" named
+a file that does not exist.)
 
 ### HIGH — Archived tenants retained full access
 `tenant.middleware.ts`, `auth.service.ts`
