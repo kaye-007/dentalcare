@@ -30,7 +30,24 @@ The third obstacle was size. A Worker bundle is capped at 3 MiB compressed on
 the free plan and `@aws-sdk/client-s3` alone did not leave room for NestJS, so
 object storage was rewritten over `aws4fetch` — a few kilobytes, WebCrypto
 SigV4, identical on both runtimes. **The API Worker currently bundles to
-2.6 MiB raw / 747 KiB gzipped.**
+2477 KiB raw / 708 KiB gzipped.**
+
+### Five things that only showed up by running it
+
+Bundling successfully proves nothing. Every one of these compiled, passed
+`wrangler deploy --dry-run`, and then threw on the first request:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Cannot read properties of undefined (reading 'stringifySym')` | wrangler's bundler honours npm `browser` fields; pino's browser build exports no `symbols`, which pino-http reads at module scope | pino runs on Node only; `worker/stubs/pino-logger.js` stands in |
+| `require_streams(...) is not a function` | same cause — `iconv-lite` maps `./lib/streams` to `false` for browsers, and body-parser pulls it in, so **every request with a body** died | pre-bundle with `platform: 'node'`, where browser fields are not consulted |
+| `Code generation from strings disallowed` | Express 4's `depd` builds deprecation wrappers with `new Function`, which Workers forbid | `worker/stubs/depd.js` — it only suppressed warnings anyway |
+| `Class extends value #<Object> is not a constructor` | pinning esbuild `mainFields` to `module,main` picked pg's ESM wrapper, whose re-export leaves `Pool` a plain object | don't override `mainFields`; `platform: 'node'` is enough |
+| `CloudflareSocket is not a constructor` | `pg-cloudflare` exports its real socket only under the `workerd` export condition | add `conditions: ['workerd']` to the pre-bundle |
+
+The first four are open wrangler bug [workers-sdk#9309](https://github.com/cloudflare/workers-sdk/issues/9309)
+and the platform's eval ban. None is exotic; all of them are the first request
+in production if nobody runs the thing first.
 
 ---
 
@@ -142,12 +159,24 @@ npm run cf:dry-run    # bundles all three, uploads nothing
 npm run cf:deploy     # api → tenant-web → admin-web
 ```
 
-`cf:deploy` on the API runs `nest build` first: NestJS needs
-`emitDecoratorMetadata`, which esbuild cannot produce, so tsc compiles the
-application into `dist/` and the Worker entry at `apps/api/worker/index.ts`
-wraps that. `apps/api/worker/stubs/nest-optional.js` stands in for
-`@nestjs/websockets` and `@nestjs/microservices`, which Nest requires
-optionally and this application does not use.
+`cf:deploy` on the API runs `npm run build:worker` first, which is three
+steps, and each one exists for a reason:
+
+1. **`nest build`** — tsc compiles the application to `dist/`. NestJS needs
+   `emitDecoratorMetadata` for constructor injection and esbuild cannot emit
+   it, so the application can never be compiled by a bundler alone.
+2. **`scripts/build-worker.mjs`** — esbuild flattens `dist/` and its
+   dependencies into one CommonJS file with `platform: 'node'` resolution.
+   That is what keeps npm `browser` fields out of the picture. Read the header
+   of that file before changing any option in it.
+3. **`wrangler deploy`** — wrangler bundles `worker/index.ts` around that
+   single file, which leaves it nothing to resolve but node builtins — the
+   part it does well.
+
+`worker/stubs/` holds three small stand-ins: `nest-optional.js` for
+`@nestjs/websockets` and `@nestjs/microservices` (Nest requires both
+optionally and guards every use), `pino-logger.js`, and `depd.js`. Each carries
+its own explanation.
 
 ### Domains and routing
 
@@ -176,7 +205,7 @@ redirect URI, so `GOOGLE_CALLBACK_URL` needs a stable public host.
 by hand to test:
 
 ```bash
-curl "http://localhost:8787/__scheduled?cron=0+*+*+*+*"   # under `wrangler dev`
+curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=0+*+*+*+*"
 ```
 
 Clinics choose their own lead time (`clinic_settings.reminder_hours_before`),
@@ -193,15 +222,34 @@ npm run cf:dev -w @dentalcare/api   # the real Workers runtime, via wrangler dev
 ```
 
 `wrangler dev` uses the `localConnectionString` on each Hyperdrive binding, so
-it talks to the same local Postgres without touching Supabase.
+it talks to the same local Postgres without touching Supabase. Put secrets in
+`apps/api/.dev.vars` (git-ignored) — at minimum `JWT_SECRET`.
+
+Fire the cron by hand:
+
+```bash
+curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=0+*+*+*+*"
+```
+
+One caveat worth knowing before you chase a phantom bug: `wrangler dev`
+presents every request as arriving at the **first route in
+`wrangler.jsonc`**, regardless of the `Host` header you send. With the API's
+route set to `api.dentalcare.com`, tenant resolution therefore reads `api` as
+the clinic and answers `404 Clinic not found`. Point the route at a clinic
+host for that test.
 
 ## Health, logging, observability
 
 - `GET /api/health` — reports DB reachability.
-- Logs are JSON (pino) with `x-request-id` correlation; `authorization` and
-  `cookie` headers are redacted. On Workers pino writes through `console`,
-  which is what Workers Logs reads; `observability` is enabled in
-  `wrangler.jsonc` at full sampling.
+- On the container, logs are JSON (pino) with `x-request-id` correlation and
+  `authorization` / `cookie` redacted.
+- On Workers, pino is not loaded at all (see the table above). `WorkersLogger`
+  in `src/bootstrap.ts` routes Nest's logger at `console`, which is what
+  Workers Logs reads, and a small middleware preserves the `x-request-id`
+  contract that pino-http used to provide. `observability` is enabled in
+  `wrangler.jsonc` at full sampling. Note that `wrangler dev`'s local log
+  viewer records request events rather than console output — confirm log lines
+  are arriving from the dashboard after the first deploy.
 - **No patient data is written to the log.** The reminder log channel records
   the message on the reminder row, under RLS, and nothing about the patient in
   the application log — on Cloudflare that log leaves the database's trust

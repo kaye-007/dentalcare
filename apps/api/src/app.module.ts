@@ -90,31 +90,38 @@ const IS_WORKERS = process.env.RUNTIME === 'workers';
 @Module({
   imports: [
     AppConfigModule,
-    LoggerModule.forRoot({
-      pinoHttp: {
-        level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-        // pino-pretty formats in a worker thread, which a Cloudflare Worker
-        // does not have. It was only ever a development convenience.
-        transport:
-          IS_WORKERS || process.env.NODE_ENV === 'production'
-            ? undefined
-            : { target: 'pino-pretty', options: { singleLine: true } },
-        // Given no stream, pino writes through sonic-boom to a file
-        // descriptor — a Worker has neither. Hand it console instead, which
-        // is exactly what Cloudflare's Workers Logs reads.
-        stream: IS_WORKERS
-          ? { write: (line: string) => console.log(line.trim()) }
-          : undefined,
-        genReqId: (req, res) => {
-          const incoming = req.headers['x-request-id'];
-          const id =
-            (Array.isArray(incoming) ? incoming[0] : incoming) || randomUUID();
-          res.setHeader('x-request-id', id);
-          return id;
-        },
-        redact: ['req.headers.authorization', 'req.headers.cookie'],
-      },
-    }),
+    // pino only on Node.
+    //
+    // A Workers bundler resolves pino to its browser build, which lacks the
+    // internals pino-http drives; the node build instead reaches for
+    // sonic-boom and thread-stream — file descriptors and worker threads,
+    // neither of which a Worker has. Rather than fight either one, the
+    // built-in Nest logger takes over there. It writes to console, which is
+    // exactly what Cloudflare's Workers Logs ingests, and configureApp()
+    // keeps the x-request-id correlation that pino-http provided here.
+    ...(IS_WORKERS
+      ? []
+      : [
+          LoggerModule.forRoot({
+            pinoHttp: {
+              level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+              transport:
+                process.env.NODE_ENV === 'production'
+                  ? undefined
+                  : { target: 'pino-pretty', options: { singleLine: true } },
+              genReqId: (req, res) => {
+                const incoming = req.headers['x-request-id'];
+                const id =
+                  (Array.isArray(incoming) ? incoming[0] : incoming) ||
+                  randomUUID();
+                res.setHeader('x-request-id', id);
+                return id;
+              },
+              redact: ['req.headers.authorization', 'req.headers.cookie'],
+            },
+          }),
+        ]),
+
     // Baseline ceiling for every route. Login routes narrow this further with
     // their own @Throttle — see AuthController / PlatformAuthController.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),

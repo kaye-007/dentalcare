@@ -9,6 +9,7 @@ coverage/
 
 # ── tool caches ───────────────────────────────────────────
 .wrangler/
+.worker-build/
 node_modules/.vite/
 node_modules/.tmp/
 .vite/

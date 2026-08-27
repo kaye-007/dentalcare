@@ -226,7 +226,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.query('SELECT 1');
       return true;
-    } catch {
+    } catch (e) {
+      // A health check that says "down" without saying why costs an hour of
+      // someone's evening. Say why.
+      this.logger.error(
+        `health ping failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
       return false;
     }
   }

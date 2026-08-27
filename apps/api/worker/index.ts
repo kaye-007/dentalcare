@@ -6,9 +6,10 @@
  * NestJS depends on `emitDecoratorMetadata` for constructor injection, and
  * esbuild — which is what bundles a Worker — cannot emit it. So the Nest
  * application is compiled ahead of time by tsc (`nest build`, CommonJS, with
- * the metadata intact) and this small ESM entry imports the compiled output
- * from ../dist. Everything under src/ stays runtime-agnostic; only this file
- * knows it is on Cloudflare.
+ * the metadata intact), flattened by scripts/build-worker.mjs, and imported
+ * here as `dentalcare-app-bundle` (wrangler aliases that name at the built
+ * file). Everything under src/ stays runtime-agnostic; only this file knows it
+ * is on Cloudflare.
  *
  * ── Why the app boots lazily ──────────────────────────────────────────────
  *
@@ -22,7 +23,6 @@
 import { env } from 'cloudflare:workers';
 import { httpServerHandler } from 'cloudflare:node';
 import { createServer } from 'node:http';
-import type { INestApplication } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 
 /**
@@ -64,17 +64,14 @@ function boot(): Promise<NestExpressApplication> {
     // Imported dynamically, after the environment above is in place: the
     // OAuth module reads process.env while its @Module decorator evaluates,
     // which happens at import time.
-    const [{ NestFactory }, appModule, bootstrapModule] = await Promise.all([
-      import('@nestjs/core'),
-      import('../dist/app.module.js'),
-      import('../dist/bootstrap.js'),
-    ]);
-
-    const app = await NestFactory.create<NestExpressApplication>(
-      appModule.AppModule,
-      { bufferLogs: true },
+    const { NestFactory, AppModule, configureApp } = await import(
+      'dentalcare-app-bundle'
     );
-    bootstrapModule.configureApp(app, { shutdownHooks: false });
+
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+      bufferLogs: true,
+    });
+    configureApp(app, { shutdownHooks: false });
     await app.init();
     return app;
   })();
@@ -130,9 +127,9 @@ export default {
     ctx: { waitUntil(p: Promise<unknown>): void },
   ): Promise<void> {
     const run = (async () => {
-      const app: INestApplication = await boot();
-      const reminders = await import('../dist/tenant/reminders/reminders.module.js');
-      await app.get(reminders.ReminderSchedulerService).tick();
+      const app = await boot();
+      const { ReminderSchedulerService } = await import('dentalcare-app-bundle');
+      await app.get(ReminderSchedulerService).tick();
     })();
     ctx.waitUntil(run);
     await run;

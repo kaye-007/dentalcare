@@ -1,6 +1,8 @@
-import { ValidationPipe } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { LoggerService, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
@@ -27,6 +29,44 @@ export function corsOrigins(raw: string | undefined) {
 }
 
 /**
+ * Nest's own ConsoleLogger writes through process.stdout, and on Workers that
+ * goes nowhere — the boot-time RLS warning and every service log line
+ * disappeared silently. Workers Logs reads console, so this routes there.
+ *
+ * Deliberately minimal: one line per record, level and context up front, so
+ * the output stays greppable in the dashboard.
+ */
+export class WorkersLogger implements LoggerService {
+  private write(
+    level: string,
+    message: unknown,
+    params: unknown[],
+    to: (...a: unknown[]) => void,
+  ): void {
+    const context = params.length && typeof params[params.length - 1] === 'string'
+      ? String(params.pop())
+      : undefined;
+    to(`[${level}]${context ? ` [${context}]` : ''} ${String(message)}`, ...params);
+  }
+
+  log(message: unknown, ...params: unknown[]): void {
+    this.write('LOG', message, params, console.log);
+  }
+  error(message: unknown, ...params: unknown[]): void {
+    this.write('ERROR', message, params, console.error);
+  }
+  warn(message: unknown, ...params: unknown[]): void {
+    this.write('WARN', message, params, console.warn);
+  }
+  debug(message: unknown, ...params: unknown[]): void {
+    this.write('DEBUG', message, params, console.log);
+  }
+  verbose(message: unknown, ...params: unknown[]): void {
+    this.write('VERBOSE', message, params, console.log);
+  }
+}
+
+/**
  * Everything the HTTP surface needs, applied identically on both runtimes.
  *
  * This used to live inline in main.ts. It was lifted out when the Cloudflare
@@ -43,8 +83,23 @@ export function configureApp(
   app: NestExpressApplication,
   opts: { shutdownHooks: boolean },
 ): void {
-  // Use pino as the framework logger.
-  app.useLogger(app.get(Logger));
+  // pino is registered on Node only (see AppModule). On Workers the built-in
+  // Nest logger already writes to console, and this middleware keeps the
+  // x-request-id contract pino-http used to provide — without it a client
+  // reporting "request 8f2c… failed" would have nothing to match against.
+  if (process.env.RUNTIME === 'workers') {
+    app.useLogger(new WorkersLogger());
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      const incoming = req.headers['x-request-id'];
+      const id =
+        (Array.isArray(incoming) ? incoming[0] : incoming) || randomUUID();
+      req.headers['x-request-id'] = id;
+      res.setHeader('x-request-id', id);
+      next();
+    });
+  } else {
+    app.useLogger(app.get(Logger));
+  }
 
   // Behind a reverse proxy (Cloudflare/Render/nginx) the socket address is the
   // proxy's. Without this, per-IP rate limiting buckets every request together.

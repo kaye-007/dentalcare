@@ -2,25 +2,20 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "dentalcare-api",
 
-  // The Nest application is compiled by `nest build` into ./dist first; this
-  // entry is the thin ESM shim that wraps it. See worker/index.ts for why the
-  // two steps cannot be collapsed into one.
+  // Two-stage build; scripts/build-worker.mjs explains why. tsc compiles the
+  // Nest application (it needs emitDecoratorMetadata, which esbuild cannot
+  // emit), esbuild flattens it into .worker-build/app.cjs with node resolution
+  // semantics, and wrangler bundles this entry around it.
   "main": "worker/index.ts",
+
+  "minify": true,
+  "alias": { "dentalcare-app-bundle": "./.worker-build/app.cjs" },
 
   // Anything after 2025-08-15 turns on node:http / node:https server support,
   // which is what lets Express — and therefore Nest — run here at all.
   "compatibility_date": "2026-08-04",
   "compatibility_flags": ["nodejs_compat"],
 
-  "minify": true,
-
-  // See worker/stubs/nest-optional.js — these are Nest's optional peers, never
-  // installed here, and esbuild will not build with an unresolved require.
-  "alias": {
-    "@nestjs/websockets/socket-module": "./worker/stubs/nest-optional.js",
-    "@nestjs/microservices/microservices-module": "./worker/stubs/nest-optional.js",
-    "@nestjs/microservices": "./worker/stubs/nest-optional.js"
-  },
 
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "placement": { "mode": "smart" },
@@ -52,12 +47,12 @@
     {
       "binding": "HYPERDRIVE_APP",
       "id": "REPLACE_WITH_HYPERDRIVE_APP_ID",
-      "localConnectionString": "postgres://app_user:app_user_dev_pw@localhost:5432/dentalcare"
+      "localConnectionString": "postgres://app_user:app_user_dev_pw@127.0.0.1:5432/dentalcare"
     },
     {
       "binding": "HYPERDRIVE_ADMIN",
       "id": "REPLACE_WITH_HYPERDRIVE_ADMIN_ID",
-      "localConnectionString": "postgres://dentalcare:dentalcare@localhost:5432/dentalcare"
+      "localConnectionString": "postgres://dentalcare:dentalcare@127.0.0.1:5432/dentalcare"
     }
   ],
 

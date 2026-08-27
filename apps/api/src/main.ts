@@ -1,8 +1,8 @@
 import 'reflect-metadata';
+import { Logger as NestLogger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
-import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { configureApp } from './bootstrap';
 
@@ -24,7 +24,7 @@ async function bootstrap(): Promise<void> {
   const port = config.get<number>('PORT') ?? 3000;
   await app.listen(port, '0.0.0.0');
 
-  app.get(Logger).log(`DentalCare API listening on :${port}`, 'Bootstrap');
+  new NestLogger('Bootstrap').log(`DentalCare API listening on :${port}`);
 }
 
 void bootstrap();
