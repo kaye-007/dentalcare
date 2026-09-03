@@ -14,11 +14,15 @@
 // The guard is plain JS invoked by node scripts, so it is required rather than
 // imported; there is no .d.ts and none is warranted for 40 lines.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { assertNotProduction, LOCAL_HOSTS } = require('./guard') as {
+const { assertNotProduction, assertSchemaCurrent, LOCAL_HOSTS } = require('./guard') as {
   assertNotProduction: (
     url: string,
     opts?: { overrideVar?: string; action?: string },
   ) => { host: string; dbName: string };
+  assertSchemaCurrent: (
+    client: { query: (sql: string) => Promise<{ rows: { name: string }[] }> },
+    migrationsDir?: string,
+  ) => Promise<void>;
   LOCAL_HOSTS: string[];
 };
 
@@ -133,5 +137,61 @@ describe('assertNotProduction', () => {
     expect(() =>
       assertNotProduction('postgres://u:p@127.0.0.1:5433/dentalcare'),
     ).not.toThrow();
+  });
+});
+
+/**
+ * A stale database is the failure mode that wastes the most time, because it
+ * surfaces as whichever column the first missing migration would have added.
+ * "column \"position\" of relation \"users\" does not exist" is four steps
+ * removed from "your database stopped at 0010".
+ */
+describe('assertSchemaCurrent', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('fs') as typeof import('fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('os') as typeof import('os');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('path') as typeof import('path');
+
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrations-'));
+    for (const name of ['0001_init.js', '0002_users.js', '0003_isolation.js']) {
+      fs.writeFileSync(path.join(dir, name), '');
+    }
+    fs.writeFileSync(path.join(dir, 'README.md'), 'not a migration');
+  });
+
+  const clientWith = (names: string[]) => ({
+    query: async () => ({ rows: names.map((name) => ({ name })) }),
+  });
+
+  it('passes when every migration on disk has been applied', async () => {
+    await expect(
+      assertSchemaCurrent(clientWith(['0001_init', '0002_users', '0003_isolation']), dir),
+    ).resolves.toBeUndefined();
+  });
+
+  it('names the first missing migration and the count', async () => {
+    await expect(
+      assertSchemaCurrent(clientWith(['0001_init']), dir),
+    ).rejects.toThrow(/2 migration\(s\) behind[\s\S]*0002_users/);
+  });
+
+  it('tells you to run dev:setup when the database has no schema at all', async () => {
+    const empty = {
+      query: async () => {
+        throw new Error('relation "pgmigrations" does not exist');
+      },
+    };
+    await expect(assertSchemaCurrent(empty, dir)).rejects.toThrow(/never been migrated/);
+  });
+
+  it('ignores files in the migrations directory that are not migrations', async () => {
+    await expect(
+      assertSchemaCurrent(clientWith(['0001_init', '0002_users', '0003_isolation']), dir),
+    ).resolves.toBeUndefined();
   });
 });

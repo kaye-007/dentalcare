@@ -15,7 +15,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
-const { assertNotProduction } = require('./lib/guard');
+const { assertNotProduction, assertSchemaCurrent } = require('./lib/guard');
 
 const BCRYPT_ROUNDS = 10;
 
@@ -177,6 +177,7 @@ async function main() {
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const client = await pool.connect();
+  await assertSchemaCurrent(client);
   const hash = await bcrypt.hash(DEMO_PASSWORD, BCRYPT_ROUNDS);
 
   try {
