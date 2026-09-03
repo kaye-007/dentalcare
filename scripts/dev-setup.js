@@ -27,7 +27,10 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { Client } = require('pg');
 
 const RESET = process.argv.includes('--reset');
-const SKIP_SEED = process.argv.includes('--no-seed');
+// Demo data is opt-in. A clean database with the schema, the app role and
+// your own administrator is the normal case; the Vienna demo clinic is a
+// fixture for exercising the UI, not something to hand a real deployment.
+const WITH_DEMO = process.argv.includes('--with-demo');
 
 const ok = (m) => console.log(`  \x1b[32mok\x1b[0m    ${m}`);
 const info = (m) => console.log(`  ..    ${m}`);
@@ -150,7 +153,7 @@ async function main() {
   await admin.end();
 
   /* ── 6. demo data ───────────────────────────────────────────────────── */
-  if (!SKIP_SEED) {
+  if (WITH_DEMO) {
     step('6. demo data');
     try {
       execSync('npm run seed -w @dentalcare/api', { cwd: path.resolve(__dirname, '..'), stdio: 'inherit' });
@@ -170,9 +173,19 @@ async function main() {
   // asking for a column the function has never returned.
   const wantSubdomain = process.env.DEV_TENANT_SUBDOMAIN || 'demo';
   const tenant = await app.query('SELECT id, status FROM resolve_tenant($1)', [wantSubdomain]);
+
+  // No clinic yet is the normal state of a fresh database -- you create the
+  // first one from the admin console. Only the RLS check below is mandatory.
   if (tenant.rowCount === 0) {
-    die(`no clinic with subdomain "${wantSubdomain}". ` +
-        'Run without --no-seed, or check DEV_TENANT_SUBDOMAIN in .env.');
+    ok('app role connects; no clinic exists yet');
+    const rls0 = await app.query('SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user');
+    if (rls0.rows[0].rolsuper || rls0.rows[0].rolbypassrls) {
+      warn('the app role can bypass RLS — tenant isolation is NOT enforced.');
+    } else {
+      ok('RLS is enforced for the app role');
+    }
+    await app.end();
+    return ready(false);
   }
   ok(`resolve_tenant('${wantSubdomain}') -> ${tenant.rows[0].status}`);
 
@@ -201,18 +214,41 @@ async function main() {
   }
   await app.end();
 
+  ready(WITH_DEMO);
+}
+
+/** What to do next, which differs depending on whether there is any data. */
+function ready(seeded) {
   step('ready');
+  if (seeded) {
+    console.log(`
+  Three terminals, all from the repo root:
+
+    npm run api:dev      ->  API      http://localhost:3000
+    npm run web:dev      ->  clinic   http://localhost:5173
+    npm run admin:dev    ->  console  http://localhost:5174
+
+  Demo clinic  ->  demo@dentx.app / Demo@2026!
+  Demo console ->  admin@dentx.app / Demo@2026!
+`);
+    return;
+  }
   console.log(`
-  Two terminals, both left open, both from the repo root:
+  The database has your schema and the app role, and no data. Next:
 
-    npm run api:dev      ->  API on http://localhost:3000
-    npm run web:dev      ->  app on http://localhost:5173
+    npm run admin:create     create your own platform administrator
 
-  Sign in at http://localhost:5173
-    email     demo@dentx.app
-    password  Demo@2026!
+  Then, from the repo root:
 
-  Then: Patients -> Anna Bauer -> Chart
+    npm run api:dev      ->  API      http://localhost:3000
+    npm run admin:dev    ->  console  http://localhost:5174
+    npm run web:dev      ->  clinic   http://localhost:5173
+
+  Sign in to the console with the account you just made, create your first
+  clinic there, then set DEV_TENANT_SUBDOMAIN in .env to its subdomain so
+  localhost:5173 knows which clinic it is.
+
+  Demo data, if you ever want it:  npm run dev:setup -- --with-demo
 `);
 }
 
