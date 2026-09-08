@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * One command that answers "why can't I log in?".
  *
@@ -23,9 +22,14 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { Client } = require('pg');
 const { assertSchemaCurrent } = require('../apps/api/scripts/lib/guard');
 
-const G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', D = '\x1b[2m', B = '\x1b[1m', X = '\x1b[0m';
-const ok   = (m) => console.log(`  ${G}ok${X}    ${m}`);
-const bad  = (m) => console.log(`  ${R}FAIL${X}  ${m}`);
+const G = '\x1b[32m',
+  R = '\x1b[31m',
+  Y = '\x1b[33m',
+  D = '\x1b[2m',
+  B = '\x1b[1m',
+  X = '\x1b[0m';
+const ok = (m) => console.log(`  ${G}ok${X}    ${m}`);
+const bad = (m) => console.log(`  ${R}FAIL${X}  ${m}`);
 const warn = (m) => console.log(`  ${Y}warn${X}  ${m}`);
 const info = (m) => console.log(`  ${D}..${X}    ${m}`);
 const head = (m) => console.log(`\n${B}${m}${X}`);
@@ -86,22 +90,33 @@ async function main() {
   if (!process.env.PLATFORM_JWT_SECRET) {
     if (process.env.NODE_ENV === 'production') {
       bad('PLATFORM_JWT_SECRET is not set — the API will refuse to start in production');
-      problem('PLATFORM_JWT_SECRET missing', 'add PLATFORM_JWT_SECRET to .env (32+ characters, different from JWT_SECRET)');
+      problem(
+        'PLATFORM_JWT_SECRET missing',
+        'add PLATFORM_JWT_SECRET to .env (32+ characters, different from JWT_SECRET)',
+      );
     } else {
-      ok('PLATFORM_JWT_SECRET unset — console falls back to JWT_SECRET (development only)');
+      ok(
+        'PLATFORM_JWT_SECRET unset — console falls back to JWT_SECRET (development only)',
+      );
     }
   } else if (process.env.PLATFORM_JWT_SECRET === process.env.JWT_SECRET) {
     bad('PLATFORM_JWT_SECRET is the same value as JWT_SECRET — that is not a split');
     problem('platform secret not separated', 'generate a different PLATFORM_JWT_SECRET');
   } else {
-    ok(`PLATFORM_JWT_SECRET present (${process.env.PLATFORM_JWT_SECRET.length} characters)`);
+    ok(
+      `PLATFORM_JWT_SECRET present (${process.env.PLATFORM_JWT_SECRET.length} characters)`,
+    );
   }
 
   if (!process.env.DEV_TENANT_SUBDOMAIN || process.env.ALLOW_TENANT_HEADER !== '1') {
     warn('DEV_TENANT_SUBDOMAIN / ALLOW_TENANT_HEADER=1 not both set.');
-    warn('localhost has no subdomain, so the clinic app cannot resolve a clinic without them.');
-    problem('clinic app cannot resolve a tenant on localhost',
-      'set DEV_TENANT_SUBDOMAIN and ALLOW_TENANT_HEADER=1 in .env');
+    warn(
+      'localhost has no subdomain, so the clinic app cannot resolve a clinic without them.',
+    );
+    problem(
+      'clinic app cannot resolve a tenant on localhost',
+      'set DEV_TENANT_SUBDOMAIN and ALLOW_TENANT_HEADER=1 in .env',
+    );
   } else {
     ok(`clinic on localhost resolves to "${process.env.DEV_TENANT_SUBDOMAIN}"`);
   }
@@ -121,7 +136,10 @@ async function main() {
     ok('schema is up to date with the migrations on disk');
   } catch (e) {
     bad(e.message.split('\n')[0]);
-    e.message.split('\n').slice(1).forEach((l) => info(l.trim()));
+    e.message
+      .split('\n')
+      .slice(1)
+      .forEach((l) => info(l.trim()));
     problem('schema behind', 'npm run dev:setup:reset');
     await admin.end();
     return report();
@@ -133,8 +151,10 @@ async function main() {
   if (appUrl) {
     const app = await tryConnect(appUrl, 'cannot connect as app_user');
     if (!app) {
-      problem('app_user cannot connect',
-        'npm run dev:setup   (it converges the role password to match .env)');
+      problem(
+        'app_user cannot connect',
+        'npm run dev:setup   (it converges the role password to match .env)',
+      );
     } else {
       const { rows } = await app.query(
         'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user',
@@ -172,8 +192,12 @@ async function main() {
     } else {
       ok(`${admins.length} platform administrator(s):`);
       for (const a of admins) {
-        const flag = a.status !== 'active' ? `${R}${a.status}${X}`
-          : !a.has_password ? `${R}no password${X}` : `${G}active${X}`;
+        const flag =
+          a.status !== 'active'
+            ? `${R}${a.status}${X}`
+            : !a.has_password
+              ? `${R}no password${X}`
+              : `${G}active${X}`;
         console.log(`          ${a.email}  ${flag}`);
       }
       if (!admins.some((a) => a.status === 'active' && a.has_password)) {
@@ -202,8 +226,10 @@ async function main() {
       const dev = process.env.DEV_TENANT_SUBDOMAIN;
       if (dev && !rows.some((t) => t.subdomain === dev)) {
         bad(`DEV_TENANT_SUBDOMAIN is "${dev}" but no clinic has that subdomain`);
-        problem('localhost points at a clinic that does not exist',
-          `set DEV_TENANT_SUBDOMAIN to one of: ${rows.map((t) => t.subdomain).join(', ')}`);
+        problem(
+          'localhost points at a clinic that does not exist',
+          `set DEV_TENANT_SUBDOMAIN to one of: ${rows.map((t) => t.subdomain).join(', ')}`,
+        );
       }
     }
   } catch (e) {
@@ -240,7 +266,9 @@ function report() {
   console.log(`\n${B}${'─'.repeat(64)}${X}`);
   if (problems.length === 0) {
     console.log(`\n  ${G}Everything checks out.${X}`);
-    console.log(`  ${D}If login still fails, the error is in the API terminal, not the browser.${X}\n`);
+    console.log(
+      `  ${D}If login still fails, the error is in the API terminal, not the browser.${X}\n`,
+    );
     return;
   }
   console.log(`\n  ${R}${problems.length} problem(s), in the order to fix them:${X}\n`);

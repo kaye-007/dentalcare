@@ -1,0 +1,19 @@
+# One place both editors and tooling agree on. Prettier and ESLint read the
+# repo config; this covers everything else — SQL, YAML, the Dockerfile, and
+# whatever an editor opens before it has loaded a plugin.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+# Two trailing spaces is a line break in Markdown.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab

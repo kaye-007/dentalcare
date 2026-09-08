@@ -49,7 +49,11 @@ function sourceFiles(dir: string): string[] {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
       out.push(...sourceFiles(full));
-    } else if (entry.endsWith('.ts') && !entry.endsWith('.spec.ts') && !entry.endsWith('.d.ts')) {
+    } else if (
+      entry.endsWith('.ts') &&
+      !entry.endsWith('.spec.ts') &&
+      !entry.endsWith('.d.ts')
+    ) {
       out.push(full);
     }
   }
@@ -75,7 +79,6 @@ function discoverRoutes(): Route[] {
   const routes: Route[] = [];
 
   for (const file of sourceFiles(CLINIC_DIR)) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require(file) as Record<string, unknown>;
 
     for (const exported of Object.values(mod)) {
@@ -85,8 +88,7 @@ function discoverRoutes(): Route[] {
 
       const cls = exported as new (...args: never[]) => unknown;
       const classPerms = Reflect.getMetadata(PERMISSIONS_METADATA_KEY, cls) as
-        | Permission[]
-        | undefined;
+        Permission[] | undefined;
       const classGuards = guardNames(cls);
 
       for (const name of Object.getOwnPropertyNames(cls.prototype)) {
@@ -97,8 +99,7 @@ function discoverRoutes(): Route[] {
         if (Reflect.getMetadata(METHOD_METADATA, handler) === undefined) continue;
 
         const own = Reflect.getMetadata(PERMISSIONS_METADATA_KEY, handler) as
-          | Permission[]
-          | undefined;
+          Permission[] | undefined;
 
         routes.push({
           key: `${cls.name}.${name}`,
@@ -152,8 +153,7 @@ describe('tenant route permission coverage', () => {
       .filter((r) => !(r.key in ALLOWLIST))
       .filter(
         (r) =>
-          !r.guards.includes('PermissionsGuard') ||
-          !r.guards.includes('JwtAuthGuard'),
+          !r.guards.includes('PermissionsGuard') || !r.guards.includes('JwtAuthGuard'),
       )
       .map((r) => `${r.key} [guards: ${r.guards.join(', ') || 'none'}]`)
       .sort();

@@ -14,7 +14,7 @@ import * as path from 'node:path';
  *     have reformatted, so it must change one line and leave every comment,
  *     blank line and line ending exactly as it found them.
  */
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const { validateSubdomain, writeEnvVar } = require('./dev-setup.js');
 
 describe('validateSubdomain', () => {

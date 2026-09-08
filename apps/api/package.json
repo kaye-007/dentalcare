@@ -2,7 +2,7 @@
   "name": "@dentalcare/api",
   "version": "0.1.0",
   "private": true,
-  "description": "DentalCare API \u2014 modular monolith (NestJS)",
+  "description": "DentalCare API — modular monolith (NestJS)",
   "scripts": {
     "build": "nest build && tsc-alias -p tsconfig.json",
     "build:worker": "npm run build && node scripts/build-worker.mjs",
@@ -14,6 +14,7 @@
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "test": "jest",
+    "test:integration": "jest -c jest.integration.config.js",
     "test:watch": "jest --watch",
     "migrate:up": "node-pg-migrate up -m migrations --envPath ../../.env",
     "migrate:down": "node-pg-migrate down -m migrations --envPath ../../.env",

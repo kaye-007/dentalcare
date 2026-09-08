@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * What the `migrate` container does: bring an empty (or half-built) database
  * up to the schema on disk, optionally create the first platform
@@ -24,7 +23,11 @@ const { Client } = require('pg');
 
 const API_DIR = path.resolve(__dirname, '..');
 
-const G = '\x1b[32m', R = '\x1b[31m', D = '\x1b[2m', B = '\x1b[1m', X = '\x1b[0m';
+const G = '\x1b[32m',
+  R = '\x1b[31m',
+  D = '\x1b[2m',
+  B = '\x1b[1m',
+  X = '\x1b[0m';
 const ok = (m) => console.log(`  ${G}ok${X}    ${m}`);
 const info = (m) => console.log(`  ${D}..${X}    ${m}`);
 const step = (m) => console.log(`\n${B}${m}${X}`);
@@ -72,7 +75,12 @@ async function waitForPostgres(connectionString) {
  * .js — reports it as a missing "node-pg-migrate.js.js".
  */
 function nodePgMigrateBin() {
-  const relative = path.join('node_modules', 'node-pg-migrate', 'bin', 'node-pg-migrate.js');
+  const relative = path.join(
+    'node_modules',
+    'node-pg-migrate',
+    'bin',
+    'node-pg-migrate.js',
+  );
   const roots = [path.resolve(__dirname, '..', '..', '..'), API_DIR];
   for (const root of roots) {
     const candidate = path.join(root, relative);
@@ -106,8 +114,10 @@ async function main() {
   step('1. postgres');
   const url = new URL(databaseUrl);
   const attempts = await waitForPostgres(databaseUrl);
-  ok(`${url.hostname}:${url.port || 5432}/${url.pathname.slice(1)} reachable` +
-     (attempts > 1 ? ` (after ${attempts} attempts)` : ''));
+  ok(
+    `${url.hostname}:${url.port || 5432}/${url.pathname.slice(1)} reachable` +
+      (attempts > 1 ? ` (after ${attempts} attempts)` : ''),
+  );
 
   /* ── 2. migrations ───────────────────────────────────────────────────── */
   /* node-pg-migrate is a devDependency and is deliberately absent from the

@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Wipe ALL tenant and platform data. Schema is untouched.
  *
@@ -77,7 +76,9 @@ async function main() {
     : [...TENANT_TABLES, ...PLATFORM_TABLES];
 
   console.log(`\n  Resetting ${host}/${dbName}`);
-  console.log(`  Truncating ${tables.length} tables${alsoPlans ? ' (including plans)' : ''}\n`);
+  console.log(
+    `  Truncating ${tables.length} tables${alsoPlans ? ' (including plans)' : ''}\n`,
+  );
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const client = await pool.connect();

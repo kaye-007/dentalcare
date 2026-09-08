@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+.wrangler
+**/.wrangler
+apps/api/.worker-build
+package-lock.json
+*.min.*

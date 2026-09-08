@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * One command to take a local machine from nothing to a working demo.
  *
@@ -30,7 +29,14 @@ const bcrypt = require('bcryptjs');
 const { Client } = require('pg');
 
 /** Credentials that appear in this repository. Never acceptable as a real one. */
-const PUBLISHED_PASSWORDS = ['Demo@2026!', 'Admin123!', 'Owner123!', 'Reception123!', 'changeme', 'password'];
+const PUBLISHED_PASSWORDS = [
+  'Demo@2026!',
+  'Admin123!',
+  'Owner123!',
+  'Reception123!',
+  'changeme',
+  'password',
+];
 
 const RESET = process.argv.includes('--reset');
 // Demo data is opt-in. A clean database with the schema, the app role and
@@ -42,7 +48,10 @@ const ok = (m) => console.log(`  \x1b[32mok\x1b[0m    ${m}`);
 const info = (m) => console.log(`  ..    ${m}`);
 const warn = (m) => console.log(`  \x1b[33mwarn\x1b[0m  ${m}`);
 const step = (m) => console.log(`\n\x1b[1m${m}\x1b[0m`);
-const die = (m) => { console.error(`\n  \x1b[31mFAILED\x1b[0m  ${m}\n`); process.exit(1); };
+const die = (m) => {
+  console.error(`\n  \x1b[31mFAILED\x1b[0m  ${m}\n`);
+  process.exit(1);
+};
 
 /** Single-quoted SQL literal. */
 const lit = (s) => `'${String(s).replace(/'/g, "''")}'`;
@@ -75,7 +84,12 @@ function interactive() {
 function ask(question) {
   if (!interactive()) return Promise.resolve('');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => rl.question(question, (a) => { rl.close(); resolve(a); }));
+  return new Promise((resolve) =>
+    rl.question(question, (a) => {
+      rl.close();
+      resolve(a);
+    }),
+  );
 }
 
 /**
@@ -97,7 +111,10 @@ function askSecret(question) {
     if (s.includes('\n')) rl.output.write('\n');
   };
   return new Promise((resolve) => {
-    rl.question(question, (a) => { rl.close(); resolve(a); });
+    rl.question(question, (a) => {
+      rl.close();
+      resolve(a);
+    });
     muted = true;
   });
 }
@@ -128,21 +145,29 @@ async function createFirstClinic(client, io = { ask, askSecret }) {
   const rawName = (await io.ask('  Clinic name:      ')).trim();
   const name = rawName || 'My Clinic';
 
-  const suggestion = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 32) || 'clinic';
+  const suggestion =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 32) || 'clinic';
 
   let subdomain;
   for (;;) {
-    const answer = (await io.ask(`  Subdomain:        [${suggestion}] `)).trim() || suggestion;
+    const answer =
+      (await io.ask(`  Subdomain:        [${suggestion}] `)).trim() || suggestion;
     const problem = validateSubdomain(answer);
-    if (problem) { warn(problem); continue; }
+    if (problem) {
+      warn(problem);
+      continue;
+    }
     const taken = await client.query('SELECT 1 FROM tenants WHERE subdomain = $1', [
       answer.toLowerCase(),
     ]);
-    if (taken.rowCount > 0) { warn(`"${answer}" is already taken`); continue; }
+    if (taken.rowCount > 0) {
+      warn(`"${answer}" is already taken`);
+      continue;
+    }
     subdomain = answer.toLowerCase();
     break;
   }
@@ -165,7 +190,10 @@ async function createFirstClinic(client, io = { ask, askSecret }) {
       continue;
     }
     const again = await io.askSecret('  Again:            ');
-    if (again !== password) { warn('they do not match'); continue; }
+    if (again !== password) {
+      warn('they do not match');
+      continue;
+    }
     break;
   }
 
@@ -241,12 +269,16 @@ async function main() {
 
   if (!dbName) die('DATABASE_URL has no database name.');
   if (decodeURIComponent(appUrl.pathname.slice(1)) !== dbName) {
-    die(`DATABASE_URL points at "${dbName}" but APP_DATABASE_URL points at ` +
-        `"${decodeURIComponent(appUrl.pathname.slice(1))}". They must be the same database.`);
+    die(
+      `DATABASE_URL points at "${dbName}" but APP_DATABASE_URL points at ` +
+        `"${decodeURIComponent(appUrl.pathname.slice(1))}". They must be the same database.`,
+    );
   }
   if (process.env.APP_DB_PASSWORD && process.env.APP_DB_PASSWORD !== appPass) {
-    warn('APP_DB_PASSWORD does not match the password inside APP_DATABASE_URL. ' +
-         'APP_DATABASE_URL is what the API actually uses, so that is what will be applied.');
+    warn(
+      'APP_DB_PASSWORD does not match the password inside APP_DATABASE_URL. ' +
+        'APP_DATABASE_URL is what the API actually uses, so that is what will be applied.',
+    );
   }
   ok(`database ${dbName} on ${adminUrl.hostname}:${adminUrl.port || 5432}`);
   ok(`admin role ${decodeURIComponent(adminUrl.username)} · app role ${appUser}`);
@@ -261,12 +293,16 @@ async function main() {
     info(`--reset given, dropping ${dbName}`);
     await maint.query(
       `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-        WHERE datname = $1 AND pid <> pg_backend_pid()`, [dbName]);
+        WHERE datname = $1 AND pid <> pg_backend_pid()`,
+      [dbName],
+    );
     await maint.query(`DROP DATABASE IF EXISTS ${ident(dbName)}`);
     ok('dropped');
   }
 
-  const exists = await maint.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
+  const exists = await maint.query('SELECT 1 FROM pg_database WHERE datname = $1', [
+    dbName,
+  ]);
   if (exists.rowCount === 0) {
     await maint.query(`CREATE DATABASE ${ident(dbName)}`);
     ok(`created ${dbName}`);
@@ -279,17 +315,25 @@ async function main() {
      dropped database leaves it behind with whatever password it was born
      with. Converge it rather than assume it. */
   step('3. application role');
-  const role = await maint.query('SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = $1', [appUser]);
+  const role = await maint.query(
+    'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = $1',
+    [appUser],
+  );
   if (role.rowCount === 0) {
     await maint.query(
       `CREATE ROLE ${ident(appUser)} LOGIN PASSWORD ${lit(appPass)}
-         NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
+         NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`,
+    );
     ok(`created role ${appUser}`);
   } else {
-    await maint.query(`ALTER ROLE ${ident(appUser)} WITH LOGIN PASSWORD ${lit(appPass)} NOSUPERUSER NOBYPASSRLS`);
+    await maint.query(
+      `ALTER ROLE ${ident(appUser)} WITH LOGIN PASSWORD ${lit(appPass)} NOSUPERUSER NOBYPASSRLS`,
+    );
     ok(`role ${appUser} existed — password re-synced to .env`);
     if (role.rows[0].rolsuper || role.rows[0].rolbypassrls) {
-      warn(`${appUser} was a superuser or had BYPASSRLS. Removed — RLS is the whole point of that role.`);
+      warn(
+        `${appUser} was a superuser or had BYPASSRLS. Removed — RLS is the whole point of that role.`,
+      );
     }
   }
   await maint.end();
@@ -297,7 +341,10 @@ async function main() {
   /* ── 4. migrations ──────────────────────────────────────────────────── */
   step('4. migrations');
   try {
-    execSync('npm run migrate:up', { cwd: path.resolve(__dirname, '..'), stdio: 'inherit' });
+    execSync('npm run migrate:up', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
     ok('schema up to date');
   } catch {
     die('migrations failed — the error is above.');
@@ -324,8 +371,12 @@ async function main() {
   const admin = await connect(adminUrlRaw, 'admin');
   await admin.query(`GRANT CONNECT ON DATABASE ${ident(dbName)} TO ${ident(appUser)}`);
   await admin.query(`GRANT USAGE ON SCHEMA public TO ${ident(appUser)}`);
-  await admin.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ident(appUser)}`);
-  await admin.query(`GRANT EXECUTE ON FUNCTION resolve_tenant(text) TO ${ident(appUser)}`);
+  await admin.query(
+    `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ident(appUser)}`,
+  );
+  await admin.query(
+    `GRANT EXECUTE ON FUNCTION resolve_tenant(text) TO ${ident(appUser)}`,
+  );
 
   /* Tables the app role is meant to hold nothing on. Without this list the
      "no privileges at all" test below would read them as an out-of-band gap
@@ -359,7 +410,9 @@ async function main() {
     );
   }
   if (missing.length > 0) {
-    ok(`granted DML on ${missing.length} table(s) created outside a migration: ${missing.join(', ')}`);
+    ok(
+      `granted DML on ${missing.length} table(s) created outside a migration: ${missing.join(', ')}`,
+    );
   } else {
     ok('every table already carries the grants its migration gave it');
   }
@@ -388,7 +441,9 @@ async function main() {
   );
   if (forbidden.rowCount > 0) {
     for (const row of forbidden.rows) {
-      warn(`${appUser} holds ${row.privilege_type} on ${row.table_name}, which a migration revoked`);
+      warn(
+        `${appUser} holds ${row.privilege_type} on ${row.table_name}, which a migration revoked`,
+      );
     }
     die('the app role is over-privileged — rebuild with: npm run dev:setup:reset');
   }
@@ -399,7 +454,10 @@ async function main() {
   if (WITH_DEMO) {
     step('6. demo data');
     try {
-      execSync('npm run seed -w @dentalcare/api', { cwd: path.resolve(__dirname, '..'), stdio: 'inherit' });
+      execSync('npm run seed -w @dentalcare/api', {
+        cwd: path.resolve(__dirname, '..'),
+        stdio: 'inherit',
+      });
     } catch {
       die('seed failed — the error is above.');
     }
@@ -442,7 +500,9 @@ async function main() {
         // matters without a terminal.
         warn(`Set DEV_TENANT_SUBDOMAIN to one of: ${names}`);
       } else {
-        const pick = await ask(`  Point .env at which clinic? (${names}) [${existing.rows[0].subdomain}] `);
+        const pick = await ask(
+          `  Point .env at which clinic? (${names}) [${existing.rows[0].subdomain}] `,
+        );
         const chosen = (pick || existing.rows[0].subdomain).toLowerCase();
         if (existing.rows.some((t) => t.subdomain === chosen)) {
           writeEnvVar('DEV_TENANT_SUBDOMAIN', chosen);
@@ -480,13 +540,17 @@ async function main() {
   // GIVEN the subdomain, so it does not hand one back. Selecting it here was
   // asking for a column the function has never returned.
   const wantSubdomain = process.env.DEV_TENANT_SUBDOMAIN || 'demo';
-  const tenant = await app.query('SELECT id, status FROM resolve_tenant($1)', [wantSubdomain]);
+  const tenant = await app.query('SELECT id, status FROM resolve_tenant($1)', [
+    wantSubdomain,
+  ]);
 
   // No clinic yet is the normal state of a fresh database -- you create the
   // first one from the admin console. Only the RLS check below is mandatory.
   if (tenant.rowCount === 0) {
     ok(`app role connects; nothing resolves for "${wantSubdomain}"`);
-    const rls0 = await app.query('SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user');
+    const rls0 = await app.query(
+      'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user',
+    );
     if (rls0.rows[0].rolsuper || rls0.rows[0].rolbypassrls) {
       warn('the app role can bypass RLS — tenant isolation is NOT enforced.');
     } else {
@@ -505,16 +569,26 @@ async function main() {
     const r = await app.query(`SELECT count(*)::int AS c FROM ${ident(t)}`);
     counts[t] = r.rows[0].c;
   }
-  console.log('        ' + Object.entries(counts).map(([k, v]) => `${k}=${v}`).join('  '));
+  console.log(
+    '        ' +
+      Object.entries(counts)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('  '),
+  );
 
-  const roles = await app.query('SELECT role, count(*)::int AS c FROM users GROUP BY role ORDER BY role');
+  const roles = await app.query(
+    'SELECT role, count(*)::int AS c FROM users GROUP BY role ORDER BY role',
+  );
   ok('roles: ' + (roles.rows.map((r) => `${r.role}×${r.c}`).join(', ') || 'none'));
 
   const admins = roles.rows.find((r) => r.role === 'admin');
   if (!admins) warn('no admin user — you will not be able to reach Settings or Staff.');
-  if (counts.tooth_conditions === 0) warn('no charted findings — the odontogram will be empty.');
+  if (counts.tooth_conditions === 0)
+    warn('no charted findings — the odontogram will be empty.');
 
-  const rls = await app.query('SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user');
+  const rls = await app.query(
+    'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user',
+  );
   if (rls.rows[0].rolsuper || rls.rows[0].rolbypassrls) {
     warn('the app role can bypass RLS — tenant isolation is NOT enforced.');
   } else {

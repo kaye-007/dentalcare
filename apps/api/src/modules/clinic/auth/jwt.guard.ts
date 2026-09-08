@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Request } from 'express';
 import { AccessTokenPayload } from '../../../shared/types/access-token';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { normalizeRole } from '@/core/authz/permissions';
@@ -28,9 +27,10 @@ export class JwtAuthGuard implements CanActivate {
     }
     const token = header.slice('Bearer '.length).trim();
     try {
-      const payload = await this.jwt.verifyAsync<
-        AccessTokenPayload & { type?: string }
-      >(token, { secret: this.config.get<string>('JWT_SECRET') });
+      const payload = await this.jwt.verifyAsync<AccessTokenPayload & { type?: string }>(
+        token,
+        { secret: this.config.get<string>('JWT_SECRET') },
+      );
 
       if (payload.type === 'refresh') {
         throw new UnauthorizedException('Wrong token type');

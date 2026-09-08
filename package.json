@@ -20,7 +20,12 @@
     "admin:build": "npm run build -w @dentalcare/admin-web",
     "build": "npm run api:build && npm run web:build && npm run admin:build",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "node scripts/format-check.js",
     "test": "npm run test -w @dentalcare/api",
+    "test:integration": "npm run test:integration -w @dentalcare/api",
     "audit:classes": "node scripts/audit-classes.js",
     "cf:deploy": "npm run cf:deploy -w @dentalcare/api && npm run cf:deploy -w @dentalcare/tenant-web && npm run cf:deploy -w @dentalcare/admin-web",
     "cf:dry-run": "npm run cf:dry-run -w @dentalcare/api && npm run cf:dry-run -w @dentalcare/tenant-web && npm run cf:dry-run -w @dentalcare/admin-web",
@@ -36,5 +41,14 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
+    "prettier": "^3.6.2",
+    "typescript-eslint": "^8.46.4"
   }
 }

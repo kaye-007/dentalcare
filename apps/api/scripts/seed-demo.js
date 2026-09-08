@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Seed the RC1 demonstration environment: ONE clinic that looks like a real
  * practice a few months into operation.
@@ -58,11 +57,41 @@ const STAFF = [
     salary: 6200,
     isPrimaryOwner: true,
   },
-  { email: 'l.brandt@dentx.app', fullName: 'Dr. Lukas Brandt', role: 'admin', position: 'Dentist', salary: 5400 },
-  { email: 's.ricci@dentx.app', fullName: 'Dr. Sofia Ricci', role: 'admin', position: 'Dentist', salary: 4800 },
-  { email: 'j.moreau@dentx.app', fullName: 'Dr. Julien Moreau', role: 'admin', position: 'Orthodontist', salary: 5100 },
-  { email: 'm.novak@dentx.app', fullName: 'Marta Novák', role: 'receptionist', position: 'Receptionist', salary: 2600 },
-  { email: 'a.silva@dentx.app', fullName: 'Ana Silva', role: 'receptionist', position: 'Dental Assistant', salary: 2400 },
+  {
+    email: 'l.brandt@dentx.app',
+    fullName: 'Dr. Lukas Brandt',
+    role: 'admin',
+    position: 'Dentist',
+    salary: 5400,
+  },
+  {
+    email: 's.ricci@dentx.app',
+    fullName: 'Dr. Sofia Ricci',
+    role: 'admin',
+    position: 'Dentist',
+    salary: 4800,
+  },
+  {
+    email: 'j.moreau@dentx.app',
+    fullName: 'Dr. Julien Moreau',
+    role: 'admin',
+    position: 'Orthodontist',
+    salary: 5100,
+  },
+  {
+    email: 'm.novak@dentx.app',
+    fullName: 'Marta Novák',
+    role: 'receptionist',
+    position: 'Receptionist',
+    salary: 2600,
+  },
+  {
+    email: 'a.silva@dentx.app',
+    fullName: 'Ana Silva',
+    role: 'receptionist',
+    position: 'Dental Assistant',
+    salary: 2400,
+  },
 ];
 
 /** name, price (EUR), duration (min), visit type */
@@ -113,16 +142,21 @@ const PATIENTS = [
 ];
 
 const REASONS = [
-  'Routine check-up', 'Professional cleaning', 'Filling — upper molar',
-  'Root canal — session 1', 'Root canal — session 2', 'Crown fitting',
-  'Implant consultation', 'Whitening session', 'Orthodontic review',
-  'Extraction follow-up', 'Gum treatment', 'Emergency — toothache',
-  'Night guard fitting', 'Paediatric check-up', 'Post-op review',
-];
-
-const CONDITIONS = [
-  'Caries', 'Deep caries', 'Fractured cusp', 'Existing amalgam filling',
-  'Gingival recession', 'Root canal treated', 'Crown in place', 'Wear facet',
+  'Routine check-up',
+  'Professional cleaning',
+  'Filling — upper molar',
+  'Root canal — session 1',
+  'Root canal — session 2',
+  'Crown fitting',
+  'Implant consultation',
+  'Whitening session',
+  'Orthodontic review',
+  'Extraction follow-up',
+  'Gum treatment',
+  'Emergency — toothache',
+  'Night guard fitting',
+  'Paediatric check-up',
+  'Post-op review',
 ];
 
 /* ════════════════ deterministic pseudo-random ════════════════
@@ -290,9 +324,18 @@ async function main() {
             address, city, postal_code, status, created_by, created_at, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11,$12,$12) RETURNING id`,
         [
-          tenantId, first, last, phone(), `${email}@example.at`, gender, birthDate(i),
+          tenantId,
+          first,
+          last,
+          phone(),
+          `${email}@example.at`,
+          gender,
+          birthDate(i),
           `${pick(['Lange Gasse', 'Neubaugasse', 'Josefstädter Straße', 'Praterstraße', 'Wiedner Hauptstraße'])} ${int(2, 148)}`,
-          city, postal, ownerId, registeredAt,
+          city,
+          postal,
+          ownerId,
+          registeredAt,
         ],
       );
       patientIds.push(r.rows[0].id);
@@ -338,16 +381,25 @@ async function main() {
           // with the row rather than patched in afterwards. A cancellation is
           // dated a day and a half out, which is when patients actually ring.
           const completedAt = status === 'completed' ? end : null;
-          const cancelledAt = status === 'cancelled'
-            ? new Date(start.getTime() - 36 * 3600 * 1000)
-            : null;
+          const cancelledAt =
+            status === 'cancelled' ? new Date(start.getTime() - 36 * 3600 * 1000) : null;
           const r = await client.query(
             `INSERT INTO appointments
                (tenant_id, patient_id, staff_id, reason, status, starts_at, ends_at,
                 completed_at, cancelled_at, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-            [tenantId, patientId, pick(dentistIds), pick(REASONS), status, start, end,
-             completedAt, cancelledAt, ownerId],
+            [
+              tenantId,
+              patientId,
+              pick(dentistIds),
+              pick(REASONS),
+              status,
+              start,
+              end,
+              completedAt,
+              cancelledAt,
+              ownerId,
+            ],
           );
           createdAppointments.push({ id: r.rows[0].id, status, offset });
         }
@@ -371,7 +423,13 @@ async function main() {
     );
     if (recCount.rows[0].c === 0) {
       const WHOLE_TOOTH = [
-        'extracted', 'missing', 'implant', 'impacted', 'crown', 'bridge', 'root_canal',
+        'extracted',
+        'missing',
+        'implant',
+        'impacted',
+        'crown',
+        'bridge',
+        'root_canal',
       ];
       // Occlusal exists only on posteriors, incisal only on anteriors; the
       // schema enforces it, so ask for the right one rather than be rejected.
@@ -386,37 +444,44 @@ async function main() {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
            ON CONFLICT DO NOTHING`,
           [
-            tenantId, patientId, tooth, whole ? null : surface, condition,
-            status || 'active', note || null, pick(dentistIds), ownerId,
+            tenantId,
+            patientId,
+            tooth,
+            whole ? null : surface,
+            condition,
+            status || 'active',
+            note || null,
+            pick(dentistIds),
+            ownerId,
           ],
         );
       };
 
       const SHOWCASE = [
-        [18, 'missing',    null,         'Never erupted.'],
-        [17, 'restored',   chewing(17),  'Composite, placed 2024.'],
-        [16, 'root_canal', null,         'Three canals, obturated.'],
-        [16, 'crown',      null,         'Zirconia over the root-treated tooth.'],
-        [15, 'sealant',    chewing(15),  'Preventive.'],
-        [14, 'caries',     chewing(14),  'Cavitated, needs restoring.'],
-        [14, 'caries',     'M',          'Extends mesially.'],
-        [13, 'veneer',     'F',          'Aesthetic facing.'],
-        [12, 'watch',      'M',          'Early demineralisation — review in 6 months.'],
-        [11, 'fractured',  chewing(11),  'Incisal chip after trauma.'],
-        [21, 'implant',    null,         'Titanium fixture, restored.'],
+        [18, 'missing', null, 'Never erupted.'],
+        [17, 'restored', chewing(17), 'Composite, placed 2024.'],
+        [16, 'root_canal', null, 'Three canals, obturated.'],
+        [16, 'crown', null, 'Zirconia over the root-treated tooth.'],
+        [15, 'sealant', chewing(15), 'Preventive.'],
+        [14, 'caries', chewing(14), 'Cavitated, needs restoring.'],
+        [14, 'caries', 'M', 'Extends mesially.'],
+        [13, 'veneer', 'F', 'Aesthetic facing.'],
+        [12, 'watch', 'M', 'Early demineralisation — review in 6 months.'],
+        [11, 'fractured', chewing(11), 'Incisal chip after trauma.'],
+        [21, 'implant', null, 'Titanium fixture, restored.'],
         // Three-unit bridge: 22 and 24 are the abutments, 23 is the pontic.
-        [22, 'bridge',     null,         'Distal abutment, 22–24 bridge.'],
-        [23, 'missing',    null,         'Pontic of the 22–24 bridge.'],
-        [24, 'bridge',     null,         'Mesial abutment, 22–24 bridge.'],
-        [25, 'extracted',  null,         'Removed 2023, not replaced.'],
-        [26, 'impacted',   null,         'Mesioangular, under review.'],
-        [27, 'restored',   chewing(27),  'Amalgam, long-standing.'],
-        [27, 'caries',     'D',          'Recurrent at the distal margin.'],
-        [28, 'missing',    null,         'Agenesis.'],
-        [36, 'crown',      null,         'Full-coverage crown.'],
-        [37, 'restored',   chewing(37),  'Composite.'],
-        [46, 'restored',   chewing(46),  'Composite.'],
-        [47, 'caries',     chewing(47),  'Occlusal lesion.'],
+        [22, 'bridge', null, 'Distal abutment, 22–24 bridge.'],
+        [23, 'missing', null, 'Pontic of the 22–24 bridge.'],
+        [24, 'bridge', null, 'Mesial abutment, 22–24 bridge.'],
+        [25, 'extracted', null, 'Removed 2023, not replaced.'],
+        [26, 'impacted', null, 'Mesioangular, under review.'],
+        [27, 'restored', chewing(27), 'Amalgam, long-standing.'],
+        [27, 'caries', 'D', 'Recurrent at the distal margin.'],
+        [28, 'missing', null, 'Agenesis.'],
+        [36, 'crown', null, 'Full-coverage crown.'],
+        [37, 'restored', chewing(37), 'Composite.'],
+        [46, 'restored', chewing(46), 'Composite.'],
+        [47, 'caries', chewing(47), 'Occlusal lesion.'],
       ];
       for (const [tooth, condition, surface, note] of SHOWCASE) {
         await addFinding(patientIds[0], tooth, condition, surface, note);
@@ -426,7 +491,14 @@ async function main() {
          look like twelve copies of the same mouth. */
       const POSTERIORS = [16, 17, 26, 27, 36, 37, 46, 47, 14, 15, 24, 25, 34, 35, 44, 45];
       const ANTERIORS = [11, 12, 13, 21, 22, 23, 31, 32, 33, 41, 42, 43];
-      const SURFACE_CONDITIONS = ['caries', 'restored', 'restored', 'sealant', 'watch', 'fractured'];
+      const SURFACE_CONDITIONS = [
+        'caries',
+        'restored',
+        'restored',
+        'sealant',
+        'watch',
+        'fractured',
+      ];
       const WHOLE_CONDITIONS = ['crown', 'root_canal', 'missing', 'extracted', 'veneer'];
 
       for (const pid of patientIds.slice(1, 12)) {
@@ -446,9 +518,16 @@ async function main() {
           if (seen.has(key)) continue;
           seen.add(key);
           await addFinding(
-            pid, tooth, condition, surface,
-            pick(['Reviewed at last visit.', 'Patient reports mild sensitivity.',
-                  'Scheduled for follow-up.', 'Healing well.']),
+            pid,
+            tooth,
+            condition,
+            surface,
+            pick([
+              'Reviewed at last visit.',
+              'Patient reports mild sensitivity.',
+              'Scheduled for follow-up.',
+              'Healing well.',
+            ]),
             rnd() < 0.75 ? 'active' : 'treated',
           );
         }
@@ -468,7 +547,9 @@ async function main() {
       // increase with date. Random dates against a running sequence produced
       // INV-0140 dated May sitting above INV-0138 dated July — the first
       // thing a practice manager would notice.
-      const issueOffsets = Array.from({ length: 140 }, () => int(1, 120)).sort((a, b) => b - a);
+      const issueOffsets = Array.from({ length: 140 }, () => int(1, 120)).sort(
+        (a, b) => b - a,
+      );
 
       let seq = 0;
       for (let i = 0; i < 140; i++) {
@@ -486,16 +567,31 @@ async function main() {
 
         // Older invoices are more likely to be settled.
         const roll = rnd();
-        const status = daysAgo > 45
-          ? (roll < 0.9 ? 'paid' : 'partially_paid')
-          : (roll < 0.55 ? 'paid' : roll < 0.8 ? 'partially_paid' : 'unpaid');
+        const status =
+          daysAgo > 45
+            ? roll < 0.9
+              ? 'paid'
+              : 'partially_paid'
+            : roll < 0.55
+              ? 'paid'
+              : roll < 0.8
+                ? 'partially_paid'
+                : 'unpaid';
 
         const inv = await client.query(
           `INSERT INTO invoices
              (tenant_id, patient_id, seq, invoice_number, total, status, issued_at, created_by)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-          [tenantId, pick(patientIds), seq, `INV-${String(seq).padStart(4, '0')}`,
-           total, status, isoDate(issued), ownerId],
+          [
+            tenantId,
+            pick(patientIds),
+            seq,
+            `INV-${String(seq).padStart(4, '0')}`,
+            total,
+            status,
+            isoDate(issued),
+            ownerId,
+          ],
         );
         const invoiceId = inv.rows[0].id;
 
@@ -504,12 +600,23 @@ async function main() {
             `INSERT INTO invoice_line_items
                (tenant_id, invoice_id, treatment_id, description, quantity, unit_price, amount)
              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [tenantId, invoiceId, treatmentIds[l.name], l.name, l.qty, l.price, l.price * l.qty],
+            [
+              tenantId,
+              invoiceId,
+              treatmentIds[l.name],
+              l.name,
+              l.qty,
+              l.price,
+              l.price * l.qty,
+            ],
           );
         }
 
         if (status === 'paid' || status === 'partially_paid') {
-          const amount = status === 'paid' ? total : Math.max(1, Math.round(total * (0.3 + rnd() * 0.4)));
+          const amount =
+            status === 'paid'
+              ? total
+              : Math.max(1, Math.round(total * (0.3 + rnd() * 0.4)));
           // Clamp to now: settlement offsets were pushing recent invoices'
           // payments into the future, so the payments list showed dates that
           // had not happened yet.
@@ -522,8 +629,15 @@ async function main() {
           await client.query(
             `INSERT INTO payments (tenant_id, invoice_id, amount, method, note, paid_at, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [tenantId, invoiceId, amount, pick(['card', 'card', 'bank', 'cash']),
-             status === 'partially_paid' ? 'Part payment at reception' : null, paidAt, ownerId],
+            [
+              tenantId,
+              invoiceId,
+              amount,
+              pick(['card', 'card', 'bank', 'cash']),
+              status === 'partially_paid' ? 'Part payment at reception' : null,
+              paidAt,
+              ownerId,
+            ],
           );
         }
       }
@@ -542,13 +656,28 @@ async function main() {
           ['utilities', int(210, 340), 'Electricity, water, heating'],
           ['materials', int(680, 1450), 'Composite, anaesthetic and consumables'],
           ['lab', int(900, 2100), 'Prosthetics laboratory work'],
-          ['other', int(120, 380), pick(['Equipment servicing', 'Waste disposal contract', 'Software subscriptions'])],
+          [
+            'other',
+            int(120, 380),
+            pick([
+              'Equipment servicing',
+              'Waste disposal contract',
+              'Software subscriptions',
+            ]),
+          ],
         ];
         for (const [category, amount, note] of rows) {
           await client.query(
             `INSERT INTO expenses (tenant_id, category, amount, expense_date, note, created_by)
              VALUES ($1,$2,$3,$4,$5,$6)`,
-            [tenantId, category, amount, isoDate(dayAt(base - int(0, 20), 12, 0)), note, ownerId],
+            [
+              tenantId,
+              category,
+              amount,
+              isoDate(dayAt(base - int(0, 20), 12, 0)),
+              note,
+              ownerId,
+            ],
           );
         }
       }
@@ -566,8 +695,15 @@ async function main() {
             `INSERT INTO salary_payments
                (tenant_id, staff_id, position, amount, paid_on, note, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [tenantId, staffIds[s.email], s.position, s.salary,
-             isoDate(dayAt(-m * 30, 12, 0)), 'Monthly salary', ownerId],
+            [
+              tenantId,
+              staffIds[s.email],
+              s.position,
+              s.salary,
+              isoDate(dayAt(-m * 30, 12, 0)),
+              'Monthly salary',
+              ownerId,
+            ],
           );
         }
       }
@@ -602,7 +738,9 @@ async function main() {
       [tenantId],
     );
     if (remCount.rows[0].c === 0 && createdAppointments.length) {
-      const recent = createdAppointments.filter((a) => a.offset >= -14 && a.offset < 0).slice(0, 12);
+      const recent = createdAppointments
+        .filter((a) => a.offset >= -14 && a.offset < 0)
+        .slice(0, 12);
       for (const a of recent) {
         const appt = await client.query(
           `SELECT a.starts_at, a.reason, (p.first_name || ' ' || p.last_name) AS patient
@@ -652,7 +790,9 @@ async function main() {
     console.log(`    Expenses   ${c.expenses}`);
     console.log(`    Reminders  ${c.reminders}\n`);
     console.log('  Clinic app  →  demo@dentx.app / ' + DEMO_PASSWORD);
-    console.log('  Admin app   →  ' + PLATFORM_ADMIN.email + ' / ' + DEMO_PASSWORD + '\n');
+    console.log(
+      '  Admin app   →  ' + PLATFORM_ADMIN.email + ' / ' + DEMO_PASSWORD + '\n',
+    );
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

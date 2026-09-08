@@ -1,5 +1,9 @@
-import { TIME_RE } from './scheduling.types';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
@@ -43,8 +47,7 @@ const mapOperatory = (r: OperatoryRow) => ({
   createdAt: r.created_at,
 });
 
-const OP_COLS =
-  'id, name, description, sort_order, color, is_active, created_at';
+const OP_COLS = 'id, name, description, sort_order, color, is_active, created_at';
 
 @Injectable()
 export class OperatoriesService {
@@ -78,8 +81,12 @@ export class OperatoriesService {
            VALUES ($1, btrim($2), $3, $4, $5, $6)
            RETURNING ${OP_COLS}`,
           [
-            tenantId, dto.name, dto.description ?? null,
-            dto.sortOrder ?? 0, dto.color ?? null, dto.isActive ?? true,
+            tenantId,
+            dto.name,
+            dto.description ?? null,
+            dto.sortOrder ?? 0,
+            dto.color ?? null,
+            dto.isActive ?? true,
           ],
         );
         return mapOperatory(rows[0]);
@@ -150,7 +157,9 @@ export class OperatoriesService {
         };
       }
 
-      const { rowCount } = await client.query('DELETE FROM operatories WHERE id = $1', [id]);
+      const { rowCount } = await client.query('DELETE FROM operatories WHERE id = $1', [
+        id,
+      ]);
       if (!rowCount) throw new NotFoundException('Room not found');
       return { deleted: true as const, deactivated: false as const };
     });

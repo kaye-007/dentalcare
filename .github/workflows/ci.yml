@@ -1,0 +1,174 @@
+name: CI
+
+# Two jobs, split by what they need rather than by what they are.
+#
+#   checks       no database. Everything tsc, jest and the bundlers can say.
+#   integration  a real PostgreSQL, real migrations, and the app_user role —
+#                because the tenant isolation this product depends on is
+#                enforced by the database, and a mock of RLS proves nothing.
+#
+# Nothing here needs a production secret. The Cloudflare steps are dry runs:
+# they build the Worker bundles and validate the bindings without an account
+# and without deploying.
+
+on:
+  push:
+    branches: [main, production-hardening]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  checks:
+    name: Lint, typecheck, unit tests, builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # format-check diffs against the base commit, so it needs history.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # Only what this change touches. The repository is hand-wrapped rather
+      # than machine-formatted; scripts/format-check.js explains why the gate
+      # is scoped and what it would cost not to be.
+      - name: Format (changed files)
+        env:
+          FORMAT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Proves the Worker bundles and that every binding in wrangler.jsonc
+      # resolves. It does NOT prove the Worker serves a request — see
+      # docs/DEPLOYMENT.md; that needs staging.
+      - name: Cloudflare Worker dry runs
+        run: npm run cf:dry-run
+
+  integration:
+    name: Database and API integration
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dentalcare
+          POSTGRES_PASSWORD: dentalcare
+          POSTGRES_DB: dentalcare
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U dentalcare -d dentalcare"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The privileged role: migrations, and the platform plane.
+      DATABASE_URL: postgres://dentalcare:dentalcare@localhost:5432/dentalcare
+      # The runtime role: NOSUPERUSER, NOBYPASSRLS, created by migration 0003.
+      # The isolation tests connect as THIS one — as app_user, not as the
+      # owner — or they would prove nothing about RLS.
+      APP_DATABASE_URL: postgres://app_user:app_user_ci_pw@localhost:5432/dentalcare
+      APP_DB_USER: app_user
+      APP_DB_PASSWORD: app_user_ci_pw
+      NODE_ENV: test
+      ALLOW_TENANT_HEADER: '1'
+      JWT_SECRET: ci-only-jwt-secret-not-a-real-one-32ch
+      PLATFORM_JWT_SECRET: ci-only-platform-secret-different-32ch
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Migrate
+        run: npm run migrate:up
+
+      - name: Database and API integration tests
+        run: npm run test:integration
+
+  compose:
+    name: Clean-machine startup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The claim being tested is the one in the README: a clone and one
+      # command produce a working API. It is checked here rather than trusted,
+      # because every part of it — the migrate container, the gate on the API,
+      # the health endpoint — has been silently broken before.
+      - name: Bring the stack up from nothing
+        run: |
+          cp .env.example .env
+          sed -i 's|^JWT_SECRET=.*|JWT_SECRET=ci-only-jwt-secret-not-a-real-one-32ch|' .env
+          docker compose up -d --build
+          # --wait is not used: the migrate service exits by design, and a
+          # completed container is not a state --wait knows how to accept.
+          for i in $(seq 1 60); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' $(docker compose ps -aq api) 2>/dev/null || echo starting)
+            echo "t+$((i*5))s api=$state"
+            [ "$state" = healthy ] && exit 0
+            sleep 5
+          done
+          echo "api never became healthy"; docker compose logs --no-color; exit 1
+
+      - name: Migrations ran to completion
+        run: |
+          code=$(docker inspect -f '{{.State.ExitCode}}' $(docker compose ps -aq migrate))
+          echo "migrate exited $code"
+          test "$code" = "0"
+
+      - name: Health is 200 while the database is up
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/health)
+          echo "health -> $status"
+          test "$status" = "200"
+
+      # The regression this exists for: /api/health used to answer 200 with
+      # "degraded" in the body, so compose marked a container healthy that
+      # could not serve a single request touching data.
+      - name: Health is 503 when the database is gone
+        run: |
+          docker compose stop postgres
+          sleep 3
+          status=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/health)
+          echo "health -> $status"
+          test "$status" = "503"
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

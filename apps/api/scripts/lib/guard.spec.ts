@@ -13,7 +13,7 @@
 
 // The guard is plain JS invoked by node scripts, so it is required rather than
 // imported; there is no .d.ts and none is warranted for 40 lines.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const { assertNotProduction, assertSchemaCurrent, LOCAL_HOSTS } = require('./guard') as {
   assertNotProduction: (
     url: string,
@@ -147,11 +147,10 @@ describe('assertNotProduction', () => {
  * removed from "your database stopped at 0010".
  */
 describe('assertSchemaCurrent', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fs = require('fs') as typeof import('fs');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+
   const os = require('os') as typeof import('os');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+
   const path = require('path') as typeof import('path');
 
   let dir: string;
@@ -175,9 +174,9 @@ describe('assertSchemaCurrent', () => {
   });
 
   it('names the first missing migration and the count', async () => {
-    await expect(
-      assertSchemaCurrent(clientWith(['0001_init']), dir),
-    ).rejects.toThrow(/2 migration\(s\) behind[\s\S]*0002_users/);
+    await expect(assertSchemaCurrent(clientWith(['0001_init']), dir)).rejects.toThrow(
+      /2 migration\(s\) behind[\s\S]*0002_users/,
+    );
   });
 
   it('tells you to run dev:setup when the database has no schema at all', async () => {

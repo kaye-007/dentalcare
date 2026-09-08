@@ -1,4 +1,4 @@
-import { PERIO_SITES, PerioSite } from './perio.types';
+import { PerioSite } from './perio.types';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
@@ -46,17 +46,22 @@ export class PerioService {
 
   async listExams(patientId: string) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'SELECT 1 FROM patients WHERE id = $1', [patientId],
-      );
+      const { rowCount } = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+        patientId,
+      ]);
       if (!rowCount) throw new NotFoundException('Patient not found');
 
-      const { rows } = await client.query<ExamRow & { site_count: string; bleeding_count: string }>(
-        `${EXAM_SELECT.replace('FROM perio_exams e', `,
+      const { rows } = await client.query<
+        ExamRow & { site_count: string; bleeding_count: string }
+      >(
+        `${EXAM_SELECT.replace(
+          'FROM perio_exams e',
+          `,
                 (SELECT count(*)::text FROM perio_measurements m WHERE m.exam_id = e.id) AS site_count,
                 (SELECT count(*)::text FROM perio_measurements m
                   WHERE m.exam_id = e.id AND m.bleeding) AS bleeding_count
-           FROM perio_exams e`)}
+           FROM perio_exams e`,
+        )}
           WHERE e.patient_id = $1
           ORDER BY e.examined_on DESC, e.created_at DESC`,
         [patientId],
@@ -82,16 +87,21 @@ export class PerioService {
   /** One exam with every measurement and per-tooth finding. */
   async getExam(examId: string) {
     return this.tx(async (client) => {
-      const { rows } = await client.query<ExamRow>(
-        `${EXAM_SELECT} WHERE e.id = $1`, [examId],
-      );
+      const { rows } = await client.query<ExamRow>(`${EXAM_SELECT} WHERE e.id = $1`, [
+        examId,
+      ]);
       const exam = rows[0];
       if (!exam) throw new NotFoundException('Perio exam not found');
 
       const { rows: measurements } = await client.query<{
-        id: string; tooth: number; site: PerioSite;
-        probing_depth: number | null; recession: number | null;
-        bleeding: boolean; suppuration: boolean; plaque: boolean;
+        id: string;
+        tooth: number;
+        site: PerioSite;
+        probing_depth: number | null;
+        recession: number | null;
+        bleeding: boolean;
+        suppuration: boolean;
+        plaque: boolean;
       }>(
         `SELECT id, tooth, site, probing_depth, recession, bleeding, suppuration, plaque
            FROM perio_measurements WHERE exam_id = $1 ORDER BY tooth, site`,
@@ -99,8 +109,11 @@ export class PerioService {
       );
 
       const { rows: findings } = await client.query<{
-        id: string; tooth: number; mobility: number | null;
-        furcation: number | null; note: string | null;
+        id: string;
+        tooth: number;
+        mobility: number | null;
+        furcation: number | null;
+        note: string | null;
       }>(
         `SELECT id, tooth, mobility, furcation, note
            FROM perio_tooth_findings WHERE exam_id = $1 ORDER BY tooth`,
@@ -156,7 +169,8 @@ export class PerioService {
           meanProbingDepth: withDepth.length
             ? Math.round(
                 (withDepth.reduce((s, m) => s + (m.probingDepth ?? 0), 0) /
-                  withDepth.length) * 10,
+                  withDepth.length) *
+                  10,
               ) / 10
             : null,
           teethWithMobility: findings.filter((f) => (f.mobility ?? 0) > 0).length,
@@ -168,9 +182,9 @@ export class PerioService {
   async createExam(patientId: string, dto: CreatePerioExamDto, userId: string) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const { rowCount } = await client.query(
-        'SELECT 1 FROM patients WHERE id = $1', [patientId],
-      );
+      const { rowCount } = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+        patientId,
+      ]);
       if (!rowCount) throw new NotFoundException('Patient not found');
 
       const { rows } = await client.query<{ id: string }>(
@@ -178,8 +192,12 @@ export class PerioService {
            (tenant_id, patient_id, examined_on, clinician_id, note, created_by)
          VALUES ($1,$2,coalesce($3::date, CURRENT_DATE),$4,$5,$6) RETURNING id`,
         [
-          tenantId, patientId, dto.examinedOn ?? null,
-          dto.clinicianId ?? userId, dto.note ?? null, userId,
+          tenantId,
+          patientId,
+          dto.examinedOn ?? null,
+          dto.clinicianId ?? userId,
+          dto.note ?? null,
+          userId,
         ],
       );
       return this.getExam(rows[0].id);
@@ -203,9 +221,9 @@ export class PerioService {
 
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const { rowCount } = await client.query(
-        'SELECT 1 FROM perio_exams WHERE id = $1', [examId],
-      );
+      const { rowCount } = await client.query('SELECT 1 FROM perio_exams WHERE id = $1', [
+        examId,
+      ]);
       if (!rowCount) throw new NotFoundException('Perio exam not found');
 
       // One statement for the whole batch: 192 readings in a single round trip,
@@ -282,7 +300,8 @@ export class PerioService {
 
     return this.tx(async (client) => {
       const { rowCount } = await client.query(
-        `UPDATE perio_exams SET ${sets.join(', ')} WHERE id = $1`, params,
+        `UPDATE perio_exams SET ${sets.join(', ')} WHERE id = $1`,
+        params,
       );
       if (!rowCount) throw new NotFoundException('Perio exam not found');
       return this.getExam(examId);
@@ -291,9 +310,9 @@ export class PerioService {
 
   async deleteExam(examId: string) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'DELETE FROM perio_exams WHERE id = $1', [examId],
-      );
+      const { rowCount } = await client.query('DELETE FROM perio_exams WHERE id = $1', [
+        examId,
+      ]);
       if (!rowCount) throw new NotFoundException('Perio exam not found');
       return { deleted: true as const };
     });

@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Shared production guard for the data scripts.
  *
@@ -50,7 +49,6 @@ function assertNotProduction(connectionString, opts = {}) {
 
   return { host, dbName };
 }
-
 
 /**
  * Refuse to touch a database whose schema is behind the migrations on disk.

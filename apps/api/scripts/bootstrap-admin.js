@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Create the first platform administrator on a real database.
  *
@@ -37,18 +36,28 @@ function readInput() {
   const fullName = (process.env.PLATFORM_ADMIN_NAME || 'Platform Administrator').trim();
 
   if (!email) fail('PLATFORM_ADMIN_EMAIL is required.');
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(`"${email}" is not a valid email address.`);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
+    fail(`"${email}" is not a valid email address.`);
   if (!password) fail('PLATFORM_ADMIN_PASSWORD is required.');
 
   // Checked before the length rule so a recognised password gets the specific
   // reason rather than a generic "too short".
-  const PUBLISHED = ['Demo@2026!', 'Admin123!', 'Owner123!', 'Reception123!', 'changeme', 'password'];
+  const PUBLISHED = [
+    'Demo@2026!',
+    'Admin123!',
+    'Owner123!',
+    'Reception123!',
+    'changeme',
+    'password',
+  ];
   if (PUBLISHED.some((p) => password.toLowerCase() === p.toLowerCase())) {
     fail('That password is published in this repository. Choose a different one.');
   }
 
   if (password.length < MIN_PASSWORD) {
-    fail(`PLATFORM_ADMIN_PASSWORD must be at least ${MIN_PASSWORD} characters (got ${password.length}).`);
+    fail(
+      `PLATFORM_ADMIN_PASSWORD must be at least ${MIN_PASSWORD} characters (got ${password.length}).`,
+    );
   }
 
   return { email, password, fullName };

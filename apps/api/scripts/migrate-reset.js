@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+
 /**
  * migrate:reset — drop every table and rebuild the schema from migrations.
  *
@@ -72,9 +72,7 @@ async function main() {
 
   console.log(c.bold('\nmigrate:reset'));
   console.log(c.dim(`  target   ${host}/${dbName}`));
-  console.log(
-    c.red('  destroys  every clinic, patient, invoice and audit entry'),
-  );
+  console.log(c.red('  destroys  every clinic, patient, invoice and audit entry'));
 
   const db = new Client({ connectionString: url });
   await db.connect();

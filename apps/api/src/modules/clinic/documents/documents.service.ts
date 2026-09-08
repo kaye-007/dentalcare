@@ -1,5 +1,10 @@
-import { DOCUMENT_KINDS, DocumentKind } from './documents.types';
-import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { DocumentKind } from './documents.types';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
@@ -73,10 +78,9 @@ export class DocumentsService {
 
   async list(patientId: string, kind?: DocumentKind) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'SELECT 1 FROM patients WHERE id = $1',
-        [patientId],
-      );
+      const { rowCount } = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+        patientId,
+      ]);
       if (!rowCount) throw new NotFoundException('Patient not found');
 
       const params: unknown[] = [patientId];
@@ -124,10 +128,9 @@ export class DocumentsService {
     const key = this.storage.buildKey(tenantId, patientId, EXTENSION_FOR[detected]);
 
     return this.db.withTenant(tenantId, async (client) => {
-      const { rowCount } = await client.query(
-        'SELECT 1 FROM patients WHERE id = $1',
-        [patientId],
-      );
+      const { rowCount } = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+        patientId,
+      ]);
       if (!rowCount) throw new NotFoundException('Patient not found');
 
       // Re-uploading an identical file is a double-click, not a new document.
@@ -156,11 +159,18 @@ export class DocumentsService {
                      byte_size, checksum, kind, tooth, taken_on, caption,
                      NULL::text AS uploaded_by_name, created_at`,
           [
-            tenantId, patientId, key,
-            safeFileName(file.originalname), detected,
-            file.size, checksum,
-            dto.kind ?? 'other', dto.tooth ?? null,
-            dto.takenOn || null, dto.caption ?? null, userId,
+            tenantId,
+            patientId,
+            key,
+            safeFileName(file.originalname),
+            detected,
+            file.size,
+            checksum,
+            dto.kind ?? 'other',
+            dto.tooth ?? null,
+            dto.takenOn || null,
+            dto.caption ?? null,
+            userId,
           ],
         );
         return { ...mapDocument(rows[0]), duplicate: false as const };
@@ -232,7 +242,10 @@ export class DocumentsService {
   async remove(id: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
       const { rows } = await client.query<{
-        storage_key: string; title: string | null; kind: string; patient_id: string;
+        storage_key: string;
+        title: string | null;
+        kind: string;
+        patient_id: string;
       }>(
         `UPDATE patient_documents
             SET deleted_at = now(), deleted_by = $2
@@ -280,6 +293,10 @@ export class DocumentsService {
 /** Keep a recognisable name for downloads; never used to build a storage key. */
 function safeFileName(original: string | undefined): string {
   const base = (original ?? 'document').split(/[\\/]/).pop() ?? 'document';
+  // Control characters are the point: a filename arrives from a client and
+  // ends up in a Content-Disposition header, where a raw newline is header
+  // injection. Stripping them is the fix, not an oversight.
+  // eslint-disable-next-line no-control-regex
   const cleaned = base.replace(/[\x00-\x1f\x7f]/g, '').trim();
   return (cleaned || 'document').slice(0, 200);
 }

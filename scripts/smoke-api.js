@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * API smoke test — log in, then call every read endpoint the controllers
  * declare and report what comes back.
@@ -52,11 +51,17 @@ function discoverRoutes() {
     while ((m = cre.exec(src))) marks.push({ prefix: m[1], cls: m[2], at: m.index });
 
     for (let i = 0; i < marks.length; i++) {
-      const body = src.slice(marks[i].at, i + 1 < marks.length ? marks[i + 1].at : src.length);
+      const body = src.slice(
+        marks[i].at,
+        i + 1 < marks.length ? marks[i + 1].at : src.length,
+      );
       const mre = /@(Get)\(\s*(?:'([^']*)')?\s*\)/g;
       let mm;
       while ((mm = mre.exec(body))) {
-        const p = ('/api/' + marks[i].prefix + (mm[2] ? '/' + mm[2] : '')).replace(/\/+/g, '/');
+        const p = ('/api/' + marks[i].prefix + (mm[2] ? '/' + mm[2] : '')).replace(
+          /\/+/g,
+          '/',
+        );
         routes.push({ path: p, cls: marks[i].cls });
       }
     }
@@ -71,7 +76,11 @@ async function call(pathname, token) {
   try {
     const res = await fetch(BASE + pathname, { headers });
     let body = null;
-    try { body = await res.json(); } catch { /* not json */ }
+    try {
+      body = await res.json();
+    } catch {
+      /* not json */
+    }
     return { status: res.status, body };
   } catch (e) {
     return { status: 0, body: { message: e.message } };
@@ -108,8 +117,14 @@ async function main() {
   });
   const loginBody = await login.json().catch(() => null);
   if (!login.ok || !loginBody?.accessToken) {
-    console.error(r(`\n  Login failed (${login.status}): ${loginBody?.message || 'no token returned'}`));
-    console.error(dim('  Check the seed ran and SMOKE_EMAIL / SMOKE_PASSWORD match it.\n'));
+    console.error(
+      r(
+        `\n  Login failed (${login.status}): ${loginBody?.message || 'no token returned'}`,
+      ),
+    );
+    console.error(
+      dim('  Check the seed ran and SMOKE_EMAIL / SMOKE_PASSWORD match it.\n'),
+    );
     process.exit(1);
   }
   const token = loginBody.accessToken;
@@ -143,11 +158,15 @@ async function main() {
 
   const substitute = (p) => {
     let out = p;
-    if (/\/patients\/:(id|patientId)/.test(out)) out = out.replace(/:(id|patientId)/, ids.patientId || '');
+    if (/\/patients\/:(id|patientId)/.test(out))
+      out = out.replace(/:(id|patientId)/, ids.patientId || '');
     else if (/\/invoices\/:id/.test(out)) out = out.replace(':id', ids.invoiceId || '');
-    else if (/\/appointments\/:id/.test(out)) out = out.replace(':id', ids.appointmentId || '');
-    else if (/\/treatment-plans\/:id/.test(out)) out = out.replace(':id', ids.planId || '');
-    else if (/\/perio-exams\/:id/.test(out)) out = out.replace(':id', ids.perioExamId || '');
+    else if (/\/appointments\/:id/.test(out))
+      out = out.replace(':id', ids.appointmentId || '');
+    else if (/\/treatment-plans\/:id/.test(out))
+      out = out.replace(':id', ids.planId || '');
+    else if (/\/perio-exams\/:id/.test(out))
+      out = out.replace(':id', ids.perioExamId || '');
     else if (/\/documents\/:id/.test(out)) out = out.replace(':id', ids.documentId || '');
     return out;
   };
@@ -155,8 +174,14 @@ async function main() {
   const results = [];
   for (const route of routes.sort((a, b) => a.path.localeCompare(b.path))) {
     const target = substitute(route.path);
-    if (target.includes(':')) { results.push({ ...route, status: null, note: 'no id available' }); continue; }
-    if (target.includes('//')) { results.push({ ...route, status: null, note: 'no seeded record' }); continue; }
+    if (target.includes(':')) {
+      results.push({ ...route, status: null, note: 'no id available' });
+      continue;
+    }
+    if (target.includes('//')) {
+      results.push({ ...route, status: null, note: 'no seeded record' });
+      continue;
+    }
     const res = await call(target, token);
     results.push({ ...route, target, status: res.status, message: res.body?.message });
   }
@@ -167,9 +192,13 @@ async function main() {
     const label = x.path.padEnd(width);
     if (x.status === null) console.log(`  ${dim(label)}${y('skip')}  ${dim(x.note)}`);
     else if (x.status >= 500 || x.status === 0)
-      console.log(`  ${label}${r(x.status || 'ERR')}  ${r(String(x.message || '').slice(0, 90))}`);
+      console.log(
+        `  ${label}${r(x.status || 'ERR')}  ${r(String(x.message || '').slice(0, 90))}`,
+      );
     else if (x.status >= 400)
-      console.log(`  ${label}${y(x.status)}  ${dim(String(x.message || '').slice(0, 90))}`);
+      console.log(
+        `  ${label}${y(x.status)}  ${dim(String(x.message || '').slice(0, 90))}`,
+      );
     else console.log(`  ${label}${g(x.status)}`);
   }
 
@@ -178,14 +207,21 @@ async function main() {
   const ok = results.filter((x) => x.status >= 200 && x.status < 300);
   const skipped = results.filter((x) => x.status === null);
 
-  console.log(`\n  ${g(ok.length + ' ok')}   ${refused.length ? y(refused.length + ' 4xx') : '0 4xx'}   ${broken.length ? r(broken.length + ' server errors') : g('0 server errors')}   ${dim(skipped.length + ' skipped')}\n`);
+  console.log(
+    `\n  ${g(ok.length + ' ok')}   ${refused.length ? y(refused.length + ' 4xx') : '0 4xx'}   ${broken.length ? r(broken.length + ' server errors') : g('0 server errors')}   ${dim(skipped.length + ' skipped')}\n`,
+  );
 
   if (broken.length) {
     console.log(r('  Server errors — these are real bugs:'));
-    broken.forEach((x) => console.log(`    ${x.path}  ${dim(x.cls)}\n      ${x.message || 'no message'}`));
+    broken.forEach((x) =>
+      console.log(`    ${x.path}  ${dim(x.cls)}\n      ${x.message || 'no message'}`),
+    );
     console.log();
   }
   process.exit(broken.length ? 1 : 0);
 }
 
-main().catch((e) => { console.error(r(`\n  ${e.stack}\n`)); process.exit(1); });
+main().catch((e) => {
+  console.error(r(`\n  ${e.stack}\n`));
+  process.exit(1);
+});

@@ -1,0 +1,31 @@
+/**
+ * Integration tests. These need a real PostgreSQL.
+ *
+ * Kept apart from jest.config.js on purpose: the unit suite must stay
+ * runnable with nothing installed but node_modules, so that a failing test
+ * there always means a broken behaviour and never a missing database. These
+ * are the opposite — their whole value is that nothing is mocked.
+ *
+ *   DATABASE_URL       the privileged role. Migrations, and the fixtures that
+ *                      set up a scenario across tenants.
+ *   APP_DATABASE_URL   app_user. Every assertion about isolation connects as
+ *                      THIS role; as the owner they would prove nothing,
+ *                      because the owner is not subject to the policies.
+ *
+ * `.itest.ts`, not `.spec.ts`, so the two suites cannot pick up each other's
+ * files by accident.
+ */
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  rootDir: '.',
+  roots: ['<rootDir>/test'],
+  testRegex: '\\.itest\\.ts$',
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
+  // One database, shared. Parallel workers would race on the fixtures.
+  maxWorkers: 1,
+  // Booting a Nest application and opening pools is slower than a unit test,
+  // and CI runners are slower still.
+  testTimeout: 30_000,
+};
