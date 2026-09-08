@@ -8,7 +8,7 @@ import {
   type PerioExamSummary,
   type PerioSite,
 } from '../lib/api';
-import { archesFor, formatTooth } from '../lib/tooth-notation';
+import { archesFor, formatTooth } from '@dentalcare/shared';
 import { useAuth } from '../lib/auth';
 import { EmptyState, StatusPill } from './ui';
 import { dateLocale } from '../lib/i18n';
@@ -24,12 +24,15 @@ import { dateLocale } from '../lib/i18n';
  * the arch at probing speed without waiting for the network between numbers.
  */
 
-type Draft = Record<string, {
-  probingDepth: number | null;
-  recession: number | null;
-  bleeding: boolean;
-  suppuration: boolean;
-}>;
+type Draft = Record<
+  string,
+  {
+    probingDepth: number | null;
+    recession: number | null;
+    bleeding: boolean;
+    suppuration: boolean;
+  }
+>;
 
 const key = (tooth: number, site: PerioSite) => `${tooth}:${site}`;
 
@@ -49,7 +52,10 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
   const load = useCallback(() => {
     perioApi
       .listExams(patientId)
-      .then((e) => { setExams(e); setError(null); })
+      .then((e) => {
+        setExams(e);
+        setError(null);
+      })
       .catch((e: Error) => setError(e.message));
   }, [patientId]);
 
@@ -95,8 +101,13 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
       const measurements = Object.entries(draft)
         // Sites with nothing recorded are not sent: an untouched site is
         // "not measured", which is different from a measured zero.
-        .filter(([, v]) =>
-          v.probingDepth !== null || v.recession !== null || v.bleeding || v.suppuration)
+        .filter(
+          ([, v]) =>
+            v.probingDepth !== null ||
+            v.recession !== null ||
+            v.bleeding ||
+            v.suppuration,
+        )
         .map(([k, v]) => {
           const [tooth, site] = k.split(':');
           return {
@@ -135,7 +146,10 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
   }
 
   const EMPTY_CELL: Draft[string] = {
-    probingDepth: null, recession: null, bleeding: false, suppuration: false,
+    probingDepth: null,
+    recession: null,
+    bleeding: false,
+    suppuration: false,
   };
 
   const setCell = (tooth: number, site: PerioSite, patch: Partial<Draft[string]>) =>
@@ -147,7 +161,9 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
   return (
     <section className="card span-12">
       <header className="card__head">
-        <h3><Ruler size={16} aria-hidden /> Periodontal charting</h3>
+        <h3>
+          <Ruler size={16} aria-hidden /> Periodontal charting
+        </h3>
         {canEdit && (
           <button className="btn btn--ghost btn--sm" onClick={newExam}>
             <Plus size={14} /> New exam
@@ -180,13 +196,21 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
                   onClick={() => (openExam?.id === e.id ? setOpenExam(null) : open(e.id))}
                 >
                   {new Date(e.examinedOn).toLocaleDateString(dateLocale(), {
-                    day: 'numeric', month: 'long', year: 'numeric',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
                   })}
                 </button>
                 <span className="cell-sub">{e.siteCount} sites</span>
                 {e.siteCount > 0 && (
                   <StatusPill
-                    status={e.bleedingPercent >= 30 ? 'severe' : e.bleedingPercent > 10 ? 'moderate' : 'resolved'}
+                    status={
+                      e.bleedingPercent >= 30
+                        ? 'severe'
+                        : e.bleedingPercent > 10
+                          ? 'moderate'
+                          : 'resolved'
+                    }
                     label={`${e.bleedingPercent}% BOP`}
                   />
                 )}
@@ -210,14 +234,32 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
         <div className="periopanel">
           <div className="perio__summary">
             <Stat label="Sites recorded" value={String(openExam.summary.sitesRecorded)} />
-            <Stat label="Bleeding on probing" value={`${openExam.summary.bleedingPercent}%`}
-              alert={openExam.summary.bleedingPercent >= 30} />
-            <Stat label={`Pockets ≥ ${DEEP} mm`} value={String(openExam.summary.deepPocketSites)}
-              alert={openExam.summary.deepPocketSites > 0} />
-            <Stat label="Max depth"
-              value={openExam.summary.maxProbingDepth === null ? '—' : `${openExam.summary.maxProbingDepth} mm`} />
-            <Stat label="Mean depth"
-              value={openExam.summary.meanProbingDepth === null ? '—' : `${openExam.summary.meanProbingDepth} mm`} />
+            <Stat
+              label="Bleeding on probing"
+              value={`${openExam.summary.bleedingPercent}%`}
+              alert={openExam.summary.bleedingPercent >= 30}
+            />
+            <Stat
+              label={`Pockets ≥ ${DEEP} mm`}
+              value={String(openExam.summary.deepPocketSites)}
+              alert={openExam.summary.deepPocketSites > 0}
+            />
+            <Stat
+              label="Max depth"
+              value={
+                openExam.summary.maxProbingDepth === null
+                  ? '—'
+                  : `${openExam.summary.maxProbingDepth} mm`
+              }
+            />
+            <Stat
+              label="Mean depth"
+              value={
+                openExam.summary.meanProbingDepth === null
+                  ? '—'
+                  : `${openExam.summary.meanProbingDepth} mm`
+              }
+            />
           </div>
 
           <div className="periogrid__wrap">
@@ -225,56 +267,69 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
               <thead>
                 <tr>
                   <th>Tooth</th>
-                  {PERIO_SITES.map((s) => <th key={s}>{s}</th>)}
+                  {PERIO_SITES.map((s) => (
+                    <th key={s}>{s}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {[...archesFor('permanent').upper, ...archesFor('permanent').lower].map((tooth) => (
-                  <tr key={tooth}>
-                    <th scope="row">{formatTooth(tooth, 'fdi')}</th>
-                    {PERIO_SITES.map((site) => {
-                      const cell = draft[key(tooth, site)];
-                      const depth = cell?.probingDepth ?? null;
-                      return (
-                        <td
-                          key={site}
-                          className={depth !== null && depth >= DEEP ? 'periocell--deep' : undefined}
-                        >
-                          <input
-                            className="periocell__input"
-                            inputMode="numeric"
-                            maxLength={2}
-                            value={depth === null ? '' : String(depth)}
-                            disabled={!canEdit}
-                            aria-label={`Tooth ${tooth} ${site} probing depth`}
-                            onChange={(ev) => {
-                              const raw = ev.target.value.replace(/[^\d]/g, '');
-                              const n = raw === '' ? null : Math.min(15, Number(raw));
-                              setCell(tooth, site, { probingDepth: n });
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className={`periocell__bop${cell?.bleeding ? ' periocell__bop--on' : ''}`}
-                            disabled={!canEdit}
-                            aria-label={`Tooth ${tooth} ${site} bleeding on probing`}
-                            title="Bleeding on probing"
-                            onClick={() => setCell(tooth, site, { bleeding: !cell?.bleeding })}
+                {[...archesFor('permanent').upper, ...archesFor('permanent').lower].map(
+                  (tooth) => (
+                    <tr key={tooth}>
+                      <th scope="row">{formatTooth(tooth, 'fdi')}</th>
+                      {PERIO_SITES.map((site) => {
+                        const cell = draft[key(tooth, site)];
+                        const depth = cell?.probingDepth ?? null;
+                        return (
+                          <td
+                            key={site}
+                            className={
+                              depth !== null && depth >= DEEP
+                                ? 'periocell--deep'
+                                : undefined
+                            }
                           >
-                            <Droplet size={9} />
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                            <input
+                              className="periocell__input"
+                              inputMode="numeric"
+                              maxLength={2}
+                              value={depth === null ? '' : String(depth)}
+                              disabled={!canEdit}
+                              aria-label={`Tooth ${tooth} ${site} probing depth`}
+                              onChange={(ev) => {
+                                const raw = ev.target.value.replace(/[^\d]/g, '');
+                                const n = raw === '' ? null : Math.min(15, Number(raw));
+                                setCell(tooth, site, { probingDepth: n });
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className={`periocell__bop${cell?.bleeding ? ' periocell__bop--on' : ''}`}
+                              disabled={!canEdit}
+                              aria-label={`Tooth ${tooth} ${site} bleeding on probing`}
+                              title="Bleeding on probing"
+                              onClick={() =>
+                                setCell(tooth, site, { bleeding: !cell?.bleeding })
+                              }
+                            >
+                              <Droplet size={9} />
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ),
+                )}
               </tbody>
             </table>
           </div>
 
           {canEdit && (
             <div className="inlineform__foot">
-              <button className="btn btn--ghost btn--sm" onClick={() => setOpenExam(null)}>
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => setOpenExam(null)}
+              >
                 Close
               </button>
               <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
@@ -288,7 +343,15 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
   );
 }
 
-function Stat({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
+function Stat({
+  label,
+  value,
+  alert,
+}: {
+  label: string;
+  value: string;
+  alert?: boolean;
+}) {
   return (
     <div className={`periostat${alert ? ' periostat--alert' : ''}`}>
       <span className="periostat__value">{value}</span>

@@ -21,7 +21,10 @@ export const tokenStore = {
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -36,7 +39,7 @@ async function toApiError(res: Response): Promise<ApiError> {
     const body = await res.json();
     message = Array.isArray(body.message)
       ? body.message.join(', ')
-      : body.message ?? message;
+      : (body.message ?? message);
   } catch {
     /* response had no JSON body — keep statusText */
   }
@@ -83,8 +86,7 @@ function applyTenantHeader(headers: Headers) {
   // In production the subdomain (Host) identifies the clinic. For local dev
   // we send it explicitly; defaults to the demo clinic. The API ignores this
   // header unless ALLOW_TENANT_HEADER=1 and NODE_ENV is not production.
-  const tenant =
-    (import.meta.env.VITE_TENANT_SUBDOMAIN as string | undefined) ?? 'demo';
+  const tenant = (import.meta.env.VITE_TENANT_SUBDOMAIN as string | undefined) ?? 'demo';
   headers.set('X-Tenant-Subdomain', tenant);
 }
 
@@ -278,7 +280,13 @@ export interface MedicalHistory {
 }
 
 export const DOCUMENT_KINDS = [
-  'xray', 'photo', 'consent', 'referral', 'insurance', 'report', 'other',
+  'xray',
+  'photo',
+  'consent',
+  'referral',
+  'insurance',
+  'report',
+  'other',
 ] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
@@ -612,7 +620,12 @@ function clean<T extends object>(p: T): Record<string, unknown> {
 
 /* ── Appointments (M6) ──────────────────────────────────── */
 export const APPT_STATUSES = [
-  'scheduled', 'checked_in', 'in_progress', 'completed', 'cancelled', 'no_show',
+  'scheduled',
+  'checked_in',
+  'in_progress',
+  'completed',
+  'cancelled',
+  'no_show',
 ] as const;
 export type ApptStatus = (typeof APPT_STATUSES)[number];
 
@@ -627,7 +640,9 @@ export const APPT_STATUS_LABELS: Record<ApptStatus, string> = {
 
 /** Statuses that still occupy a chair — mirrors BLOCKING_STATUSES on the API. */
 export const APPT_ACTIVE_STATUSES: ApptStatus[] = [
-  'scheduled', 'checked_in', 'in_progress',
+  'scheduled',
+  'checked_in',
+  'in_progress',
 ];
 
 export interface Appointment {
@@ -725,17 +740,27 @@ export const appointmentsApi = {
     return request<Appointment[]>(`/appointments${s ? `?${s}` : ''}`);
   },
   create(p: AppointmentPayload) {
-    return request<Appointment>('/appointments', { method: 'POST', body: JSON.stringify(p) });
+    return request<Appointment>('/appointments', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
   },
   /** Details and timing only — status moves through `transition`. */
   update(id: string, p: Partial<AppointmentPayload>) {
-    return request<Appointment>(`/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+    return request<Appointment>(`/appointments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
   /**
    * The only way status changes. The API enforces the state machine and
    * records who moved it and why.
    */
-  transition(id: string, status: ApptStatus, opts: { reason?: string; note?: string } = {}) {
+  transition(
+    id: string,
+    status: ApptStatus,
+    opts: { reason?: string; note?: string } = {},
+  ) {
     return request<Appointment>(`/appointments/${id}/status`, {
       method: 'POST',
       body: JSON.stringify({ status, ...opts }),
@@ -746,11 +771,17 @@ export const appointmentsApi = {
   },
   /** Server-owned lifecycle rules, so the UI never keeps its own copy. */
   statuses() {
-    return request<{ statuses: ApptStatus[]; transitions: Record<ApptStatus, ApptStatus[]> }>(
-      '/appointments/statuses',
-    );
+    return request<{
+      statuses: ApptStatus[];
+      transitions: Record<ApptStatus, ApptStatus[]>;
+    }>('/appointments/statuses');
   },
-  freeSlots(params: { staffId: string; date: string; duration?: number; operatoryId?: string }) {
+  freeSlots(params: {
+    staffId: string;
+    date: string;
+    duration?: number;
+    operatoryId?: string;
+  }) {
     const qs = new URLSearchParams({ staffId: params.staffId, date: params.date });
     if (params.duration) qs.set('duration', String(params.duration));
     if (params.operatoryId) qs.set('operatoryId', params.operatoryId);
@@ -764,40 +795,71 @@ export const appointmentsApi = {
 /* ── Operatories (treatment rooms) ───────────────────────── */
 export const operatoriesApi = {
   list(includeInactive = false) {
-    return request<Operatory[]>(`/operatories${includeInactive ? '?includeInactive=1' : ''}`);
+    return request<Operatory[]>(
+      `/operatories${includeInactive ? '?includeInactive=1' : ''}`,
+    );
   },
   create(p: { name: string; description?: string; sortOrder?: number; color?: string }) {
-    return request<Operatory>('/operatories', { method: 'POST', body: JSON.stringify(clean(p)) });
+    return request<Operatory>('/operatories', {
+      method: 'POST',
+      body: JSON.stringify(clean(p)),
+    });
   },
-  update(id: string, p: Partial<{
-    name: string; description: string; sortOrder: number; color: string; isActive: boolean;
-  }>) {
-    return request<Operatory>(`/operatories/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+  update(
+    id: string,
+    p: Partial<{
+      name: string;
+      description: string;
+      sortOrder: number;
+      color: string;
+      isActive: boolean;
+    }>,
+  ) {
+    return request<Operatory>(`/operatories/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
   remove(id: string) {
-    return request<{ deleted: boolean; deactivated: boolean; appointmentsUsingRoom?: number }>(
-      `/operatories/${id}`, { method: 'DELETE' },
-    );
+    return request<{
+      deleted: boolean;
+      deactivated: boolean;
+      appointmentsUsingRoom?: number;
+    }>(`/operatories/${id}`, { method: 'DELETE' });
   },
 };
 
 /* ── Staff availability (weekly schedule) ────────────────── */
 export const availabilityApi = {
   list(staffId?: string) {
-    return request<AvailabilityEntry[]>(`/availability${staffId ? `?staffId=${staffId}` : ''}`);
+    return request<AvailabilityEntry[]>(
+      `/availability${staffId ? `?staffId=${staffId}` : ''}`,
+    );
   },
   create(p: {
-    staffId: string; weekday: number; startsAt: string; endsAt: string; operatoryId?: string;
+    staffId: string;
+    weekday: number;
+    startsAt: string;
+    endsAt: string;
+    operatoryId?: string;
   }) {
     return request<AvailabilityEntry>('/availability', {
-      method: 'POST', body: JSON.stringify(clean(p)),
+      method: 'POST',
+      body: JSON.stringify(clean(p)),
     });
   },
-  update(id: string, p: Partial<{
-    weekday: number; startsAt: string; endsAt: string; operatoryId: string | null;
-  }>) {
+  update(
+    id: string,
+    p: Partial<{
+      weekday: number;
+      startsAt: string;
+      endsAt: string;
+      operatoryId: string | null;
+    }>,
+  ) {
     return request<AvailabilityEntry>(`/availability/${id}`, {
-      method: 'PATCH', body: JSON.stringify(p),
+      method: 'PATCH',
+      body: JSON.stringify(p),
     });
   },
   remove(id: string) {
@@ -823,35 +885,26 @@ export interface TreatmentPayload {
 }
 /* ── Clinical charting (Phase 4) ─────────────────────────── */
 
-export const SURFACES = ['M', 'D', 'O', 'I', 'F', 'L'] as const;
-export type Surface = (typeof SURFACES)[number];
+/**
+ * These are the API's own vocabulary, so they come from @dentalcare/shared
+ * rather than being restated here.
+ *
+ * They were restated here — a third copy, after the API's and the one in
+ * lib/tooth-notation.ts. All three happened to agree, which is the luckier
+ * failure mode: the surface codes and the condition list are what the API
+ * validates a chart entry against, so a copy that fell behind would send a
+ * clinician a rejection for a finding the UI had offered them.
+ */
+export {
+  SURFACES,
+  TOOTH_CONDITIONS,
+  CONDITION_LABELS,
+  WHOLE_TOOTH_CONDITIONS,
+  type Surface,
+  type ToothCondition,
+} from '@dentalcare/shared';
 
-export const TOOTH_CONDITIONS = [
-  'caries', 'restored', 'crown', 'bridge', 'veneer', 'root_canal', 'implant',
-  'extracted', 'missing', 'impacted', 'fractured', 'sealant', 'watch',
-] as const;
-export type ToothCondition = (typeof TOOTH_CONDITIONS)[number];
-
-export const CONDITION_LABELS: Record<ToothCondition, string> = {
-  caries: 'Caries',
-  restored: 'Restored / filling',
-  crown: 'Crown',
-  bridge: 'Bridge',
-  veneer: 'Veneer',
-  root_canal: 'Root canal',
-  implant: 'Implant',
-  extracted: 'Extracted',
-  missing: 'Missing',
-  impacted: 'Impacted',
-  fractured: 'Fractured',
-  sealant: 'Sealant',
-  watch: 'Watch',
-};
-
-/** Findings that describe the whole tooth — the API rejects a surface on these. */
-export const WHOLE_TOOTH_CONDITIONS: ToothCondition[] = [
-  'extracted', 'missing', 'implant', 'impacted', 'crown', 'bridge', 'root_canal',
-];
+import type { Surface, ToothCondition } from '@dentalcare/shared';
 
 export interface ToothConditionRecord {
   id: string;
@@ -920,22 +973,30 @@ export const chartApi = {
   get(patientId: string) {
     return request<DentalChart>(`/patients/${patientId}/chart`);
   },
-  addCondition(patientId: string, p: {
-    tooth: number;
-    surface?: Surface;
-    condition: ToothCondition;
-    status?: 'active' | 'treated' | 'resolved';
-    dentistId?: string;
-    note?: string;
-  }) {
+  addCondition(
+    patientId: string,
+    p: {
+      tooth: number;
+      surface?: Surface;
+      condition: ToothCondition;
+      status?: 'active' | 'treated' | 'resolved';
+      dentistId?: string;
+      note?: string;
+    },
+  ) {
     return request<ToothConditionRecord>(`/patients/${patientId}/chart/conditions`, {
       method: 'POST',
       body: JSON.stringify(clean(p)),
     });
   },
-  updateCondition(id: string, p: Partial<{
-    status: 'active' | 'treated' | 'resolved'; note: string; dentistId: string;
-  }>) {
+  updateCondition(
+    id: string,
+    p: Partial<{
+      status: 'active' | 'treated' | 'resolved';
+      note: string;
+      dentistId: string;
+    }>,
+  ) {
     return request<ToothConditionRecord>(`/tooth-conditions/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(p),
@@ -956,24 +1017,36 @@ export const procedureCodesApi = {
     return request<ProcedureCode[]>(`/procedure-codes${s ? `?${s}` : ''}`);
   },
   create(p: {
-    system: 'CDT' | 'ICD10' | 'custom'; code: string; description: string;
-    defaultFee?: number; treatmentId?: string;
+    system: 'CDT' | 'ICD10' | 'custom';
+    code: string;
+    description: string;
+    defaultFee?: number;
+    treatmentId?: string;
   }) {
     return request<ProcedureCode>('/procedure-codes', {
-      method: 'POST', body: JSON.stringify(clean(p)),
+      method: 'POST',
+      body: JSON.stringify(clean(p)),
     });
   },
-  update(id: string, p: Partial<{
-    code: string; description: string; defaultFee: number;
-    treatmentId: string | null; isActive: boolean;
-  }>) {
+  update(
+    id: string,
+    p: Partial<{
+      code: string;
+      description: string;
+      defaultFee: number;
+      treatmentId: string | null;
+      isActive: boolean;
+    }>,
+  ) {
     return request<ProcedureCode>(`/procedure-codes/${id}`, {
-      method: 'PATCH', body: JSON.stringify(p),
+      method: 'PATCH',
+      body: JSON.stringify(p),
     });
   },
   remove(id: string) {
     return request<{ deleted: boolean; deactivated: boolean; usedBy?: number }>(
-      `/procedure-codes/${id}`, { method: 'DELETE' },
+      `/procedure-codes/${id}`,
+      { method: 'DELETE' },
     );
   },
 };
@@ -982,24 +1055,44 @@ export const proceduresApi = {
   list(patientId: string) {
     return request<ClinicalProcedure[]>(`/patients/${patientId}/procedures`);
   },
-  log(patientId: string, p: {
-    tooth?: number; surfaces?: Surface[]; procedureCodeId?: string;
-    diagnosisCodeId?: string; treatmentId?: string; planItemId?: string;
-    appointmentId?: string; description: string; clinicianId?: string;
-    status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
-    fee?: number; performedOn?: string; note?: string;
-    resolvesConditionIds?: string[];
-  }) {
+  log(
+    patientId: string,
+    p: {
+      tooth?: number;
+      surfaces?: Surface[];
+      procedureCodeId?: string;
+      diagnosisCodeId?: string;
+      treatmentId?: string;
+      planItemId?: string;
+      appointmentId?: string;
+      description: string;
+      clinicianId?: string;
+      status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+      fee?: number;
+      performedOn?: string;
+      note?: string;
+      resolvesConditionIds?: string[];
+    },
+  ) {
     return request<ClinicalProcedure>(`/patients/${patientId}/procedures`, {
-      method: 'POST', body: JSON.stringify(clean(p)),
+      method: 'POST',
+      body: JSON.stringify(clean(p)),
     });
   },
-  update(id: string, p: Partial<{
-    description: string; status: string; fee: number;
-    performedOn: string; clinicianId: string | null; note: string;
-  }>) {
+  update(
+    id: string,
+    p: Partial<{
+      description: string;
+      status: string;
+      fee: number;
+      performedOn: string;
+      clinicianId: string | null;
+      note: string;
+    }>,
+  ) {
     return request<ClinicalProcedure>(`/procedures/${id}`, {
-      method: 'PATCH', body: JSON.stringify(p),
+      method: 'PATCH',
+      body: JSON.stringify(p),
     });
   },
   remove(id: string) {
@@ -1072,25 +1165,42 @@ export const perioApi = {
   listExams(patientId: string) {
     return request<PerioExamSummary[]>(`/patients/${patientId}/perio-exams`);
   },
-  createExam(patientId: string, p: { examinedOn?: string; clinicianId?: string; note?: string } = {}) {
+  createExam(
+    patientId: string,
+    p: { examinedOn?: string; clinicianId?: string; note?: string } = {},
+  ) {
     return request<PerioExam>(`/patients/${patientId}/perio-exams`, {
-      method: 'POST', body: JSON.stringify(clean(p)),
+      method: 'POST',
+      body: JSON.stringify(clean(p)),
     });
   },
   getExam(examId: string) {
     return request<PerioExam>(`/perio-exams/${examId}`);
   },
   /** Bulk upsert — a full-mouth chart is one request, not 192. */
-  saveMeasurements(examId: string, body: {
-    measurements: {
-      tooth: number; site: PerioSite;
-      probingDepth?: number | null; recession?: number | null;
-      bleeding?: boolean; suppuration?: boolean; plaque?: boolean;
-    }[];
-    findings?: { tooth: number; mobility?: number | null; furcation?: number | null; note?: string }[];
-  }) {
+  saveMeasurements(
+    examId: string,
+    body: {
+      measurements: {
+        tooth: number;
+        site: PerioSite;
+        probingDepth?: number | null;
+        recession?: number | null;
+        bleeding?: boolean;
+        suppuration?: boolean;
+        plaque?: boolean;
+      }[];
+      findings?: {
+        tooth: number;
+        mobility?: number | null;
+        furcation?: number | null;
+        note?: string;
+      }[];
+    },
+  ) {
     return request<PerioExam>(`/perio-exams/${examId}/measurements`, {
-      method: 'POST', body: JSON.stringify(body),
+      method: 'POST',
+      body: JSON.stringify(body),
     });
   },
   deleteExam(examId: string) {
@@ -1101,7 +1211,12 @@ export const perioApi = {
 /* ── Treatment plans ─────────────────────────────────────── */
 
 export const PLAN_STATUSES = [
-  'draft', 'proposed', 'accepted', 'in_progress', 'completed', 'declined',
+  'draft',
+  'proposed',
+  'accepted',
+  'in_progress',
+  'completed',
+  'declined',
 ] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
@@ -1173,51 +1288,89 @@ export const treatmentPlansApi = {
     const s = status ? `?status=${status}` : '';
     return request<TreatmentPlan[]>(`/patients/${patientId}/treatment-plans${s}`);
   },
-  create(patientId: string, p: {
-    title: string; note?: string; dentistId?: string; discountAmount?: number;
-  }) {
+  create(
+    patientId: string,
+    p: {
+      title: string;
+      note?: string;
+      dentistId?: string;
+      discountAmount?: number;
+    },
+  ) {
     return request<TreatmentPlan>(`/patients/${patientId}/treatment-plans`, {
-      method: 'POST', body: JSON.stringify(clean(p)),
+      method: 'POST',
+      body: JSON.stringify(clean(p)),
     });
   },
   get(id: string) {
     return request<TreatmentPlan>(`/treatment-plans/${id}`);
   },
-  update(id: string, p: Partial<{
-    title: string; note: string; dentistId: string | null; discountAmount: number;
-  }>) {
+  update(
+    id: string,
+    p: Partial<{
+      title: string;
+      note: string;
+      dentistId: string | null;
+      discountAmount: number;
+    }>,
+  ) {
     return request<TreatmentPlan>(`/treatment-plans/${id}`, {
-      method: 'PATCH', body: JSON.stringify(p),
+      method: 'PATCH',
+      body: JSON.stringify(p),
     });
   },
   transition(id: string, status: PlanStatus, reason?: string) {
     return request<TreatmentPlan>(`/treatment-plans/${id}/status`, {
-      method: 'POST', body: JSON.stringify({ status, reason }),
+      method: 'POST',
+      body: JSON.stringify({ status, reason }),
     });
   },
   remove(id: string) {
     return request<{ deleted: true }>(`/treatment-plans/${id}`, { method: 'DELETE' });
   },
-  addItem(planId: string, p: {
-    tooth?: number; surfaces?: Surface[]; procedureCodeId?: string;
-    treatmentId?: string; description: string; quantity?: number;
-    unitFee?: number; discountAmount?: number; sortOrder?: number; note?: string;
-  }) {
+  addItem(
+    planId: string,
+    p: {
+      tooth?: number;
+      surfaces?: Surface[];
+      procedureCodeId?: string;
+      treatmentId?: string;
+      description: string;
+      quantity?: number;
+      unitFee?: number;
+      discountAmount?: number;
+      sortOrder?: number;
+      note?: string;
+    },
+  ) {
     return request<PlanItem>(`/treatment-plans/${planId}/items`, {
-      method: 'POST', body: JSON.stringify(clean(p)),
+      method: 'POST',
+      body: JSON.stringify(clean(p)),
     });
   },
-  updateItem(itemId: string, p: Partial<{
-    tooth: number; surfaces: Surface[]; description: string; quantity: number;
-    unitFee: number; discountAmount: number; sortOrder: number;
-    status: 'planned' | 'scheduled' | 'completed' | 'cancelled'; note: string;
-  }>) {
+  updateItem(
+    itemId: string,
+    p: Partial<{
+      tooth: number;
+      surfaces: Surface[];
+      description: string;
+      quantity: number;
+      unitFee: number;
+      discountAmount: number;
+      sortOrder: number;
+      status: 'planned' | 'scheduled' | 'completed' | 'cancelled';
+      note: string;
+    }>,
+  ) {
     return request<PlanItem>(`/treatment-plan-items/${itemId}`, {
-      method: 'PATCH', body: JSON.stringify(p),
+      method: 'PATCH',
+      body: JSON.stringify(p),
     });
   },
   removeItem(itemId: string) {
-    return request<{ deleted: true }>(`/treatment-plan-items/${itemId}`, { method: 'DELETE' });
+    return request<{ deleted: true }>(`/treatment-plan-items/${itemId}`, {
+      method: 'DELETE',
+    });
   },
 };
 
@@ -1233,7 +1386,10 @@ export const treatmentsApi = {
     return request<Treatment>('/treatments', { method: 'POST', body: JSON.stringify(p) });
   },
   update(id: string, p: Partial<TreatmentPayload>) {
-    return request<Treatment>(`/treatments/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+    return request<Treatment>(`/treatments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
 };
 
@@ -1263,25 +1419,45 @@ export const staffApi = {
     return request<StaffFull[]>('/staff');
   },
   create(p: {
-    fullName: string; email: string; password: string; role: Role;
-    position?: string; salaryAmount?: number; salaryNote?: string;
+    fullName: string;
+    email: string;
+    password: string;
+    role: Role;
+    position?: string;
+    salaryAmount?: number;
+    salaryNote?: string;
   }) {
     return request<StaffFull>('/staff', { method: 'POST', body: JSON.stringify(p) });
   },
-  update(id: string, p: {
-    fullName?: string; role?: Role; status?: 'active' | 'disabled';
-    position?: string | null; salaryAmount?: number | null; salaryNote?: string | null;
-  }) {
-    return request<StaffFull>(`/staff/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+  update(
+    id: string,
+    p: {
+      fullName?: string;
+      role?: Role;
+      status?: 'active' | 'disabled';
+      position?: string | null;
+      salaryAmount?: number | null;
+      salaryNote?: string | null;
+    },
+  ) {
+    return request<StaffFull>(`/staff/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
   resetPassword(staffId: string, password: string) {
     return request<{ reset: true }>(`/staff/${staffId}/password`, {
-      method: 'POST', body: JSON.stringify({ password }),
+      method: 'POST',
+      body: JSON.stringify({ password }),
     });
   },
-  recordSalaryPayment(staffId: string, p: { amount: number; paidOn?: string; note?: string }) {
+  recordSalaryPayment(
+    staffId: string,
+    p: { amount: number; paidOn?: string; note?: string },
+  ) {
     return request<SalaryPayment>(`/staff/${staffId}/salary-payments`, {
-      method: 'POST', body: JSON.stringify(p),
+      method: 'POST',
+      body: JSON.stringify(p),
     });
   },
   salaryPayments() {
@@ -1312,14 +1488,18 @@ export const settingsApi = {
     return request<ClinicSettings>('/settings');
   },
   update(p: Partial<ClinicSettings>) {
-    return request<ClinicSettings>('/settings', { method: 'PATCH', body: JSON.stringify(p) });
+    return request<ClinicSettings>('/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
 };
 
 /* ── Finance (M8) ───────────────────────────────────────── */
 export type InvoiceStatus = 'unpaid' | 'partially_paid' | 'paid' | 'cancelled';
 export type PaymentMethod = 'cash' | 'card' | 'bank';
-export type ExpenseCategory = 'rent' | 'materials' | 'utilities' | 'salaries' | 'lab' | 'other';
+export type ExpenseCategory =
+  'rent' | 'materials' | 'utilities' | 'salaries' | 'lab' | 'other';
 
 export interface InvoiceSummaryRow {
   id: string;
@@ -1415,14 +1595,21 @@ export const financeApi = {
     return request<InvoiceDetail>(`/invoices/${id}`);
   },
   createInvoice(p: { patientId: string; issuedAt?: string; items: LineItemPayload[] }) {
-    return request<InvoiceSummaryRow>('/invoices', { method: 'POST', body: JSON.stringify(p) });
+    return request<InvoiceSummaryRow>('/invoices', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
   },
   cancelInvoice(id: string) {
     return request<InvoiceSummaryRow>(`/invoices/${id}/cancel`, { method: 'PATCH' });
   },
-  recordPayment(invoiceId: string, p: { amount: number; method: PaymentMethod; note?: string }) {
+  recordPayment(
+    invoiceId: string,
+    p: { amount: number; method: PaymentMethod; note?: string },
+  ) {
     return request<InvoiceSummaryRow>(`/invoices/${invoiceId}/payments`, {
-      method: 'POST', body: JSON.stringify(p),
+      method: 'POST',
+      body: JSON.stringify(p),
     });
   },
   listPayments() {
@@ -1432,17 +1619,24 @@ export const financeApi = {
     const s = category && category !== 'all' ? `?category=${category}` : '';
     return request<ExpenseRow[]>(`/expenses${s}`);
   },
-  createExpense(p: { category: ExpenseCategory; amount: number; expenseDate?: string; note?: string }) {
+  createExpense(p: {
+    category: ExpenseCategory;
+    amount: number;
+    expenseDate?: string;
+    note?: string;
+  }) {
     return request<ExpenseRow>('/expenses', { method: 'POST', body: JSON.stringify(p) });
   },
   voidExpense(id: string, reason: string) {
     return request<{ voided: true }>(`/expenses/${id}/void`, {
-      method: 'POST', body: JSON.stringify({ reason }),
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   },
   voidPayment(id: string, reason: string) {
     return request<InvoiceSummaryRow>(`/payments/${id}/void`, {
-      method: 'POST', body: JSON.stringify({ reason }),
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   },
   summary(period: 'month' | 'all' = 'month') {
@@ -1496,9 +1690,21 @@ export const auditApi = {
 };
 
 /* ── Reports (requires reports:read) ─────────────────────── */
-export interface ReportBreakdownRow { label: string; value: number }
-export interface ReportDentistRow { label: string; total: number; completed: number }
-export interface ReportTrendPoint { month: string; collected: number; expenses: number; profit: number }
+export interface ReportBreakdownRow {
+  label: string;
+  value: number;
+}
+export interface ReportDentistRow {
+  label: string;
+  total: number;
+  completed: number;
+}
+export interface ReportTrendPoint {
+  month: string;
+  collected: number;
+  expenses: number;
+  profit: number;
+}
 export interface ReportOverview {
   range: { from: string; to: string };
   totals: {
@@ -1527,7 +1733,6 @@ export const reportsApi = {
     return request<ReportOverview>(`/reports/overview${s ? `?${s}` : ''}`);
   },
 };
-
 
 /* ── Reminders (M10) ────────────────────────────────────── */
 export interface Reminder {
@@ -1566,7 +1771,11 @@ export const remindersApi = {
 /* ── Billing, ledger and A/R (Phase 5) ───────────────────── */
 
 export const LEDGER_ENTRY_TYPES = [
-  'charge', 'payment', 'adjustment', 'refund', 'write_off',
+  'charge',
+  'payment',
+  'adjustment',
+  'refund',
+  'write_off',
 ] as const;
 export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[number];
 
@@ -1678,9 +1887,14 @@ export const billingApi = {
    * unless `completedOnly` is false — a clinic should not invoice work it has
    * not done.
    */
-  generateFromPlan(planId: string, opts: {
-    completedOnly?: boolean; issuedAt?: string; notes?: string;
-  } = {}) {
+  generateFromPlan(
+    planId: string,
+    opts: {
+      completedOnly?: boolean;
+      issuedAt?: string;
+      notes?: string;
+    } = {},
+  ) {
     return request<GeneratedInvoice>(`/treatment-plans/${planId}/invoice`, {
       method: 'POST',
       body: JSON.stringify(opts),
@@ -1689,12 +1903,15 @@ export const billingApi = {
   ledger(patientId: string) {
     return request<PatientLedger>(`/patients/${patientId}/ledger`);
   },
-  addAdjustment(patientId: string, p: {
-    entryType: 'adjustment' | 'write_off' | 'refund';
-    amount: number;
-    description: string;
-    occurredOn?: string;
-  }) {
+  addAdjustment(
+    patientId: string,
+    p: {
+      entryType: 'adjustment' | 'write_off' | 'refund';
+      amount: number;
+      description: string;
+      occurredOn?: string;
+    },
+  ) {
     return request<PatientLedger>(`/patients/${patientId}/ledger/adjustments`, {
       method: 'POST',
       body: JSON.stringify(clean(p)),

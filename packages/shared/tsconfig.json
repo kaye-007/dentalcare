@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "composite": false,
+    // Consumed by a CommonJS Nest build and by two Vite/ESM apps. CommonJS
+    // output is what both can read: Vite handles it, tsc does not need to.
+    "module": "commonjs",
+    "lib": ["ES2021"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+}

@@ -12,3 +12,6 @@ package-lock.json
 # thing that matters about this file is that it reproduces the schema exactly,
 # which `node scripts/build-baseline.js --verify` checks and Prettier cannot.
 apps/api/migrations/0001_baseline.js
+
+# Build output of the shared package.
+packages/shared/dist

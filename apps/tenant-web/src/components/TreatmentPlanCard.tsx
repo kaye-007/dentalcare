@@ -15,7 +15,7 @@ import {
   type TreatmentPlan,
 } from '../lib/api';
 import { formatMoney as money } from '../lib/format';
-import { surfaceName, surfacesFor, toothLabel } from '../lib/tooth-notation';
+import { surfaceName, surfacesFor, toothLabel } from '@dentalcare/shared';
 import { useAuth } from '../lib/auth';
 import { EmptyState, StatusPill } from './ui';
 
@@ -39,7 +39,10 @@ export default function TreatmentPlanCard({ patientId }: { patientId: string }) 
   const load = useCallback(() => {
     treatmentPlansApi
       .listForPatient(patientId)
-      .then((p) => { setPlans(p); setError(null); })
+      .then((p) => {
+        setPlans(p);
+        setError(null);
+      })
       .catch((e: Error) => setError(e.message));
   }, [patientId]);
 
@@ -60,7 +63,9 @@ export default function TreatmentPlanCard({ patientId }: { patientId: string }) 
   return (
     <section className="card span-12">
       <header className="card__head">
-        <h3><ClipboardList size={16} aria-hidden /> Treatment plans</h3>
+        <h3>
+          <ClipboardList size={16} aria-hidden /> Treatment plans
+        </h3>
         {canEdit && !creating && (
           <button className="btn btn--ghost btn--sm" onClick={() => setCreating(true)}>
             <Plus size={14} /> New plan
@@ -105,15 +110,23 @@ export default function TreatmentPlanCard({ patientId }: { patientId: string }) 
 }
 
 function NewPlanForm({
-  onCreate, onCancel,
-}: { onCreate: (title: string) => void; onCancel: () => void }) {
+  onCreate,
+  onCancel,
+}: {
+  onCreate: (title: string) => void;
+  onCancel: () => void;
+}) {
   const [title, setTitle] = useState('');
   return (
     <form
       className="inlineform"
-      onSubmit={(e) => { e.preventDefault(); if (title.trim()) onCreate(title.trim()); }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (title.trim()) onCreate(title.trim());
+      }}
     >
-      <label className="field"><span>Plan title</span>
+      <label className="field">
+        <span>Plan title</span>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -121,9 +134,12 @@ function NewPlanForm({
           autoFocus
           required
           maxLength={150}
-        /></label>
+        />
+      </label>
       <div className="inlineform__foot">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
         <button className="btn btn--primary btn--sm">Create plan</button>
       </div>
     </form>
@@ -131,7 +147,11 @@ function NewPlanForm({
 }
 
 function PlanBlock({
-  plan, open, canEdit, onToggle, onChange,
+  plan,
+  open,
+  canEdit,
+  onToggle,
+  onChange,
 }: {
   plan: TreatmentPlan;
   open: boolean;
@@ -162,15 +182,22 @@ function PlanBlock({
   };
 
   const statusPill = (s: PlanStatus) =>
-    s === 'accepted' || s === 'completed' ? 'current'
-      : s === 'declined' ? 'severe'
-        : s === 'in_progress' ? 'in_progress' : 'scheduled';
+    s === 'accepted' || s === 'completed'
+      ? 'current'
+      : s === 'declined'
+        ? 'severe'
+        : s === 'in_progress'
+          ? 'in_progress'
+          : 'scheduled';
 
   return (
     <div className={`planblock${open ? ' planblock--open' : ''}`}>
       <button type="button" className="planblock__head" onClick={onToggle}>
         <span className="recordrow__title">{plan.title}</span>
-        <StatusPill status={statusPill(plan.status)} label={PLAN_STATUS_LABELS[plan.status]} />
+        <StatusPill
+          status={statusPill(plan.status)}
+          label={PLAN_STATUS_LABELS[plan.status]}
+        />
         <span className="cell-sub">
           {plan.cost.lineCount} procedure{plan.cost.lineCount === 1 ? '' : 's'}
         </span>
@@ -181,7 +208,9 @@ function PlanBlock({
         <div className="planblock__body">
           {err && <p className="formerror">{err}</p>}
           {invoiceNotice && (
-            <p className="muted" style={{ fontSize: 13 }}>{invoiceNotice}</p>
+            <p className="muted" style={{ fontSize: 13 }}>
+              {invoiceNotice}
+            </p>
           )}
 
           {plan.items.length === 0 ? (
@@ -192,10 +221,15 @@ function PlanBlock({
             <table className="table table--compact">
               <thead>
                 <tr>
-                  <th>Procedure</th><th>Tooth</th><th>Code</th>
-                  <th className="num">Qty</th><th className="num">Fee</th>
-                  <th className="num">Discount</th><th className="num">Total</th>
-                  <th>Status</th>{canEdit && <th />}
+                  <th>Procedure</th>
+                  <th>Tooth</th>
+                  <th>Code</th>
+                  <th className="num">Qty</th>
+                  <th className="num">Fee</th>
+                  <th className="num">Discount</th>
+                  <th className="num">Total</th>
+                  <th>Status</th>
+                  {canEdit && <th />}
                 </tr>
               </thead>
               <tbody>
@@ -211,19 +245,22 @@ function PlanBlock({
             </table>
           )}
 
-          {canEdit && plan.status !== 'completed' && (
-            adding ? (
+          {canEdit &&
+            plan.status !== 'completed' &&
+            (adding ? (
               <PlanItemForm
                 planId={plan.id}
-                onDone={() => { setAdding(false); onChange(); }}
+                onDone={() => {
+                  setAdding(false);
+                  onChange();
+                }}
                 onCancel={() => setAdding(false)}
               />
             ) : (
               <button className="btn btn--ghost btn--sm" onClick={() => setAdding(true)}>
                 <Plus size={14} /> Add procedure
               </button>
-            )
-          )}
+            ))}
 
           {/* The quote, exactly as the engine computed it. */}
           <div className="plantotals">
@@ -251,15 +288,20 @@ function PlanBlock({
 
           {canEdit && declining && (
             <div className="inlineform">
-              <label className="field"><span>Why did the patient decline? (required)</span>
+              <label className="field">
+                <span>Why did the patient decline? (required)</span>
                 <input
                   value={declineReason}
                   onChange={(e) => setDeclineReason(e.target.value)}
                   placeholder="Cost, seeking a second opinion, postponed…"
                   autoFocus
-                /></label>
+                />
+              </label>
               <div className="inlineform__foot">
-                <button className="btn btn--ghost btn--sm" onClick={() => setDeclining(false)}>
+                <button
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setDeclining(false)}
+                >
                   Cancel
                 </button>
                 <button
@@ -267,7 +309,11 @@ function PlanBlock({
                   disabled={busy || !declineReason.trim()}
                   onClick={() =>
                     act(async () => {
-                      await treatmentPlansApi.transition(plan.id, 'declined', declineReason.trim());
+                      await treatmentPlansApi.transition(
+                        plan.id,
+                        'declined',
+                        declineReason.trim(),
+                      );
                       setDeclining(false);
                       setDeclineReason('');
                     })
@@ -305,23 +351,26 @@ function PlanBlock({
               {/* Billing is only offered once the patient has agreed the plan.
                   The API enforces the same rule — this just avoids showing a
                   button that would be refused. */}
-              {canBill && ['accepted', 'in_progress', 'completed'].includes(plan.status) && (
-                <button
-                  className="btn btn--primary btn--sm"
-                  disabled={busy}
-                  onClick={() =>
-                    act(async () => {
-                      const inv = await billingApi.generateFromPlan(plan.id);
-                      setInvoiceNotice(
-                        `Invoice ${inv.invoiceNumber} created — ${money(inv.total)}` +
-                        (inv.taxAmount > 0 ? ` (incl. ${money(inv.taxAmount)} VAT)` : ''),
-                      );
-                    })
-                  }
-                >
-                  <FileText size={14} /> Invoice completed work
-                </button>
-              )}
+              {canBill &&
+                ['accepted', 'in_progress', 'completed'].includes(plan.status) && (
+                  <button
+                    className="btn btn--primary btn--sm"
+                    disabled={busy}
+                    onClick={() =>
+                      act(async () => {
+                        const inv = await billingApi.generateFromPlan(plan.id);
+                        setInvoiceNotice(
+                          `Invoice ${inv.invoiceNumber} created — ${money(inv.total)}` +
+                            (inv.taxAmount > 0
+                              ? ` (incl. ${money(inv.taxAmount)} VAT)`
+                              : ''),
+                        );
+                      })
+                    }
+                  >
+                    <FileText size={14} /> Invoice completed work
+                  </button>
+                )}
               {['draft', 'proposed', 'declined'].includes(plan.status) && (
                 <button
                   className="iconbtn"
@@ -340,7 +389,15 @@ function PlanBlock({
   );
 }
 
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Row({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
   return (
     <div className={`plantotals__row${strong ? ' plantotals__row--strong' : ''}`}>
       <span>{label}</span>
@@ -350,8 +407,14 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 }
 
 function PlanItemRow({
-  item, canEdit, onChange,
-}: { item: PlanItem; canEdit: boolean; onChange: () => void }) {
+  item,
+  canEdit,
+  onChange,
+}: {
+  item: PlanItem;
+  canEdit: boolean;
+  onChange: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const remove = async () => {
     setBusy(true);
@@ -374,20 +437,32 @@ function PlanItemRow({
       <td className="muted">{item.code ?? '—'}</td>
       <td className="num">{item.quantity}</td>
       <td className="num">{money(item.unitFee)}</td>
-      <td className="num">{item.discountAmount ? `− ${money(item.discountAmount)}` : '—'}</td>
-      <td className="num" style={{ fontWeight: 600 }}>{money(item.total)}</td>
+      <td className="num">
+        {item.discountAmount ? `− ${money(item.discountAmount)}` : '—'}
+      </td>
+      <td className="num" style={{ fontWeight: 600 }}>
+        {money(item.total)}
+      </td>
       <td>
         <StatusPill
           status={
-            item.status === 'completed' ? 'current'
-              : item.status === 'cancelled' ? 'resolved' : 'scheduled'
+            item.status === 'completed'
+              ? 'current'
+              : item.status === 'cancelled'
+                ? 'resolved'
+                : 'scheduled'
           }
           label={item.status[0]!.toUpperCase() + item.status.slice(1)}
         />
       </td>
       {canEdit && (
         <td>
-          <button className="iconbtn" onClick={remove} disabled={busy} aria-label="Remove line">
+          <button
+            className="iconbtn"
+            onClick={remove}
+            disabled={busy}
+            aria-label="Remove line"
+          >
             <X size={14} />
           </button>
         </td>
@@ -397,8 +472,14 @@ function PlanItemRow({
 }
 
 function PlanItemForm({
-  planId, onDone, onCancel,
-}: { planId: string; onDone: () => void; onCancel: () => void }) {
+  planId,
+  onDone,
+  onCancel,
+}: {
+  planId: string;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
   const [codes, setCodes] = useState<ProcedureCode[]>([]);
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [description, setDescription] = useState('');
@@ -413,8 +494,14 @@ function PlanItemForm({
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    procedureCodesApi.list().then(setCodes).catch(() => setCodes([]));
-    treatmentsApi.list({ status: 'active' }).then(setTreatments).catch(() => setTreatments([]));
+    procedureCodesApi
+      .list()
+      .then(setCodes)
+      .catch(() => setCodes([]));
+    treatmentsApi
+      .list({ status: 'active' })
+      .then(setTreatments)
+      .catch(() => setTreatments([]));
   }, []);
 
   // Selecting from the catalogue fills the description and price, so a clinic
@@ -464,39 +551,54 @@ function PlanItemForm({
   return (
     <form className="inlineform" onSubmit={submit}>
       <div className="grid2">
-        <label className="field"><span>From catalogue</span>
+        <label className="field">
+          <span>From catalogue</span>
           <select value={treatmentId} onChange={(e) => pickTreatment(e.target.value)}>
             <option value="">Choose a treatment…</option>
             {treatments.map((t) => (
-              <option key={t.id} value={t.id}>{t.name} — {money(t.price)}</option>
+              <option key={t.id} value={t.id}>
+                {t.name} — {money(t.price)}
+              </option>
             ))}
-          </select></label>
-        <label className="field"><span>Code</span>
+          </select>
+        </label>
+        <label className="field">
+          <span>Code</span>
           <select value={codeId} onChange={(e) => pickCode(e.target.value)}>
             <option value="">No code</option>
             {codes.map((c) => (
-              <option key={c.id} value={c.id}>{c.system} {c.code} — {c.description}</option>
+              <option key={c.id} value={c.id}>
+                {c.system} {c.code} — {c.description}
+              </option>
             ))}
-          </select></label>
+          </select>
+        </label>
       </div>
 
-      <label className="field"><span>Description</span>
+      <label className="field">
+        <span>Description</span>
         <input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           required
           maxLength={300}
           placeholder="Composite restoration"
-        /></label>
+        />
+      </label>
 
       <div className="grid2">
-        <label className="field"><span>Tooth (FDI, optional)</span>
+        <label className="field">
+          <span>Tooth (FDI, optional)</span>
           <input
             value={tooth}
-            onChange={(e) => { setTooth(e.target.value); setSurfaces([]); }}
+            onChange={(e) => {
+              setTooth(e.target.value);
+              setSurfaces([]);
+            }}
             placeholder="16"
             inputMode="numeric"
-          /></label>
+          />
+        </label>
         <div className="field">
           <span>Surfaces</span>
           <div className="sendrow">
@@ -524,21 +626,34 @@ function PlanItemForm({
       </div>
 
       <div className="grid3">
-        <label className="field"><span>Quantity</span>
+        <label className="field">
+          <span>Quantity</span>
           <input
-            type="number" min={1} max={999} value={quantity}
+            type="number"
+            min={1}
+            max={999}
+            value={quantity}
             onChange={(e) => setQuantity(Number(e.target.value) || 1)}
-          /></label>
-        <label className="field"><span>Fee each</span>
+          />
+        </label>
+        <label className="field">
+          <span>Fee each</span>
           <input
-            type="number" min={0} value={unitFee}
+            type="number"
+            min={0}
+            value={unitFee}
             onChange={(e) => setUnitFee(Number(e.target.value) || 0)}
-          /></label>
-        <label className="field"><span>Discount</span>
+          />
+        </label>
+        <label className="field">
+          <span>Discount</span>
           <input
-            type="number" min={0} value={discount}
+            type="number"
+            min={0}
+            value={discount}
             onChange={(e) => setDiscount(Number(e.target.value) || 0)}
-          /></label>
+          />
+        </label>
       </div>
 
       <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
@@ -547,7 +662,9 @@ function PlanItemForm({
 
       {err && <p className="formerror">{err}</p>}
       <div className="inlineform__foot">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
         <button className="btn btn--primary btn--sm" disabled={busy}>
           {busy ? 'Adding…' : 'Add procedure'}
         </button>

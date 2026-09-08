@@ -10,16 +10,16 @@ import {
   type ToothCondition,
   type ToothConditionRecord,
 } from '../lib/api';
+// Anatomy — the same module the API validates against.
 import {
-  FAMILY_KEYS,
-  conditionStyle,
   surfaceName,
   surfacesFor,
   toothLabel,
-  type ConditionFamily,
   type Dentition,
   type Notation,
-} from '../lib/tooth-notation';
+} from '@dentalcare/shared';
+// Drawing — this app's alone.
+import { FAMILY_KEYS, conditionStyle, type ConditionFamily } from '../lib/tooth-notation';
 import { useAuth } from '../lib/auth';
 import { EmptyState, StatusPill } from './ui';
 import Odontogram, { ConditionSwatch } from './Odontogram';
@@ -48,7 +48,10 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
   const load = useCallback(() => {
     chartApi
       .get(patientId)
-      .then((c) => { setChart(c); setError(null); })
+      .then((c) => {
+        setChart(c);
+        setError(null);
+      })
       .catch((e: Error) => setError(e.message));
   }, [patientId]);
 
@@ -88,18 +91,26 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
   return (
     <section className="card span-12">
       <header className="card__head">
-        <h3><Activity size={16} aria-hidden /> Dental chart</h3>
+        <h3>
+          <Activity size={16} aria-hidden /> Dental chart
+        </h3>
         <div className="chartswitches">
           <div className="tabs tabs--sm">
             <button
               className={`tab${dentition === 'permanent' ? ' tab--active' : ''}`}
-              onClick={() => { setDentition('permanent'); setSelected(null); }}
+              onClick={() => {
+                setDentition('permanent');
+                setSelected(null);
+              }}
             >
               Adult
             </button>
             <button
               className={`tab${dentition === 'primary' ? ' tab--active' : ''}`}
-              onClick={() => { setDentition('primary'); setSelected(null); }}
+              onClick={() => {
+                setDentition('primary');
+                setSelected(null);
+              }}
             >
               Pediatric
             </button>
@@ -127,7 +138,10 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
         <span className="cell-sub">{chart.summary.teethCharted} teeth charted</span>
         <span className="cell-sub">{chart.summary.active} active findings</span>
         {chart.summary.activeCaries > 0 && (
-          <StatusPill status="severe" label={`${chart.summary.activeCaries} untreated caries`} />
+          <StatusPill
+            status="severe"
+            label={`${chart.summary.activeCaries} untreated caries`}
+          />
         )}
       </div>
 
@@ -162,8 +176,15 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
               patientId={patientId}
               tooth={selected}
               initialSurface={preselectSurface}
-              onDone={() => { setAdding(false); setPreselectSurface(null); load(); }}
-              onCancel={() => { setAdding(false); setPreselectSurface(null); }}
+              onDone={() => {
+                setAdding(false);
+                setPreselectSurface(null);
+                load();
+              }}
+              onCancel={() => {
+                setAdding(false);
+                setPreselectSurface(null);
+              }}
             />
           )}
 
@@ -218,7 +239,9 @@ function ConditionLegend() {
 }
 
 function FindingRow({
-  finding, canEdit, onChange,
+  finding,
+  canEdit,
+  onChange,
 }: {
   finding: ToothConditionRecord;
   canEdit: boolean;
@@ -244,20 +267,26 @@ function FindingRow({
     <li className={`recordrow${finding.status !== 'active' ? ' recordrow--muted' : ''}`}>
       <div className="recordrow__main">
         <ConditionSwatch condition={finding.condition} size={16} />
-        <span className="recordrow__title">{t(`tooth.condition.${finding.condition}`)}</span>
+        <span className="recordrow__title">
+          {t(`tooth.condition.${finding.condition}`)}
+        </span>
         <span className="cell-sub">
-          {finding.surface
-            ? surfaceName(finding.tooth, finding.surface)
-            : 'Whole tooth'}
+          {finding.surface ? surfaceName(finding.tooth, finding.surface) : 'Whole tooth'}
         </span>
         <StatusPill
           status={
-            finding.status === 'active' ? 'severe'
-              : finding.status === 'treated' ? 'current' : 'resolved'
+            finding.status === 'active'
+              ? 'severe'
+              : finding.status === 'treated'
+                ? 'current'
+                : 'resolved'
           }
           label={
-            finding.status === 'active' ? 'Active'
-              : finding.status === 'treated' ? 'Treated' : 'Resolved'
+            finding.status === 'active'
+              ? 'Active'
+              : finding.status === 'treated'
+                ? 'Treated'
+                : 'Resolved'
           }
         />
         {finding.dentistName && <span className="cell-sub">{finding.dentistName}</span>}
@@ -275,7 +304,9 @@ function FindingRow({
               disabled={busy}
               aria-label="Mark as treated"
               title="Mark as treated"
-              onClick={() => act(() => chartApi.updateCondition(finding.id, { status: 'treated' }))}
+              onClick={() =>
+                act(() => chartApi.updateCondition(finding.id, { status: 'treated' }))
+              }
             >
               <Check size={15} />
             </button>
@@ -285,7 +316,9 @@ function FindingRow({
               disabled={busy}
               aria-label="Reopen finding"
               title="Reopen"
-              onClick={() => act(() => chartApi.updateCondition(finding.id, { status: 'active' }))}
+              onClick={() =>
+                act(() => chartApi.updateCondition(finding.id, { status: 'active' }))
+              }
             >
               <RotateCcw size={15} />
             </button>
@@ -305,7 +338,11 @@ function FindingRow({
 }
 
 function FindingForm({
-  patientId, tooth, initialSurface, onDone, onCancel,
+  patientId,
+  tooth,
+  initialSurface,
+  onDone,
+  onCancel,
 }: {
   patientId: string;
   tooth: number;
@@ -349,16 +386,20 @@ function FindingForm({
   return (
     <form className="inlineform" onSubmit={submit}>
       <div className="grid2">
-        <label className="field"><span>Finding</span>
+        <label className="field">
+          <span>Finding</span>
           <select
             value={condition}
             onChange={(e) => setCondition(e.target.value as ToothCondition)}
             autoFocus
           >
             {TOOTH_CONDITIONS.map((c) => (
-              <option key={c} value={c}>{t(`tooth.condition.${c}`)}</option>
+              <option key={c} value={c}>
+                {t(`tooth.condition.${c}`)}
+              </option>
             ))}
-          </select></label>
+          </select>
+        </label>
         <label className="field">
           <span>Surface{wholeTooth ? ' (whole tooth)' : ''}</span>
           <select
@@ -368,21 +409,28 @@ function FindingForm({
           >
             <option value="">Whole tooth</option>
             {available.map((s) => (
-              <option key={s} value={s}>{surfaceName(tooth, s)}</option>
+              <option key={s} value={s}>
+                {surfaceName(tooth, s)}
+              </option>
             ))}
           </select>
         </label>
       </div>
       {wholeTooth && (
         <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
-          {t(`tooth.condition.${condition}`)} describes the whole tooth, so no surface applies.
+          {t(`tooth.condition.${condition}`)} describes the whole tooth, so no surface
+          applies.
         </p>
       )}
-      <label className="field"><span>Note</span>
-        <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} /></label>
+      <label className="field">
+        <span>Note</span>
+        <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
+      </label>
       {err && <p className="formerror">{err}</p>}
       <div className="inlineform__foot">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
         <button className="btn btn--primary btn--sm" disabled={busy}>
           {busy ? 'Saving…' : 'Record finding'}
         </button>

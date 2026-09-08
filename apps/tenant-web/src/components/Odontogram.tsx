@@ -1,20 +1,24 @@
 import { useId, useMemo, type CSSProperties } from 'react';
+// Anatomy — the same module the API validates against.
 import {
-  CONDITION_STYLE,
-  ENCODING_PALETTE,
-  OUTLINE_RANK,
   archesFor,
-  conditionStyle,
   formatTooth,
   isAnterior,
   surfaceName,
   surfacesFor,
   toothType,
-  type ConditionGlyph,
-  type ConditionStyle,
   type Dentition,
   type Notation,
   type Surface,
+} from '@dentalcare/shared';
+// Drawing — this app's alone.
+import {
+  CONDITION_STYLE,
+  ENCODING_PALETTE,
+  OUTLINE_RANK,
+  conditionStyle,
+  type ConditionGlyph,
+  type ConditionStyle,
   type ToothOutline,
 } from '../lib/tooth-notation';
 import type { ToothCondition, ToothSummary } from '../lib/api';
@@ -39,8 +43,8 @@ import { useT } from '../lib/i18n';
  * commentary above CONDITION_STYLE in lib/tooth-notation.ts for why.
  */
 
-const CELL = 34;      // width of one tooth cell, and the crown box
-const TOOTH_H = 46;   // height of the tooth glyph including the root stub
+const CELL = 34; // width of one tooth cell, and the crown box
+const TOOTH_H = 46; // height of the tooth glyph including the root stub
 const GAP = 3;
 const LABEL_H = 18;
 
@@ -67,8 +71,11 @@ export function ConditionPatternDefs({ prefix }: { prefix: string }) {
       {/* caries — diagonal hatch. The most alarming texture for the most
           urgent finding: it reads as "something is eating this tooth". */}
       <pattern
-        id={`${prefix}-hatch`} width="5" height="5"
-        patternUnits="userSpaceOnUse" patternTransform="rotate(45)"
+        id={`${prefix}-hatch`}
+        width="5"
+        height="5"
+        patternUnits="userSpaceOnUse"
+        patternTransform="rotate(45)"
       >
         <rect width="5" height="5" fill={P.crimson} fillOpacity="0.16" />
         <line x1="0" y1="0" x2="0" y2="5" stroke={P.crimson} strokeWidth="1.9" />
@@ -79,7 +86,9 @@ export function ConditionPatternDefs({ prefix }: { prefix: string }) {
         <rect width="6" height="6" fill={P.crimson} fillOpacity="0.14" />
         <path
           d="M0 4.6 L1.5 1.6 L3 4.6 L4.5 1.6 L6 4.6"
-          fill="none" stroke={P.crimson} strokeWidth="1.1"
+          fill="none"
+          stroke={P.crimson}
+          strokeWidth="1.1"
         />
       </pattern>
 
@@ -107,17 +116,26 @@ export function ConditionPatternDefs({ prefix }: { prefix: string }) {
  */
 function surfacePaint(st: ConditionStyle, prefix: string): CSSProperties | null {
   switch (st.surfaceFill) {
-    case 'solid':  return { fill: st.color };
-    case 'hatch':  return { fill: `url(#${prefix}-hatch)` };
-    case 'zigzag': return { fill: `url(#${prefix}-zigzag)` };
-    case 'dots':   return { fill: `url(#${prefix}-dots)` };
-    case 'vlines': return { fill: `url(#${prefix}-vlines)` };
+    case 'solid':
+      return { fill: st.color };
+    case 'hatch':
+      return { fill: `url(#${prefix}-hatch)` };
+    case 'zigzag':
+      return { fill: `url(#${prefix}-zigzag)` };
+    case 'dots':
+      return { fill: `url(#${prefix}-dots)` };
+    case 'vlines':
+      return { fill: `url(#${prefix}-vlines)` };
     case 'dashed':
       return {
-        fill: st.color, fillOpacity: 0.12,
-        stroke: st.color, strokeWidth: 1.4, strokeDasharray: '2.6 1.8',
+        fill: st.color,
+        fillOpacity: 0.12,
+        stroke: st.color,
+        strokeWidth: 1.4,
+        strokeDasharray: '2.6 1.8',
       };
-    default: return null;
+    default:
+      return null;
   }
 }
 
@@ -127,7 +145,11 @@ function surfacePaint(st: ConditionStyle, prefix: string): CSSProperties | null 
  * legible on top of a dark solid restoration as well as on bare enamel.
  */
 function Glyph({
-  kind, color, s, rootTop, rootBottom,
+  kind,
+  color,
+  s,
+  rootTop,
+  rootBottom,
 }: {
   kind: ConditionGlyph;
   color: string;
@@ -148,8 +170,8 @@ function Glyph({
         <g className="odo__glyph">
           {twice(
             `M ${s * 0.16} ${s * 0.07} L ${s * 0.45} ${s * 0.36}` +
-            ` L ${s * 0.29} ${s * 0.53} L ${s * 0.65} ${s * 0.77}` +
-            ` L ${s * 0.47} ${s * 0.92}`,
+              ` L ${s * 0.29} ${s * 0.53} L ${s * 0.65} ${s * 0.77}` +
+              ` L ${s * 0.47} ${s * 0.92}`,
           )}
         </g>
       );
@@ -159,8 +181,16 @@ function Glyph({
         <g className="odo__glyph">
           <path d={`M 3 3 L ${s - 3} ${s - 3}`} className="odo__glyph-halo" />
           <path d={`M ${s - 3} 3 L 3 ${s - 3}`} className="odo__glyph-halo" />
-          <path d={`M 3 3 L ${s - 3} ${s - 3}`} className="odo__glyph-mark" style={{ stroke: color }} />
-          <path d={`M ${s - 3} 3 L 3 ${s - 3}`} className="odo__glyph-mark" style={{ stroke: color }} />
+          <path
+            d={`M 3 3 L ${s - 3} ${s - 3}`}
+            className="odo__glyph-mark"
+            style={{ stroke: color }}
+          />
+          <path
+            d={`M ${s - 3} 3 L 3 ${s - 3}`}
+            className="odo__glyph-mark"
+            style={{ stroke: color }}
+          />
         </g>
       );
 
@@ -184,8 +214,13 @@ function Glyph({
       return (
         <g className="odo__glyph">
           {twice(`M ${s / 2} ${rootTop - 5} L ${s / 2} ${rootBottom - 2.5}`)}
-          <circle cx={s / 2} cy={rootBottom - 1.6} r={1.9}
-            className="odo__glyph-dot" style={{ fill: color }} />
+          <circle
+            cx={s / 2}
+            cy={rootBottom - 1.6}
+            r={1.9}
+            className="odo__glyph-dot"
+            style={{ fill: color }}
+          />
         </g>
       );
 
@@ -198,10 +233,23 @@ function Glyph({
         <g className="odo__glyph">
           {twice(`M ${bx - 1} ${by} L ${bx + 10.5} ${by}`)}
           <g transform={`rotate(38 ${bx + 4.8} ${by + 6})`}>
-            <rect x={bx + 1.8} y={by + 2} width={6} height={8.6} rx={1.6}
-              className="odo__glyph-badge-halo" />
-            <rect x={bx + 1.8} y={by + 2} width={6} height={8.6} rx={1.6}
-              className="odo__glyph-badge" style={{ stroke: color }} />
+            <rect
+              x={bx + 1.8}
+              y={by + 2}
+              width={6}
+              height={8.6}
+              rx={1.6}
+              className="odo__glyph-badge-halo"
+            />
+            <rect
+              x={bx + 1.8}
+              y={by + 2}
+              width={6}
+              height={8.6}
+              rx={1.6}
+              className="odo__glyph-badge"
+              style={{ stroke: color }}
+            />
           </g>
         </g>
       );
@@ -223,7 +271,12 @@ interface Props {
 }
 
 export default function Odontogram({
-  dentition, notation, teeth, selected, onSelectTooth, onSelectSurface,
+  dentition,
+  notation,
+  teeth,
+  selected,
+  onSelectTooth,
+  onSelectSurface,
 }: Props) {
   const rawId = useId();
   const prefix = useMemo(() => `odo${rawId.replace(/[^a-zA-Z0-9]/g, '')}`, [rawId]);
@@ -260,8 +313,12 @@ export default function Odontogram({
         />
         {/* Midline between the arches. */}
         <line
-          x1={0} y1={rowH + 5} x2={width} y2={rowH + 5}
-          stroke="var(--border)" strokeWidth={1}
+          x1={0}
+          y1={rowH + 5}
+          x2={width}
+          y2={rowH + 5}
+          stroke="var(--border)"
+          strokeWidth={1}
         />
         <Arch
           teeth={lower}
@@ -280,10 +337,18 @@ export default function Odontogram({
 }
 
 function Arch({
-  teeth, y, byTooth, notation, selected, labelBelow, patternPrefix,
-  onSelectTooth, onSelectSurface,
+  teeth,
+  y,
+  byTooth,
+  notation,
+  selected,
+  labelBelow,
+  patternPrefix,
+  onSelectTooth,
+  onSelectSurface,
 }: {
-  teeth: number[];
+  // readonly: the arches come from @dentalcare/shared and are frozen there.
+  teeth: readonly number[];
   y: number;
   byTooth: Map<number, ToothSummary>;
   notation: Notation;
@@ -419,7 +484,14 @@ function Arch({
  * region; in quadrants 2, 3, 6 and 7 it is the left.
  */
 function ToothGlyph({
-  tooth, x, y, summary, selected, patternPrefix, onSelectTooth, onSelectSurface,
+  tooth,
+  x,
+  y,
+  summary,
+  selected,
+  patternPrefix,
+  onSelectTooth,
+  onSelectSurface,
 }: {
   tooth: number;
   x: number;
@@ -455,13 +527,17 @@ function ToothGlyph({
    * remaining findings still draw their own glyphs below.
    */
   const { outline, outlineColor } = active.reduce<{
-    outline: ToothOutline; outlineColor: string | undefined;
-  }>((best, c) => {
-    const st = conditionStyle(c);
-    return OUTLINE_RANK[st.outline] > OUTLINE_RANK[best.outline]
-      ? { outline: st.outline, outlineColor: st.color }
-      : best;
-  }, { outline: 'none', outlineColor: undefined });
+    outline: ToothOutline;
+    outlineColor: string | undefined;
+  }>(
+    (best, c) => {
+      const st = conditionStyle(c);
+      return OUTLINE_RANK[st.outline] > OUTLINE_RANK[best.outline]
+        ? { outline: st.outline, outlineColor: st.color }
+        : best;
+    },
+    { outline: 'none', outlineColor: undefined },
+  );
 
   // One mark per glyph kind, in the order the conditions were recorded.
   const marks: { kind: ConditionGlyph; color: string }[] = [];
@@ -478,7 +554,9 @@ function ToothGlyph({
   const region = (surface: Surface, points: string) => {
     if (!valid.includes(surface)) return null;
     const conds = summary?.surfaces?.[surface] ?? [];
-    const paint = conds.length ? surfacePaint(conditionStyle(conds[0]!), patternPrefix) : null;
+    const paint = conds.length
+      ? surfacePaint(conditionStyle(conds[0]!), patternPrefix)
+      : null;
     return (
       <polygon
         key={surface}
@@ -494,10 +572,10 @@ function ToothGlyph({
         <title>
           {`${surfaceName(tooth, surface)} — ${t('tooth.tip.tooth', { tooth })}` +
             (conds.length
-              // Conditions are translated one by one rather than joined from a
-              // pre-built English string: this <title> is what a screen reader
-              // announces and what a dentist sees on hover.
-              ? ` · ${conds.map((c) => t(`tooth.condition.${c}`)).join(', ')}`
+              ? // Conditions are translated one by one rather than joined from a
+                // pre-built English string: this <title> is what a screen reader
+                // announces and what a dentist sees on hover.
+                ` · ${conds.map((c) => t(`tooth.condition.${c}`)).join(', ')}`
               : ` · ${t('tooth.tip.healthy')}`)}
         </title>
       </polygon>
@@ -518,13 +596,22 @@ function ToothGlyph({
       {/* top */}
       {region(topSurface, `0,0 ${s},0 ${s - inset},${inset} ${inset},${inset}`)}
       {/* bottom */}
-      {region(bottomSurface, `${inset},${s - inset} ${s - inset},${s - inset} ${s},${s} 0,${s}`)}
+      {region(
+        bottomSurface,
+        `${inset},${s - inset} ${s - inset},${s - inset} ${s},${s} 0,${s}`,
+      )}
       {/* left */}
       {region(leftSurface, `0,0 ${inset},${inset} ${inset},${s - inset} 0,${s}`)}
       {/* right */}
-      {region(rightSurface, `${s},0 ${s},${s} ${s - inset},${s - inset} ${s - inset},${inset}`)}
+      {region(
+        rightSurface,
+        `${s},0 ${s},${s} ${s - inset},${s - inset} ${s - inset},${inset}`,
+      )}
       {/* centre: occlusal or incisal */}
-      {region(centre, `${inset},${inset} ${s - inset},${inset} ${s - inset},${s - inset} ${inset},${s - inset}`)}
+      {region(
+        centre,
+        `${inset},${inset} ${s - inset},${inset} ${s - inset},${s - inset} ${inset},${s - inset}`,
+      )}
 
       {/* Root stub, so molars read differently from incisors at a glance. */}
       <rect
@@ -538,14 +625,21 @@ function ToothGlyph({
       />
 
       <rect
-        x={0} y={0} width={s} height={s}
+        x={0}
+        y={0}
+        width={s}
+        height={s}
         className={`odo__outline odo__outline--${outline}`}
         style={outlineColor ? { stroke: outlineColor } : undefined}
       />
 
       {selected && (
         <rect
-          x={-2.5} y={-2.5} width={s + 5} height={s + 5} rx={4}
+          x={-2.5}
+          y={-2.5}
+          width={s + 5}
+          height={s + 5}
+          rx={4}
           className="odo__selring"
         />
       )}
@@ -571,7 +665,8 @@ function ToothGlyph({
  * longer uses.
  */
 export function ConditionSwatch({
-  condition, size = 18,
+  condition,
+  size = 18,
 }: {
   condition: string;
   size?: number;
@@ -587,18 +682,28 @@ export function ConditionSwatch({
   return (
     <svg
       className="odo__swatch"
-      width={size} height={size}
+      width={size}
+      height={size}
       viewBox={`0 0 ${S} ${S}`}
-      aria-hidden="true" focusable="false"
+      aria-hidden="true"
+      focusable="false"
     >
       <ConditionPatternDefs prefix={prefix} />
       <rect
-        x={2} y={2} width={S - 4} height={S - 4} rx={3}
+        x={2}
+        y={2}
+        width={S - 4}
+        height={S - 4}
+        rx={3}
         className="odo__swatch-body"
         style={paint ?? undefined}
       />
       <rect
-        x={2} y={2} width={S - 4} height={S - 4} rx={3}
+        x={2}
+        y={2}
+        width={S - 4}
+        height={S - 4}
+        rx={3}
         className={`odo__outline odo__outline--${outlineClass}`}
         style={{ stroke: st.color }}
       />
@@ -616,7 +721,7 @@ export function ConditionSwatch({
           kind={st.glyph}
           color={st.color}
           s={S}
-          rootTop={S * 0.60}
+          rootTop={S * 0.6}
           rootBottom={S - 3}
         />
       )}

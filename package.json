@@ -4,7 +4,8 @@
   "private": true,
   "description": "DentalCare by NODE X — multi-tenant clinic management SaaS",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "api:dev": "npm run start:dev -w @dentalcare/api",
@@ -19,8 +20,8 @@
     "web:build": "npm run build -w @dentalcare/tenant-web",
     "admin:dev": "npm run dev -w @dentalcare/admin-web",
     "admin:build": "npm run build -w @dentalcare/admin-web",
-    "build": "npm run api:build && npm run web:build && npm run admin:build",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run shared:build && npm run api:build && npm run web:build && npm run admin:build",
+    "typecheck": "npm run shared:build && npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -38,7 +39,8 @@
     "smoke": "node scripts/smoke-api.js",
     "diagnose:login": "node scripts/diagnose-login.js",
     "doctor": "node scripts/doctor.js",
-    "admin:create": "npm run bootstrap-admin -w @dentalcare/api"
+    "admin:create": "npm run bootstrap-admin -w @dentalcare/api",
+    "shared:build": "npm run build -w @dentalcare/shared"
   },
   "engines": {
     "node": ">=20"

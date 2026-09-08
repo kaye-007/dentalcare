@@ -1,9 +1,30 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
-import { type Surface, type ToothCondition, isAbsent, isValidSurface, isValidTooth, isWholeToothCondition, surfacesFor, toothLabel } from './tooth-notation';
-import { CreateProcedureCodeDto, CreateProcedureDto, CreateToothConditionDto, UpdateProcedureCodeDto, UpdateProcedureDto, UpdateToothConditionDto } from './dto/charting.dto';
+import {
+  type Surface,
+  type ToothCondition,
+  isAbsent,
+  isValidSurface,
+  isValidTooth,
+  isWholeToothCondition,
+  surfacesFor,
+  toothLabel,
+} from '@dentalcare/shared';
+import {
+  CreateProcedureCodeDto,
+  CreateProcedureDto,
+  CreateToothConditionDto,
+  UpdateProcedureCodeDto,
+  UpdateProcedureDto,
+  UpdateToothConditionDto,
+} from './dto/charting.dto';
 
 /**
  * The odontogram, the clinic's code catalogue, and the log of what was done.
@@ -89,20 +110,26 @@ export class ChartingService {
       const conditions = rows.map(mapCondition);
 
       // Per-tooth roll-up: what a clinician needs to see at a glance.
-      const byTooth = new Map<number, {
-        tooth: number;
-        conditions: ReturnType<typeof mapCondition>[];
-        activeConditions: ToothCondition[];
-        surfaces: Partial<Record<Surface, ToothCondition[]>>;
-        isAbsent: boolean;
-      }>();
+      const byTooth = new Map<
+        number,
+        {
+          tooth: number;
+          conditions: ReturnType<typeof mapCondition>[];
+          activeConditions: ToothCondition[];
+          surfaces: Partial<Record<Surface, ToothCondition[]>>;
+          isAbsent: boolean;
+        }
+      >();
 
       for (const c of conditions) {
         let entry = byTooth.get(c.tooth);
         if (!entry) {
           entry = {
-            tooth: c.tooth, conditions: [], activeConditions: [],
-            surfaces: {}, isAbsent: false,
+            tooth: c.tooth,
+            conditions: [],
+            activeConditions: [],
+            surfaces: {},
+            isAbsent: false,
           };
           byTooth.set(c.tooth, entry);
         }
@@ -162,7 +189,7 @@ export class ChartingService {
         if (absent[0]) {
           throw new ConflictException(
             `${toothLabel(dto.tooth)} is recorded as ${absent[0].condition}. ` +
-            'Resolve that finding first if the tooth is present.',
+              'Resolve that finding first if the tooth is present.',
           );
         }
       }
@@ -174,12 +201,20 @@ export class ChartingService {
               dentist_id, created_by)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
           [
-            tenantId, patientId, dto.tooth, dto.surface ?? null, dto.condition,
-            dto.status ?? 'active', dto.note ?? null, dto.dentistId ?? null, userId,
+            tenantId,
+            patientId,
+            dto.tooth,
+            dto.surface ?? null,
+            dto.condition,
+            dto.status ?? 'active',
+            dto.note ?? null,
+            dto.dentistId ?? null,
+            userId,
           ],
         );
         const { rows: full } = await client.query<ConditionRow>(
-          `${COND_SELECT} WHERE c.id = $1`, [rows[0].id],
+          `${COND_SELECT} WHERE c.id = $1`,
+          [rows[0].id],
         );
         return mapCondition(full[0]);
       } catch (err) {
@@ -190,7 +225,9 @@ export class ChartingService {
           );
         }
         if (code === CHECK_VIOLATION) {
-          throw new BadRequestException('That finding is not anatomically possible on this tooth.');
+          throw new BadRequestException(
+            'That finding is not anatomically possible on this tooth.',
+          );
         }
         throw err;
       }
@@ -218,7 +255,8 @@ export class ChartingService {
         );
         if (!rows[0]) throw new NotFoundException('Finding not found');
         const { rows: full } = await client.query<ConditionRow>(
-          `${COND_SELECT} WHERE c.id = $1`, [id],
+          `${COND_SELECT} WHERE c.id = $1`,
+          [id],
         );
         return mapCondition(full[0]);
       } catch (err) {
@@ -235,7 +273,8 @@ export class ChartingService {
   async deleteCondition(id: string) {
     return this.tx(async (client) => {
       const { rowCount } = await client.query(
-        'DELETE FROM tooth_conditions WHERE id = $1', [id],
+        'DELETE FROM tooth_conditions WHERE id = $1',
+        [id],
       );
       if (!rowCount) throw new NotFoundException('Finding not found');
       return { deleted: true as const };
@@ -260,8 +299,13 @@ export class ChartingService {
         where.push(`(p.code ILIKE $${i} OR p.description ILIKE $${i})`);
       }
       const { rows } = await client.query<{
-        id: string; system: string; code: string; description: string;
-        default_fee: number; treatment_id: string | null; is_active: boolean;
+        id: string;
+        system: string;
+        code: string;
+        description: string;
+        default_fee: number;
+        treatment_id: string | null;
+        is_active: boolean;
       }>(
         `SELECT p.id, p.system, p.code, p.description, p.default_fee,
                 p.treatment_id, p.is_active
@@ -288,22 +332,36 @@ export class ChartingService {
     return this.db.withTenant(tenantId, async (client) => {
       try {
         const { rows } = await client.query<{
-          id: string; system: string; code: string; description: string;
-          default_fee: number; treatment_id: string | null; is_active: boolean;
+          id: string;
+          system: string;
+          code: string;
+          description: string;
+          default_fee: number;
+          treatment_id: string | null;
+          is_active: boolean;
         }>(
           `INSERT INTO procedure_codes
              (tenant_id, system, code, description, default_fee, treatment_id)
            VALUES ($1,$2,btrim($3),btrim($4),$5,$6)
            RETURNING id, system, code, description, default_fee, treatment_id, is_active`,
           [
-            tenantId, dto.system, dto.code, dto.description,
-            dto.defaultFee ?? 0, dto.treatmentId ?? null,
+            tenantId,
+            dto.system,
+            dto.code,
+            dto.description,
+            dto.defaultFee ?? 0,
+            dto.treatmentId ?? null,
           ],
         );
         const r = rows[0];
         return {
-          id: r.id, system: r.system, code: r.code, description: r.description,
-          defaultFee: r.default_fee, treatmentId: r.treatment_id, isActive: r.is_active,
+          id: r.id,
+          system: r.system,
+          code: r.code,
+          description: r.description,
+          defaultFee: r.default_fee,
+          treatmentId: r.treatment_id,
+          isActive: r.is_active,
         };
       } catch (err) {
         if ((err as { code?: string }).code === UNIQUE_VIOLATION) {
@@ -333,8 +391,13 @@ export class ChartingService {
     return this.tx(async (client) => {
       try {
         const { rows } = await client.query<{
-          id: string; system: string; code: string; description: string;
-          default_fee: number; treatment_id: string | null; is_active: boolean;
+          id: string;
+          system: string;
+          code: string;
+          description: string;
+          default_fee: number;
+          treatment_id: string | null;
+          is_active: boolean;
         }>(
           `UPDATE procedure_codes SET ${sets.join(', ')}, updated_at = now()
             WHERE id = $1
@@ -344,12 +407,19 @@ export class ChartingService {
         if (!rows[0]) throw new NotFoundException('Code not found');
         const r = rows[0];
         return {
-          id: r.id, system: r.system, code: r.code, description: r.description,
-          defaultFee: r.default_fee, treatmentId: r.treatment_id, isActive: r.is_active,
+          id: r.id,
+          system: r.system,
+          code: r.code,
+          description: r.description,
+          defaultFee: r.default_fee,
+          treatmentId: r.treatment_id,
+          isActive: r.is_active,
         };
       } catch (err) {
         if ((err as { code?: string }).code === UNIQUE_VIOLATION) {
-          throw new ConflictException('Another code in that system already uses this value.');
+          throw new ConflictException(
+            'Another code in that system already uses this value.',
+          );
         }
         throw err;
       }
@@ -378,7 +448,10 @@ export class ChartingService {
           usedBy: Number(used[0].count),
         };
       }
-      const { rowCount } = await client.query('DELETE FROM procedure_codes WHERE id = $1', [id]);
+      const { rowCount } = await client.query(
+        'DELETE FROM procedure_codes WHERE id = $1',
+        [id],
+      );
       if (!rowCount) throw new NotFoundException('Code not found');
       return { deleted: true as const, deactivated: false as const };
     });
@@ -390,12 +463,22 @@ export class ChartingService {
     return this.tx(async (client) => {
       await this.assertPatient(client, patientId);
       const { rows } = await client.query<{
-        id: string; tooth: number | null; surfaces: string[];
-        description: string; status: string; fee: number; performed_on: string;
-        note: string | null; clinician_id: string | null; clinician_name: string | null;
-        code: string | null; code_system: string | null;
-        diagnosis_code: string | null; diagnosis_system: string | null;
-        plan_item_id: string | null; appointment_id: string | null;
+        id: string;
+        tooth: number | null;
+        surfaces: string[];
+        description: string;
+        status: string;
+        fee: number;
+        performed_on: string;
+        note: string | null;
+        clinician_id: string | null;
+        clinician_name: string | null;
+        code: string | null;
+        code_system: string | null;
+        diagnosis_code: string | null;
+        diagnosis_system: string | null;
+        plan_item_id: string | null;
+        appointment_id: string | null;
       }>(
         `SELECT cp.id, cp.tooth, cp.surfaces, cp.description, cp.status, cp.fee,
                 cp.performed_on::text AS performed_on, cp.note,
@@ -460,12 +543,22 @@ export class ChartingService {
                  coalesce($14::date, CURRENT_DATE),$15,$16)
          RETURNING id`,
         [
-          tenantId, patientId, dto.tooth ?? null, dto.surfaces ?? [],
-          dto.procedureCodeId ?? null, dto.diagnosisCodeId ?? null,
-          dto.treatmentId ?? null, dto.planItemId ?? null, dto.appointmentId ?? null,
-          dto.description, dto.clinicianId ?? userId,
-          dto.status ?? 'completed', dto.fee ?? 0,
-          dto.performedOn ?? null, dto.note ?? null, userId,
+          tenantId,
+          patientId,
+          dto.tooth ?? null,
+          dto.surfaces ?? [],
+          dto.procedureCodeId ?? null,
+          dto.diagnosisCodeId ?? null,
+          dto.treatmentId ?? null,
+          dto.planItemId ?? null,
+          dto.appointmentId ?? null,
+          dto.description,
+          dto.clinicianId ?? userId,
+          dto.status ?? 'completed',
+          dto.fee ?? 0,
+          dto.performedOn ?? null,
+          dto.note ?? null,
+          userId,
         ],
       );
       const procedureId = rows[0].id;
@@ -497,9 +590,17 @@ export class ChartingService {
 
   private async listProceduresIn(client: PoolClient, patientId: string, id: string) {
     const { rows } = await client.query<{
-      id: string; tooth: number | null; surfaces: string[]; description: string;
-      status: string; fee: number; performed_on: string; note: string | null;
-      clinician_name: string | null; code: string | null; code_system: string | null;
+      id: string;
+      tooth: number | null;
+      surfaces: string[];
+      description: string;
+      status: string;
+      fee: number;
+      performed_on: string;
+      note: string | null;
+      clinician_name: string | null;
+      code: string | null;
+      code_system: string | null;
     }>(
       `SELECT cp.id, cp.tooth, cp.surfaces, cp.description, cp.status, cp.fee,
               cp.performed_on::text AS performed_on, cp.note,
@@ -512,10 +613,17 @@ export class ChartingService {
     );
     const r = rows[0];
     return {
-      id: r.id, tooth: r.tooth, surfaces: r.surfaces ?? [],
-      description: r.description, status: r.status, fee: r.fee,
-      performedOn: r.performed_on, note: r.note,
-      clinicianName: r.clinician_name, code: r.code, codeSystem: r.code_system,
+      id: r.id,
+      tooth: r.tooth,
+      surfaces: r.surfaces ?? [],
+      description: r.description,
+      status: r.status,
+      fee: r.fee,
+      performedOn: r.performed_on,
+      note: r.note,
+      clinicianName: r.clinician_name,
+      code: r.code,
+      codeSystem: r.code_system,
     };
   }
 
@@ -548,7 +656,8 @@ export class ChartingService {
   async deleteProcedure(id: string) {
     return this.tx(async (client) => {
       const { rowCount } = await client.query(
-        'DELETE FROM clinical_procedures WHERE id = $1', [id],
+        'DELETE FROM clinical_procedures WHERE id = $1',
+        [id],
       );
       if (!rowCount) throw new NotFoundException('Procedure not found');
       return { deleted: true as const };

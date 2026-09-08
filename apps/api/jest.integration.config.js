@@ -22,7 +22,14 @@ module.exports = {
   roots: ['<rootDir>/test'],
   testRegex: '\\.itest\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
-  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    // Source, not dist — same reasoning as the unit config. These tests are
+    // the ones that decide whether tenant isolation holds; running them
+    // against a build from an hour ago would be the worst possible way to be
+    // told it does.
+    '^@dentalcare/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+  },
   // One database, shared. Parallel workers would race on the fixtures.
   maxWorkers: 1,
   // Booting a Nest application and opening pools is slower than a unit test,
