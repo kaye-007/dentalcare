@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
-import { Permission } from './permissions';
+import { Permission } from '@dentalcare/shared';
 
 export const PERMISSIONS_METADATA_KEY = 'dentalcare:required-permissions';
 

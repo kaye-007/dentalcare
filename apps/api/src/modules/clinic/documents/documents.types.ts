@@ -19,10 +19,9 @@
  *    guessable path.
  *  - Deletes are SOFT. The row is the record that a document ever existed;
  *    losing it silently would be worse than an orphaned object.
+ *
+ * The KIND list itself lives in @dentalcare/shared. The clinic SPA declared
+ * the same seven values and uses them to populate the upload picker, so a
+ * copy that fell behind would offer a clinician a kind the API rejects.
  */
-
-export const DOCUMENT_KINDS = [
-  'xray', 'photo', 'consent', 'referral', 'insurance', 'report', 'other',
-] as const;
-
-export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
+export { DOCUMENT_KINDS, type DocumentKind } from '@dentalcare/shared';

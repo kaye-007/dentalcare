@@ -2,6 +2,18 @@
  * The permission matrix — the single source of truth for what each clinic
  * role may do.
  *
+ * It lives in @dentalcare/shared because the clinic SPA held a second copy,
+ * hand-maintained, under the note "keep in step with
+ * apps/api/src/core/authz/permissions.ts". The two happened to agree — all 32
+ * permissions, the same nine admin-only, the same 23 for reception — which is
+ * luck rather than process, and the luck would have run out the first time
+ * someone added a capability.
+ *
+ * The enforcement did NOT move. PermissionsGuard, the @RequirePermissions
+ * decorator and every authorization decision stay in the API, which is the
+ * only place they mean anything. What is shared is the matrix, so that the
+ * controls the UI hides are exactly the ones the API would refuse.
+ *
  * Design notes
  * ------------
  * 1. Routes declare the PERMISSION they need, never the role. Adding a role
@@ -199,10 +211,7 @@ export function can(role: Role, permission: Permission): boolean {
 }
 
 /** Does `role` hold EVERY listed permission? Empty list => true. */
-export function canAll(
-  role: Role,
-  permissions: readonly Permission[],
-): boolean {
+export function canAll(role: Role, permissions: readonly Permission[]): boolean {
   return permissions.every((p) => can(role, p));
 }
 

@@ -1,12 +1,26 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
-import { can, normalizeRole } from '@/core/authz/permissions';
+import { can, normalizeRole } from '@dentalcare/shared';
 import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
 import { auditActor } from '@/core/audit/clinic-audit.service';
-import { CreateStaffDto, RecordSalaryPaymentDto, ResetStaffPasswordDto, UpdateStaffDto } from './dto/staff.dto';
+import {
+  CreateStaffDto,
+  RecordSalaryPaymentDto,
+  ResetStaffPasswordDto,
+  UpdateStaffDto,
+} from './dto/staff.dto';
 import { StaffService } from './staff.service';
 
 /* ── controller ──────────────────────────────────────────── */

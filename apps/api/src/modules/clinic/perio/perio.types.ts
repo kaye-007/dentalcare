@@ -18,9 +18,9 @@
  * Measurements are saved in BULK. A full-mouth chart is 32 teeth × 6 sites =
  * 192 readings entered in one pass; sending 192 requests would be slow and
  * would leave a half-recorded exam if the connection dropped partway.
+ *
+ * The SITE codes live in @dentalcare/shared. The clinic SPA declared the same
+ * six in the same order, and that order is the order the chart is drawn in —
+ * so it is part of the contract, not an implementation detail.
  */
-
-/** Buccal and lingual, each mesial / mid / distal. */
-export const PERIO_SITES = ['MB', 'B', 'DB', 'ML', 'L', 'DL'] as const;
-
-export type PerioSite = (typeof PERIO_SITES)[number];
+export { PERIO_SITES, type PerioSite } from '@dentalcare/shared';

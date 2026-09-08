@@ -1,4 +1,8 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
@@ -17,7 +21,10 @@ function ctxWith(headers: Record<string, string>, store: Record<string, unknown>
   return {
     switchToHttp: () => ({ getRequest: () => req }),
     // Reflector-based guards read metadata off the handler and class.
-    getHandler: () => function handler() { /* route stand-in */ },
+    getHandler: () =>
+      function handler() {
+        /* route stand-in */
+      },
     getClass: () => class Controller {},
   } as unknown as ExecutionContext;
 }
@@ -107,12 +114,24 @@ describe('PermissionsGuard', () => {
   }
 
   it('allows a route that declares no permissions', () => {
-    expect(guardRequiring(undefined).canActivate(ctxWith({}, { user: { role: 'receptionist' } }))).toBe(true);
-    expect(guardRequiring([]).canActivate(ctxWith({}, { user: { role: 'receptionist' } }))).toBe(true);
+    expect(
+      guardRequiring(undefined).canActivate(
+        ctxWith({}, { user: { role: 'receptionist' } }),
+      ),
+    ).toBe(true);
+    expect(
+      guardRequiring([]).canActivate(ctxWith({}, { user: { role: 'receptionist' } })),
+    ).toBe(true);
   });
 
   it('allows admin through every gate', () => {
-    for (const perm of ['staff:manage', 'payroll:manage', 'reports:read', 'invoices:delete', 'settings:manage']) {
+    for (const perm of [
+      'staff:manage',
+      'payroll:manage',
+      'reports:read',
+      'invoices:delete',
+      'settings:manage',
+    ]) {
       expect(
         guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'admin' } })),
       ).toBe(true);
@@ -122,7 +141,9 @@ describe('PermissionsGuard', () => {
   it('lets reception read AND write the clinical chart', () => {
     for (const perm of ['clinical:read', 'clinical:write']) {
       expect(
-        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'receptionist' } })),
+        guardRequiring([perm]).canActivate(
+          ctxWith({}, { user: { role: 'receptionist' } }),
+        ),
       ).toBe(true);
     }
   });
@@ -130,7 +151,9 @@ describe('PermissionsGuard', () => {
   it('denies reception wages and the aggregate finances', () => {
     for (const perm of ['payroll:read', 'payroll:manage', 'reports:read']) {
       expect(() =>
-        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'receptionist' } })),
+        guardRequiring([perm]).canActivate(
+          ctxWith({}, { user: { role: 'receptionist' } }),
+        ),
       ).toThrow(ForbiddenException);
     }
   });
@@ -146,9 +169,16 @@ describe('PermissionsGuard', () => {
   });
 
   it('denies a receptionist the reports dashboard and treatment repricing', () => {
-    for (const perm of ['reports:read', 'treatments:manage', 'invoices:delete', 'settings:manage']) {
+    for (const perm of [
+      'reports:read',
+      'treatments:manage',
+      'invoices:delete',
+      'settings:manage',
+    ]) {
       expect(() =>
-        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'receptionist' } })),
+        guardRequiring([perm]).canActivate(
+          ctxWith({}, { user: { role: 'receptionist' } }),
+        ),
       ).toThrow(ForbiddenException);
     }
   });
@@ -164,16 +194,22 @@ describe('PermissionsGuard', () => {
 
   it('accepts legacy roles at their equivalent authority', () => {
     expect(
-      guardRequiring(['payroll:manage']).canActivate(ctxWith({}, { user: { role: 'owner' } })),
+      guardRequiring(['payroll:manage']).canActivate(
+        ctxWith({}, { user: { role: 'owner' } }),
+      ),
     ).toBe(true);
     expect(() =>
-      guardRequiring(['reports:read']).canActivate(ctxWith({}, { user: { role: 'frontdesk' } })),
+      guardRequiring(['reports:read']).canActivate(
+        ctxWith({}, { user: { role: 'frontdesk' } }),
+      ),
     ).toThrow(ForbiddenException);
   });
 
   it('fails closed on an unknown role', () => {
     expect(() =>
-      guardRequiring(['patients:read']).canActivate(ctxWith({}, { user: { role: 'superuser' } })),
+      guardRequiring(['patients:read']).canActivate(
+        ctxWith({}, { user: { role: 'superuser' } }),
+      ),
     ).toThrow(ForbiddenException);
   });
 

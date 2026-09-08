@@ -2,10 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
-import {
-  AUDIT_ACTIONS,
-  ClinicAuditService,
-} from '@/core/audit/clinic-audit.service';
+import { AUDIT_ACTIONS, ClinicAuditService } from '@/core/audit/clinic-audit.service';
 import { AuditQueryDto } from './dto/audit.dto';
 
 /**

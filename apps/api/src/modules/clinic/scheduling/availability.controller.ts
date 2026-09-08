@@ -1,10 +1,23 @@
-import { Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
-import { can, normalizeRole } from '@/core/authz/permissions';
+import { can, normalizeRole } from '@dentalcare/shared';
 import { AvailabilityService } from './availability.service';
 import { CreateAvailabilityDto, UpdateAvailabilityDto } from './dto/scheduling.dto';
 

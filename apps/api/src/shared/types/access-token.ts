@@ -1,4 +1,4 @@
-import type { Role } from '@/core/authz/permissions';
+import type { Role } from '@dentalcare/shared';
 
 /**
  * The decoded clinic access token.

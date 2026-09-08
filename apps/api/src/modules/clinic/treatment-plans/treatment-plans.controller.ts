@@ -1,8 +1,22 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
-import { CreatePlanItemDto, TransitionPlanDto, UpdatePlanDto } from './dto/treatment-plans.dto';
+import {
+  CreatePlanItemDto,
+  TransitionPlanDto,
+  UpdatePlanDto,
+} from './dto/treatment-plans.dto';
 import { TreatmentPlansService } from './treatment-plans.service';
 
 @Controller('treatment-plans')

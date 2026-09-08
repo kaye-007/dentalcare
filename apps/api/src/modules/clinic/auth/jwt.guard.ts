@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AccessTokenPayload } from '../../../shared/types/access-token';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
-import { normalizeRole } from '@/core/authz/permissions';
+import { normalizeRole } from '@dentalcare/shared';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {

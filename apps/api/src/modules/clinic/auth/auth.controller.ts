@@ -13,7 +13,7 @@ import { ChangePasswordDto, LoginDto, RefreshDto } from './dto/login.dto';
 import { JwtAuthGuard } from './jwt.guard';
 import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/types/access-token';
-import { normalizeRole, permissionsFor } from '@/core/authz/permissions';
+import { normalizeRole, permissionsFor } from '@dentalcare/shared';
 import { UsersService } from '@/modules/clinic/users';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { AllowWhenReadOnly } from '@/core/tenancy/read-only.guard';
@@ -54,11 +54,7 @@ export class AuthController {
     @CurrentUser() current?: AccessTokenPayload,
   ) {
     if (!current) throw new UnauthorizedException();
-    return this.auth.changePassword(
-      current.sub,
-      dto.currentPassword,
-      dto.newPassword,
-    );
+    return this.auth.changePassword(current.sub, dto.currentPassword, dto.newPassword);
   }
 
   @UseGuards(JwtAuthGuard)

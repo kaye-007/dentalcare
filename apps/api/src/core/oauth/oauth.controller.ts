@@ -8,7 +8,7 @@ import { AuthService } from '@/modules/clinic/auth';
 import { UsersService } from '@/modules/clinic/users';
 import { PlatformAuthService } from '@/modules/platform/auth';
 import { GoogleIdentity } from './google.strategy';
-import { normalizeRole } from '@/core/authz/permissions';
+import { normalizeRole } from '@dentalcare/shared';
 import { decideGoogleLink } from './link-account';
 import type { OAuthState } from './oauth-state';
 import { ClinicGoogleGuard } from './clinic-google.guard';
@@ -40,9 +40,7 @@ import { PlatformGoogleGuard } from './platform-google.guard';
 
 /** The outcome of a sign-in attempt, once Google has done its part. */
 type SignInOutcome =
-  | { ok: true; tokens: Record<string, unknown> }
-
-  | { ok: false; reason: string };
+  { ok: true; tokens: Record<string, unknown> } | { ok: false; reason: string };
 
 @Controller()
 export class OAuthController {

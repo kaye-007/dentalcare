@@ -1,17 +1,12 @@
 import type { AccessTokenPayload } from '@/shared/types/access-token';
-import {
-  BadRequestException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { UsersService, AuthUserRow } from '@/modules/clinic/users';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { BCRYPT_ROUNDS } from '@/core/security/bcrypt';
-import { Permission, Role, normalizeRole, permissionsFor } from '@/core/authz/permissions';
-
+import { Permission, Role, normalizeRole, permissionsFor } from '@dentalcare/shared';
 
 export interface PublicUser {
   id: string;

@@ -10,7 +10,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { ROLES, Role } from '@/core/authz/permissions';
+import { ROLES, Role } from '@dentalcare/shared';
 
 /*
  * Staff = platform access + clinic personnel/payroll tracking.
@@ -25,13 +25,15 @@ import { ROLES, Role } from '@/core/authz/permissions';
 
 /* ── DTOs ────────────────────────────────────────────────── */
 export class CreateStaffDto {
-  @IsString() @MinLength(2, { message: 'Full name is required' })
+  @IsString()
+  @MinLength(2, { message: 'Full name is required' })
   fullName!: string;
 
   @IsEmail({}, { message: 'Enter a valid email' })
   email!: string;
 
-  @IsString() @MinLength(8, { message: 'Temporary password must be at least 8 characters' })
+  @IsString()
+  @MinLength(8, { message: 'Temporary password must be at least 8 characters' })
   password!: string;
 
   @IsIn(ROLES, {
@@ -39,18 +41,27 @@ export class CreateStaffDto {
   })
   role!: Role;
 
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
   position?: string;
 
-  @IsOptional() @IsInt() @Min(1) @Max(100_000_000)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100_000_000)
   salaryAmount?: number;
 
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   salaryNote?: string;
 }
 
 export class UpdateStaffDto {
-  @IsOptional() @IsString() @MinLength(2)
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
   fullName?: string;
 
   @IsOptional()
@@ -59,31 +70,44 @@ export class UpdateStaffDto {
   })
   role?: Role;
 
-  @IsOptional() @IsIn(['active', 'disabled'])
+  @IsOptional()
+  @IsIn(['active', 'disabled'])
   status?: 'active' | 'disabled';
 
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
   position?: string | null;
 
-  @IsOptional() @IsInt() @Min(1) @Max(100_000_000)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100_000_000)
   salaryAmount?: number | null;
 
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   salaryNote?: string | null;
 }
 
 export class ResetStaffPasswordDto {
-  @IsString() @MinLength(8, { message: 'New password must be at least 8 characters' })
+  @IsString()
+  @MinLength(8, { message: 'New password must be at least 8 characters' })
   password!: string;
 }
 
 export class RecordSalaryPaymentDto {
-  @IsInt() @Min(1, { message: 'Amount must be positive' })
+  @IsInt()
+  @Min(1, { message: 'Amount must be positive' })
   amount!: number;
 
-  @IsOptional() @IsISO8601()
+  @IsOptional()
+  @IsISO8601()
   paidOn?: string;
 
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   note?: string;
 }

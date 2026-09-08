@@ -7,7 +7,7 @@ import {
   GUARDS_METADATA,
 } from '@nestjs/common/constants';
 import { PERMISSIONS_METADATA_KEY } from './permissions.decorator';
-import { PERMISSIONS, Permission } from './permissions';
+import { PERMISSIONS, Permission } from '@dentalcare/shared';
 
 /**
  * Structural guard against the hole this pass closed.

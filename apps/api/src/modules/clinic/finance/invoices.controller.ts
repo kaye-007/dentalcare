@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
@@ -34,11 +44,11 @@ export class InvoicesController {
   }
 
   /**
-    * Reception may cancel, deliberately: cancelInvoice refuses outright once
-    * any payment exists, so this can only ever void an unbilled document —
-    * her own typo, not money that came in. R2 puts every use of it in the
-    * clinic audit log.
-    */
+   * Reception may cancel, deliberately: cancelInvoice refuses outright once
+   * any payment exists, so this can only ever void an unbilled document —
+   * her own typo, not money that came in. R2 puts every use of it in the
+   * clinic audit log.
+   */
   @Patch(':id/cancel')
   @RequirePermissions('invoices:write')
   cancel(

@@ -1,34 +1,22 @@
 /**
- * Client-side mirror of the API permission matrix.
+ * How this app TALKS about roles, and one convenience over the shared matrix.
  *
- * This exists ONLY to hide controls a user cannot use. It is not a security
- * boundary and must never be treated as one — anything reachable from the
- * browser is enforced again by PermissionsGuard on the API, which is the
- * authoritative check. If the two ever disagree, the API wins and the user
- * sees a 403.
+ * The matrix itself — which permissions exist, which role holds which — moved
+ * to @dentalcare/shared. This file used to restate all 32 permissions by hand
+ * under a note saying to keep them in step with the API. They did happen to
+ * agree; they would not have for long.
  *
- * Keep in step with apps/api/src/core/authz/permissions.ts.
+ * Nothing here is a security boundary and it never was. It exists to hide
+ * controls a user cannot use. Everything reachable from the browser is
+ * checked again by PermissionsGuard on the API, which is the authoritative
+ * decision. If the two ever disagree, the API wins and the user sees a 403.
  */
+import { can, type Permission, type Role } from '@dentalcare/shared';
 
-export const ROLES = ['admin', 'receptionist'] as const;
-export type Role = (typeof ROLES)[number];
-
-export type Permission =
-  | 'patients:read' | 'patients:write'
-  | 'appointments:read' | 'appointments:write'
-  | 'operatories:manage' | 'availability:manage'
-  | 'clinical:read' | 'clinical:write'
-  | 'treatments:read' | 'treatments:manage'
-  | 'invoices:read' | 'invoices:write' | 'invoices:delete'
-  | 'payments:read' | 'payments:write' | 'payments:void'
-  | 'expenses:read' | 'expenses:write' | 'expenses:void'
-  | 'documents:read' | 'documents:write' | 'documents:delete'
-  | 'staff:read' | 'staff:manage'
-  | 'payroll:read' | 'payroll:manage'
-  | 'settings:read' | 'settings:manage'
-  | 'reports:read'
-  | 'reminders:read' | 'reminders:send'
-  | 'audit:read';
+// Re-exported by name so a component can ask this module for "everything
+// about a role" without also importing the shared package. Named, not a star
+// re-export: Rollup cannot see through one of those into a CommonJS package.
+export { ROLES, type Permission, type Role } from '@dentalcare/shared';
 
 /** Human labels for role pickers and the user card. */
 export const ROLE_LABELS: Record<Role, string> = {
@@ -44,42 +32,14 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
     'Runs the day: booking, patients, the chart, invoices, payments, expenses and documents. Can void a mistaken payment with a reason — never delete one. Cannot see salaries or financial reports, and cannot change prices, settings or accounts.',
 };
 
-/** Held by the doctor alone — mirrors ADMIN_ONLY on the API. */
-export const ADMIN_ONLY: Permission[] = [
-  'treatments:manage',
-  'invoices:delete',
-  'documents:delete',
-  'audit:read',
-  'staff:manage',
-  'payroll:read',
-  'payroll:manage',
-  'settings:manage',
-  'reports:read',
-];
-
-const RECEPTIONIST: Permission[] = [
-  'patients:read', 'patients:write',
-  'appointments:read', 'appointments:write',
-  'operatories:manage', 'availability:manage',
-  'clinical:read', 'clinical:write',
-  'treatments:read',
-  'invoices:read', 'invoices:write',
-  'payments:read', 'payments:write', 'payments:void',
-  'expenses:read', 'expenses:write', 'expenses:void',
-  'documents:read', 'documents:write',
-  'staff:read',
-  'settings:read',
-  'reminders:read', 'reminders:send',
-];
-
-const ALL: Permission[] = [...new Set<Permission>([...RECEPTIONIST, ...ADMIN_ONLY])];
-
-export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
-  admin: new Set(ALL),
-  receptionist: new Set(RECEPTIONIST),
-};
-
+/**
+ * `can`, tolerating the signed-out case.
+ *
+ * The shared matrix takes a Role; a component often has `Role | undefined`
+ * because the session has not loaded yet. Answering "no" for nobody is the
+ * fail-closed direction, and it keeps the check at the call site to one
+ * expression instead of a guard plus a call.
+ */
 export function roleCan(role: Role | undefined, permission: Permission): boolean {
-  if (!role) return false;
-  return ROLE_PERMISSIONS[role]?.has(permission) ?? false;
+  return role ? can(role, permission) : false;
 }

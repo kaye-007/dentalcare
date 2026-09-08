@@ -63,3 +63,25 @@ export {
   isWholeToothCondition,
   type ToothCondition,
 } from './tooth-notation';
+
+export {
+  ADMIN_ONLY,
+  PERMISSIONS,
+  ROLES,
+  ROLE_PERMISSIONS,
+  can,
+  canAll,
+  isRole,
+  normalizeRole,
+  permissionsFor,
+  type Permission,
+  type Role,
+} from './permissions';
+
+export {
+  DOCUMENT_KINDS,
+  PERIO_SITES,
+  type DocumentKind,
+  type PerioSite,
+  type WorkingDay,
+} from './api-types';

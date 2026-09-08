@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
-import { Role, normalizeRole } from '@/core/authz/permissions';
+import { Role, normalizeRole } from '@dentalcare/shared';
 
 /**
  * The clinic-plane audit log.
@@ -104,7 +104,12 @@ export interface AuditRow {
   summary: string;
   metadata: Record<string, unknown>;
   createdAt: string;
-  actor: { userId: string | null; label: string; role: string; currentName: string | null };
+  actor: {
+    userId: string | null;
+    label: string;
+    role: string;
+    currentName: string | null;
+  };
 }
 
 @Injectable()

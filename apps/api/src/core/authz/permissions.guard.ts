@@ -8,7 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { RequestWithUser } from '@/shared/types/request-with-user';
 import { PERMISSIONS_METADATA_KEY } from './permissions.decorator';
-import { Permission, canAll, normalizeRole } from './permissions';
+import { Permission, canAll, normalizeRole } from '@dentalcare/shared';
 
 /**
  * Enforces @RequirePermissions. Always used AFTER JwtAuthGuard, which verifies

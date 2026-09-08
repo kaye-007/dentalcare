@@ -1,4 +1,13 @@
 import type { Permission, Role } from './permissions';
+// Re-exporting a type does not put it in local scope, and the response
+// interfaces below refer to these by name.
+import type {
+  DocumentKind,
+  PerioSite,
+  Surface,
+  ToothCondition,
+  WorkingDay,
+} from '@dentalcare/shared';
 
 const ACCESS_KEY = 'dc.access';
 const REFRESH_KEY = 'dc.refresh';
@@ -279,16 +288,9 @@ export interface MedicalHistory {
   currentMedicationCount: number;
 }
 
-export const DOCUMENT_KINDS = [
-  'xray',
-  'photo',
-  'consent',
-  'referral',
-  'insurance',
-  'report',
-  'other',
-] as const;
-export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
+// The seven kinds the API accepts. From the shared package, so the upload
+// picker cannot offer one the API would reject.
+export { DOCUMENT_KINDS, type DocumentKind } from '@dentalcare/shared';
 
 export const DOCUMENT_KIND_LABELS: Record<DocumentKind, string> = {
   xray: 'X-ray',
@@ -904,8 +906,6 @@ export {
   type ToothCondition,
 } from '@dentalcare/shared';
 
-import type { Surface, ToothCondition } from '@dentalcare/shared';
-
 export interface ToothConditionRecord {
   id: string;
   tooth: number;
@@ -1102,8 +1102,9 @@ export const proceduresApi = {
 
 /* ── Perio charting ──────────────────────────────────────── */
 
-export const PERIO_SITES = ['MB', 'B', 'DB', 'ML', 'L', 'DL'] as const;
-export type PerioSite = (typeof PERIO_SITES)[number];
+// Six probing sites per tooth, in charting order. From the shared package:
+// the API validates against exactly this list.
+export { PERIO_SITES, type PerioSite } from '@dentalcare/shared';
 
 export interface PerioMeasurement {
   id: string;
@@ -1465,12 +1466,8 @@ export const staffApi = {
   },
 };
 
-export interface WorkingDay {
-  day: number;
-  closed: boolean;
-  open: string;
-  close: string;
-}
+// day is 0 = Monday. See the note in @dentalcare/shared/api-types.
+export { type WorkingDay } from '@dentalcare/shared';
 export interface ClinicSettings {
   clinicName: string;
   address: string;
