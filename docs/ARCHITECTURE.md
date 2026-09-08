@@ -3,7 +3,7 @@
 Describes the system as built.
 
 > **Status.** Sections 1–5 remain accurate. Section 6 (Findings) and section 7
-> (Vercel assessment) were written *before* the `production-hardening` branch;
+> (Vercel assessment) were written _before_ the `production-hardening` branch;
 > most Critical and High findings there are now fixed. For current state see
 > [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md), [`CHANGELOG.md`](CHANGELOG.md), and
 > [`DEPLOYMENT.md`](DEPLOYMENT.md). Structure is catalogued in
@@ -28,17 +28,17 @@ only — no patient portal, no public marketing site.
 
 ### Stack (verified against the code, not assumed)
 
-| Layer | Technology |
-|---|---|
-| API | NestJS 10 (modular monolith), Express platform |
-| Database | PostgreSQL 16, raw SQL via `pg` — **no ORM** |
-| Migrations | `node-pg-migrate` (11 migrations, plain JS) |
-| Isolation | PostgreSQL **Row-Level Security**, `FORCE`d, per-request GUC |
-| Auth | Self-issued JWT (`@nestjs/jwt`) + `bcryptjs` |
-| Validation | `class-validator` DTOs (requests), `zod` (environment) |
-| Logging | `nestjs-pino` with request-id correlation and header redaction |
-| Frontends | React 18 + Vite 5 + react-router 6 + `lucide-react`, plain CSS |
-| Local infra | Docker Compose (Postgres + Redis) |
+| Layer       | Technology                                                     |
+| ----------- | -------------------------------------------------------------- |
+| API         | NestJS 10 (modular monolith), Express platform                 |
+| Database    | PostgreSQL 16, raw SQL via `pg` — **no ORM**                   |
+| Migrations  | `node-pg-migrate` (11 migrations, plain JS)                    |
+| Isolation   | PostgreSQL **Row-Level Security**, `FORCE`d, per-request GUC   |
+| Auth        | Self-issued JWT (`@nestjs/jwt`) + `bcryptjs`                   |
+| Validation  | `class-validator` DTOs (requests), `zod` (environment)         |
+| Logging     | `nestjs-pino` with request-id correlation and header redaction |
+| Frontends   | React 18 + Vite 5 + react-router 6 + `lucide-react`, plain CSS |
+| Local infra | Docker Compose (Postgres + Redis)                              |
 
 > **There is no Firebase or Firestore anywhere in this repository.**
 > A repository-wide search for `firebase` / `firestore` across every `.ts`,
@@ -53,7 +53,7 @@ dentalcare/
 │   ├── api/          @dentalcare/api         — NestJS  (44 .ts files, ~4.0k LOC)
 │   ├── tenant-web/   @dentalcare/tenant-web  — clinic SPA  :5173 (24 files)
 │   └── admin-web/    @dentalcare/admin-web   — superadmin SPA :5174 (10 files)
-├── docker-compose.yml    postgres + redis + api
+├── infra/docker/         Dockerfile + compose (postgres, migrate, api)
 ├── tsconfig.base.json    shared strict TS config
 └── package.json          workspace root + script aliases
 ```
@@ -92,13 +92,13 @@ Runs as the non-superuser `app_user` role, so Row-Level Security genuinely
 cannot be bypassed.
 
 **Platform plane** (`src/platform/**`) — NODE X superadmin. Operates across all
-tenants, therefore *must* bypass RLS, therefore uses the privileged connection
+tenants, therefore _must_ bypass RLS, therefore uses the privileged connection
 and is reachable only behind `PlatformJwtGuard`.
 
 ### How tenant isolation is enforced (three independent layers)
 
 1. **Middleware** resolves `Host` → subdomain → tenant via the `resolve_tenant`
-   `SECURITY DEFINER` function (needed because the lookup must run *before* any
+   `SECURITY DEFINER` function (needed because the lookup must run _before_ any
    tenant context exists; it returns only `id` + `status` for the one subdomain
    asked about, so it leaks nothing).
 2. **Database** — every one of the 14 tenant tables carries
@@ -132,9 +132,10 @@ expense deletion, settings writes, and all of reports.
 `plans`, `platform_admins`, `audit_log`
 
 Notable schema decisions, all sound:
+
 - Money is **integer Lekë**, never floats.
 - Invoice numbers are per-tenant sequential (`UNIQUE (tenant_id, seq)`).
-- Teeth use **FDI numbering**, enforced by a `CHECK` constraint *and* in code.
+- Teeth use **FDI numbering**, enforced by a `CHECK` constraint _and_ in code.
 - At most one automatic reminder per appointment via a **partial unique index**
   — this is what makes the scheduler scan idempotent.
 - Appointment overlap protection uses `tstzrange && tstzrange`.
@@ -160,11 +161,11 @@ without schema or UI changes.
 
 All three workspaces compile clean from a cold build:
 
-| Workspace | Result |
-|---|---|
-| `@dentalcare/api` | `nest build` — success, no errors |
+| Workspace                | Result                                                           |
+| ------------------------ | ---------------------------------------------------------------- |
+| `@dentalcare/api`        | `nest build` — success, no errors                                |
 | `@dentalcare/tenant-web` | `tsc -b && vite build` — 1594 modules, 276.77 kB (79.00 kB gzip) |
-| `@dentalcare/admin-web` | `tsc -b && vite build` — 1580 modules, 181.21 kB (57.86 kB gzip) |
+| `@dentalcare/admin-web`  | `tsc -b && vite build` — 1580 modules, 181.21 kB (57.86 kB gzip) |
 
 TypeScript runs `strict` everywhere. There are zero `TODO`/`FIXME`/`HACK`
 markers in the source.
@@ -202,7 +203,7 @@ client's perspective.
 
 `TenantMiddleware.resolveSubdomain` honours a client-supplied
 `X-Tenant-Subdomain` header (and the `DEV_TENANT_SUBDOMAIN` fallback) whenever
-`NODE_ENV !== 'production'`. The tenant-web client sends that header on *every*
+`NODE_ENV !== 'production'`. The tenant-web client sends that header on _every_
 request, unconditionally.
 
 Impact is bounded — token-to-tenant binding still blocks cross-tenant data
@@ -230,7 +231,7 @@ containing a quote would break or alter the statement.
 
 ### LOW — Redis is provisioned but entirely unused
 
-Declared in `docker-compose.yml`, validated in `env.validation.ts`, referenced
+Declared in `infra/docker/docker-compose.yml`, validated in `env.validation.ts`, referenced
 in a comment about a future BullMQ migration — and never imported by any
 application code. Aspirational infrastructure.
 
@@ -252,7 +253,7 @@ Harmless, but misleading about the repo's shape.
   `scope: 'platform'` so `PlatformJwtGuard` rejects it. Both directions checked.
 - **RLS `WITH CHECK` on `tenants`.** The policy omits `WITH CHECK`; Postgres
   then reuses the `USING` expression for new rows, so this is safe, not a gap.
-- **"Owner-only pricing"** in the README means *editing* prices. Frontdesk can
+- **"Owner-only pricing"** in the README means _editing_ prices. Frontdesk can
   read the catalog by design, and `OwnerGuard` correctly covers write paths.
 - **`outstanding` ignores the period filter** in both finance summary and
   reports. Correct: outstanding balance is point-in-time, not a period total.
@@ -278,13 +279,13 @@ The API resists Vercel's serverless model in four specific ways:
    `onModuleInit` (`reminders.module.ts:266`). Serverless functions do not stay
    resident, so automatic reminders would simply never fire. This needs to
    become a Vercel Cron route or an external worker. The scan is already
-   idempotent, so the move is safe — but it *is* a code change.
+   idempotent, so the move is safe — but it _is_ a code change.
 2. **Two persistent `pg.Pool`s** (max 10 + 5) created per instance. Serverless
    concurrency multiplies these and exhausts Postgres connections without a
    pooler (Supabase/Neon pgBouncer, or Prisma Accelerate-style proxy).
 3. **The RLS design depends on transaction-scoped state.** `withTenant()` sets
    `app.current_tenant_id` via `set_config(..., true)` — transaction-local. That
-   is correct and portable, but it *requires* session/transaction pooling mode
+   is correct and portable, but it _requires_ session/transaction pooling mode
    to behave, which constrains the pooler configuration.
 4. **Wildcard subdomains per tenant.** Needs a wildcard domain
    (`*.dentalcare.app`) attached to the project, plus per-tenant DNS.
@@ -312,7 +313,7 @@ boots), managed Postgres with TLS, CORS widened beyond the current
 This is a well-built codebase. The tenancy model is enforced in the database
 rather than trusted to application code, the two planes are cleanly separated
 with distinct credentials and guards, money is integers, the reminder scan is
-idempotent by construction, and the comments explain *why* rather than *what*.
+idempotent by construction, and the comments explain _why_ rather than _what_.
 It is genuinely production-shaped.
 
 What stands between it and production is a short, specific list — the archived

@@ -21,6 +21,14 @@
 # POSTGRES_PASSWORD / POSTGRES_DB instead of inheriting them. Nothing rewrites
 # a URL at runtime; each side is written out where it is used.
 
+# The project name, pinned.
+#
+# Compose derives it from the directory holding this file, so moving the file
+# to infra/docker/ would silently rename the project to "docker" — and with
+# it the volume, from dentalcare_pgdata to docker_pgdata. Every existing
+# developer database would appear to have vanished.
+name: dentalcare
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -32,13 +40,17 @@ services:
     ports:
       # Host port is configurable so this stack can run alongside another
       # Postgres already bound to 5432. Set POSTGRES_PORT in .env to change it.
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       # Named volume, so `docker compose down` does NOT lose the database.
       # `docker compose down -v` is the one that does.
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dentalcare} -d ${POSTGRES_DB:-dentalcare}"]
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-dentalcare} -d ${POSTGRES_DB:-dentalcare}',
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -53,7 +65,7 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: infra/docker/Dockerfile
       target: migrate
     environment:
       NODE_ENV: ${NODE_ENV:-development}
@@ -75,12 +87,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    restart: "no"
+    restart: 'no'
 
   api:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: infra/docker/Dockerfile
       target: runtime
     restart: unless-stopped
     environment:
@@ -105,12 +117,18 @@ services:
     ports:
       # Same reasoning as postgres — avoids a clash with anything already on
       # 3000. The container always listens on 3000 internally.
-      - "${API_PORT:-3000}:3000"
+      - '${API_PORT:-3000}:3000'
     healthcheck:
       # /api/health answers 503 when it cannot reach the database, so `r.ok`
       # is the whole check. It used to answer 200 with "degraded" in the body,
       # which made this report a healthy API that could serve nothing.
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3

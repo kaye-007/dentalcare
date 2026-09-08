@@ -10,11 +10,17 @@ COPY package.json package-lock.json* ./
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/tenant-web/package.json ./apps/tenant-web/package.json
 COPY apps/admin-web/package.json ./apps/admin-web/package.json
+COPY packages/shared/package.json ./packages/shared/package.json
 RUN npm ci --workspace @dentalcare/api --include-workspace-root
 
 # ─── build stage ─────────────────────────────────────────
+# @dentalcare/shared first: the API imports it, and npm has linked
+# node_modules/@dentalcare/shared at the workspace directory, so its dist has
+# to exist before tsc resolves the import.
 FROM deps AS build
 COPY tsconfig.base.json ./
+COPY packages/shared ./packages/shared
+RUN npm run build -w @dentalcare/shared
 COPY apps/api ./apps/api
 RUN npm run build -w @dentalcare/api
 
@@ -44,9 +50,13 @@ ENV NODE_ENV=production
 
 COPY package.json package-lock.json* ./
 COPY apps/api/package.json ./apps/api/package.json
+# The manifest, so npm creates the workspace link the API's `require` follows.
+COPY packages/shared/package.json ./packages/shared/package.json
 RUN npm ci --omit=dev --workspace @dentalcare/api --include-workspace-root
 
 COPY --from=build /app/apps/api/dist ./apps/api/dist
+# The built shared package, and only its build output — no sources, no tests.
+COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 
 # Drop privileges — the node image ships an unprivileged `node` user.
 USER node

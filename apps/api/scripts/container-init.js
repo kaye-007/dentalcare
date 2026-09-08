@@ -104,6 +104,35 @@ function run(command, args, extraEnv = {}) {
   return result.status ?? 1;
 }
 
+/**
+ * Does this database hold migrations that no longer exist on disk?
+ *
+ * That is the signature of a database created before the squash, and the only
+ * case in which retrying with --no-check-order is the right answer. Anything
+ * else that made `migrate up` fail is a real failure and stays one.
+ */
+async function looksPreSquash(connectionString) {
+  const onDisk = new Set(
+    fs
+      .readdirSync(path.join(API_DIR, 'migrations'))
+      .filter((f) => /^\d+_.+\.js$/.test(f))
+      .map((f) => f.replace(/\.js$/, '')),
+  );
+
+  const client = new Client({ connectionString });
+  try {
+    await client.connect();
+    const { rows } = await client.query('SELECT name FROM pgmigrations');
+    return rows.some((r) => !onDisk.has(r.name));
+  } catch {
+    // No pgmigrations table at all means a fresh database, which cannot be
+    // the pre-squash case.
+    return false;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
 async function main() {
   console.log(`\n${B}DentalCare — container init${X}`);
 
@@ -125,8 +154,32 @@ async function main() {
      reads DATABASE_URL from the environment; no --envPath, because the repo
      .env is excluded by .dockerignore and never reaches a container. */
   step('2. migrations');
-  const migrated = run('node', [nodePgMigrateBin(), 'up', '-m', 'migrations']);
-  if (migrated !== 0) die('migrations failed — the error is above.');
+  const migrate = (extra = []) =>
+    run('node', [nodePgMigrateBin(), 'up', '-m', 'migrations', ...extra]);
+
+  if (migrate() !== 0) {
+    /* One specific failure is expected and recoverable: a database created
+       before the migrations were squashed.
+
+       0001_baseline sorts before 0001_init-extensions, which that database has
+       already run, so node-pg-migrate refuses the whole batch — correctly, in
+       general. Here it is exactly the situation a squash creates, and the
+       baseline is built to handle it: it detects the existing schema, checks
+       that ALL the superseded migrations were applied, and records itself
+       without touching anything. A half-migrated database is still refused, by
+       the baseline itself rather than by the ordering check.
+
+       Retried rather than passed every time, because --no-check-order also
+       silences the genuine version of this warning, and on a database that
+       does not need it the first attempt simply succeeds. */
+    if (!(await looksPreSquash(databaseUrl))) {
+      die('migrations failed — the error is above.');
+    }
+    info('this database predates the migration squash — adopting the baseline');
+    if (migrate(['--no-check-order']) !== 0) {
+      die('migrations failed — the error is above.');
+    }
+  }
   ok('schema is up to date');
 
   /* ── 3. the first platform administrator ─────────────────────────────── */

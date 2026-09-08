@@ -14,24 +14,25 @@ import { DatabaseModule } from '@/core/database/database.module';
 import { HealthModule } from '@/core/health/health.module';
 import { TenancyModule } from '@/core/tenancy/tenancy.module';
 import { TenantMiddleware } from '@/core/tenancy/tenant.middleware';
-import { AuthController, AuthModule } from '@/modules/clinic/auth';
-import { PatientsController, PatientsModule } from '@/modules/clinic/patients';
-import { AllergiesController, ConditionsController, MedicationsController, PatientHistoryController, PatientHistoryModule } from '@/modules/clinic/patient-history';
-import { DocumentsController, DocumentsModule, PatientDocumentsController } from '@/modules/clinic/documents';
-import { AppointmentsController, AppointmentsModule } from '@/modules/clinic/appointments';
-import { AvailabilityController, OperatoriesController, SchedulingModule } from '@/modules/clinic/scheduling';
-import { StaffController, StaffModule } from '@/modules/clinic/staff';
-import { TreatmentsController, TreatmentsModule } from '@/modules/clinic/treatments';
-import { ChartController, ChartingModule, PatientProceduresController, ProcedureCodesController, ProceduresController, ToothConditionsController } from '@/modules/clinic/charting';
-import { PatientPerioController, PerioExamsController, PerioModule } from '@/modules/clinic/perio';
-import { PatientPlansController, PlanItemsController, TreatmentPlansController, TreatmentPlansModule } from '@/modules/clinic/treatment-plans';
-import { SettingsController, SettingsModule } from '@/modules/clinic/settings';
-import { ExpensesController, FinanceModule, FinanceSummaryController, InvoicesController, PaymentsController } from '@/modules/clinic/finance';
-import { ReportsController, ReportsModule } from '@/modules/clinic/reports';
-import { BillingController, BillingModule, PatientLedgerController, PlanInvoiceController } from '@/modules/clinic/billing';
-import { AnalyticsController, AnalyticsModule } from '@/modules/clinic/analytics';
-import { RemindersController, RemindersModule } from '@/modules/clinic/reminders';
-import { AuditController, AuditModule } from '@/modules/clinic/audit';
+import { tenantMiddlewareExclusions } from '@/core/tenancy/tenant-routes';
+import { AuthModule } from '@/modules/clinic/auth';
+import { PatientsModule } from '@/modules/clinic/patients';
+import { PatientHistoryModule } from '@/modules/clinic/patient-history';
+import { DocumentsModule } from '@/modules/clinic/documents';
+import { AppointmentsModule } from '@/modules/clinic/appointments';
+import { SchedulingModule } from '@/modules/clinic/scheduling';
+import { StaffModule } from '@/modules/clinic/staff';
+import { TreatmentsModule } from '@/modules/clinic/treatments';
+import { ChartingModule } from '@/modules/clinic/charting';
+import { PerioModule } from '@/modules/clinic/perio';
+import { TreatmentPlansModule } from '@/modules/clinic/treatment-plans';
+import { SettingsModule } from '@/modules/clinic/settings';
+import { FinanceModule } from '@/modules/clinic/finance';
+import { ReportsModule } from '@/modules/clinic/reports';
+import { BillingModule } from '@/modules/clinic/billing';
+import { AnalyticsModule } from '@/modules/clinic/analytics';
+import { RemindersModule } from '@/modules/clinic/reminders';
+import { AuditModule } from '@/modules/clinic/audit';
 import { PlatformAuthModule } from '@/modules/platform/auth';
 import { TenantsModule } from '@/modules/platform/tenants';
 import { PlansModule } from '@/modules/platform/plans';
@@ -84,8 +85,7 @@ function prettyTransport() {
               genReqId: (req, res) => {
                 const incoming = req.headers['x-request-id'];
                 const id =
-                  (Array.isArray(incoming) ? incoming[0] : incoming) ||
-                  randomUUID();
+                  (Array.isArray(incoming) ? incoming[0] : incoming) || randomUUID();
                 res.setHeader('x-request-id', id);
                 return id;
               },
@@ -135,47 +135,19 @@ function prettyTransport() {
   ],
 })
 export class AppModule implements NestModule {
-  // Tenant resolution applies to clinic (tenant-plane) routes. Health stays
-  // global; future tenant controllers get added here as milestones land.
+  /**
+   * Every route resolves a clinic, except the ones that cannot.
+   *
+   * This was a hand-maintained list of thirty-five controllers. The list was
+   * correct; the problem is what happens when it stops being — a clinic
+   * controller added without being named here keeps working, keeps returning
+   * rows, and nothing anywhere fails. See core/tenancy/tenant-routes.ts for
+   * the exclusions and why each one is there.
+   */
   configure(consumer: MiddlewareConsumer): void {
     consumer
       .apply(TenantMiddleware)
-      .forRoutes(
-        AuthController,
-        PatientsController,
-        PatientHistoryController,
-        AllergiesController,
-        ConditionsController,
-        MedicationsController,
-        PatientDocumentsController,
-        DocumentsController,
-        AppointmentsController,
-        OperatoriesController,
-        AvailabilityController,
-        StaffController,
-        TreatmentsController,
-        ChartController,
-        ToothConditionsController,
-        ProcedureCodesController,
-        PatientProceduresController,
-        ProceduresController,
-        PatientPerioController,
-        PerioExamsController,
-        PatientPlansController,
-        TreatmentPlansController,
-        PlanItemsController,
-        SettingsController,
-        InvoicesController,
-        PaymentsController,
-        ExpensesController,
-        FinanceSummaryController,
-        ReportsController,
-        PlanInvoiceController,
-        PatientLedgerController,
-        BillingController,
-        AnalyticsController,
-        RemindersController,
-        AuditController,
-      );
+      .exclude(...tenantMiddlewareExclusions())
+      .forRoutes('*');
   }
 }

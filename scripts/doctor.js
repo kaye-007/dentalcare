@@ -10,11 +10,14 @@
  *   the clinic app  (:5173)  ->  users + tenants, as app_user, under RLS
  *   the admin console (:5174) ->  platform_admins, as the owner role, no RLS
  *
- * diagnose-login.js walks the first path. Nothing walked the second, which is
- * why a missing platform_admins table read as a mystery 500 for an hour.
+ * There used to be a second script, diagnose-login.js, which walked the first
+ * path and knew nothing about the second — which is why a missing
+ * platform_admins table read as a mystery 500 for an hour. Two scripts for
+ * one question is one script too many, and the one you did not run is always
+ * the one that would have answered it. Its login-path walk is section 6 here.
  *
- * This checks both, stops at nothing, and prints the one command that fixes
- * whatever it found. It only ever reads.
+ * This checks both planes, stops at nothing, and prints the one command that
+ * fixes whatever it found. It only ever reads.
  */
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
@@ -238,8 +241,96 @@ async function main() {
 
   await admin.end();
 
-  /* ── 6. is the API actually running ──────────────────────────────── */
-  head('6. API process');
+  /* ── 6. the login path, walked as the API walks it ───────────────── */
+  /* Absorbed from diagnose-login.js, which existed because the four things
+     login touches all fail identically from a browser: a red box saying
+     "Internal Server Error".
+
+     Everything above this point checks that a thing EXISTS. This runs the
+     actual sequence — connect as app_user, resolve the clinic, set the
+     transaction-local GUC, then the users/tenants join — and prints the raw
+     PostgreSQL error rather than the 500 the HTTP layer turns it into. A
+     missing EXECUTE grant on resolve_tenant and a wrong password look the
+     same from outside and completely different here. */
+  head('6. the login query, as app_user');
+
+  const wanted = process.env.DEV_TENANT_SUBDOMAIN;
+  if (!appUrl) {
+    info('APP_DATABASE_URL not set — skipping');
+  } else if (!wanted) {
+    info('DEV_TENANT_SUBDOMAIN not set — nothing to resolve');
+  } else {
+    const app = await tryConnect(appUrl, 'cannot connect as app_user');
+    if (app) {
+      try {
+        /* 1. resolve_tenant — runs BEFORE any tenant context exists, which is
+              why it is SECURITY DEFINER. A missing EXECUTE grant surfaces
+              here and nowhere else. */
+        const t = await app.query('SELECT id, status FROM resolve_tenant($1)', [wanted]);
+        if (t.rowCount === 0) {
+          bad(`resolve_tenant('${wanted}') found nothing — every login will 404`);
+          problem(
+            `no clinic with subdomain "${wanted}"`,
+            'npm run dev:setup   (offers to create one and writes .env)',
+          );
+        } else {
+          ok(`resolve_tenant('${wanted}') -> ${t.rows[0].status}`);
+
+          /* 2. the tenant context, set transaction-locally exactly as
+                DatabaseService.withTenant does. */
+          await app.query('BEGIN');
+          await app.query('SELECT set_config($1, $2, true)', [
+            'app.current_tenant_id',
+            t.rows[0].id,
+          ]);
+
+          /* 3. the join login actually performs. This is the statement that
+                becomes a 500 when it fails. */
+          const users = await app.query(
+            `SELECT u.email, u.role, u.status AS user_status,
+                    u.password_hash IS NOT NULL AS has_password,
+                    tn.status AS tenant_status
+               FROM users u
+               JOIN tenants tn ON tn.id = u.tenant_id
+              ORDER BY u.email`,
+          );
+          await app.query('ROLLBACK');
+
+          if (users.rowCount === 0) {
+            bad('the query runs, but this clinic has no users to sign in as');
+            problem('no clinic user', 'npm run dev:setup   (creates an administrator)');
+          } else {
+            ok(`${users.rowCount} account(s) visible to the clinic app:`);
+            for (const u of users.rows) {
+              const flags = [
+                u.user_status !== 'active' ? `${R}${u.user_status}${X}` : null,
+                u.tenant_status !== 'active' ? `${R}clinic ${u.tenant_status}${X}` : null,
+                !u.has_password ? `${R}no password${X}` : null,
+              ].filter(Boolean);
+              console.log(
+                `          ${u.email}  ${u.role}` +
+                  (flags.length ? `  ${flags.join(' ')}` : `  ${G}ok${X}`),
+              );
+            }
+            if (!users.rows.some((u) => u.user_status === 'active' && u.has_password)) {
+              problem('no usable clinic account', 'npm run dev:setup');
+            }
+          }
+        }
+      } catch (e) {
+        // The whole point: the raw error, not the 500.
+        bad(`the login path failed: ${e.message}`);
+        for (const field of ['code', 'detail', 'hint', 'where']) {
+          if (e[field]) info(`${field}: ${e[field]}`);
+        }
+        problem('login fails inside PostgreSQL', 'npm run dev:setup:reset');
+      }
+      await app.end().catch(() => undefined);
+    }
+  }
+
+  /* ── 7. is the API actually running ──────────────────────────────── */
+  head('7. API process');
 
   const port = process.env.PORT || 3000;
   try {

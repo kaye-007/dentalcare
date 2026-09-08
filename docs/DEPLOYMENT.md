@@ -295,12 +295,13 @@ application's point of view; Hyperdrive owns the connection ceiling.
 
 ## Fallback: the container
 
-`apps/api/Dockerfile` and `docker-compose.yml` are unchanged and still work.
+`infra/docker/Dockerfile` and `infra/docker/docker-compose.yml` are unchanged
+in substance and still work.
 Nothing in the Cloudflare port removed the Node path — `RUNTIME` defaults to
 `node`, which restores the resident pools and the in-process scheduler.
 
 ```bash
-docker build -f apps/api/Dockerfile -t dentalcare-api .
+docker build -f infra/docker/Dockerfile -t dentalcare-api .
 docker run -p 3000:3000 --env-file .env.production dentalcare-api
 ```
 
