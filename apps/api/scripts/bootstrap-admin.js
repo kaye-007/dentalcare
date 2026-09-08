@@ -54,6 +54,15 @@ function readInput() {
   return { email, password, fullName };
 }
 
+/**
+ * Where the account is actually used. The console is a different origin from
+ * the API this script talks to, and on a first run there is nothing else to
+ * learn that from.
+ */
+function consoleUrl() {
+  return process.env.ADMIN_BASE_URL || 'http://localhost:5174';
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     fail('DATABASE_URL is not set.');
@@ -90,7 +99,8 @@ async function main() {
         [existing.rows[0].id, hash, fullName],
       );
       await client.query('COMMIT');
-      console.log(`\n  Password rotated for ${email}.\n`);
+      console.log(`\n  Password rotated for ${email}.`);
+      console.log(`  Console:  ${consoleUrl()}\n`);
       return;
     }
 
@@ -103,9 +113,13 @@ async function main() {
     await client.query('COMMIT');
 
     console.log(`\n  Created platform administrator: ${fullName} <${email}>`);
+    // The email, never the password. It was passed in, so printing it back
+    // teaches nothing and puts a live credential into terminal scrollback,
+    // CI output and shell history.
+    console.log(`  Console:  ${consoleUrl()}`);
     if (total.rows[0].c === 0) {
-      console.log('  This is the first administrator — sign in to the platform console to');
-      console.log('  create your first clinic.\n');
+      console.log('  This is the first administrator — sign in there to create your');
+      console.log('  first clinic.\n');
     } else {
       console.log(`  (${total.rows[0].c + 1} administrators now exist.)\n`);
     }

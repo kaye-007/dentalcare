@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '@/core/database/database.service';
+import { platformJwtSecret } from './platform-secret';
 
 export interface PlatformTokenPayload {
   sub: string;
@@ -50,7 +51,7 @@ export class PlatformAuthService {
       email: admin.email,
     };
     const accessToken = await this.jwt.signAsync(payload, {
-      secret: this.config.get<string>('JWT_SECRET'),
+      secret: platformJwtSecret(this.config),
       expiresIn: this.config.get<string>('JWT_ACCESS_TTL'),
     });
 
@@ -104,7 +105,7 @@ export class PlatformAuthService {
       email: admin.email,
     };
     const accessToken = await this.jwt.signAsync(payload, {
-      secret: this.config.get<string>('JWT_SECRET'),
+      secret: platformJwtSecret(this.config),
       expiresIn: this.config.get<string>('JWT_ACCESS_TTL'),
     });
     return {

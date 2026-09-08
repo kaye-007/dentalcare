@@ -80,6 +80,23 @@ async function main() {
     ok(`JWT_SECRET present (${process.env.JWT_SECRET.length} characters)`);
   }
 
+  // The console signs cross-tenant tokens. Development may share JWT_SECRET;
+  // production may not, and finding that out at deploy time is the expensive
+  // way to find it out.
+  if (!process.env.PLATFORM_JWT_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      bad('PLATFORM_JWT_SECRET is not set — the API will refuse to start in production');
+      problem('PLATFORM_JWT_SECRET missing', 'add PLATFORM_JWT_SECRET to .env (32+ characters, different from JWT_SECRET)');
+    } else {
+      ok('PLATFORM_JWT_SECRET unset — console falls back to JWT_SECRET (development only)');
+    }
+  } else if (process.env.PLATFORM_JWT_SECRET === process.env.JWT_SECRET) {
+    bad('PLATFORM_JWT_SECRET is the same value as JWT_SECRET — that is not a split');
+    problem('platform secret not separated', 'generate a different PLATFORM_JWT_SECRET');
+  } else {
+    ok(`PLATFORM_JWT_SECRET present (${process.env.PLATFORM_JWT_SECRET.length} characters)`);
+  }
+
   if (!process.env.DEV_TENANT_SUBDOMAIN || process.env.ALLOW_TENANT_HEADER !== '1') {
     warn('DEV_TENANT_SUBDOMAIN / ALLOW_TENANT_HEADER=1 not both set.');
     warn('localhost has no subdomain, so the clinic app cannot resolve a clinic without them.');

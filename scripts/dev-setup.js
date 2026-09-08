@@ -20,11 +20,17 @@
  * Uses pg directly rather than psql, so it works whether Postgres is a local
  * install or a container, and needs nothing on PATH.
  */
+const fs = require('fs');
 const path = require('path');
+const readline = require('readline');
 const { execSync } = require('child_process');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
+const bcrypt = require('bcryptjs');
 const { Client } = require('pg');
+
+/** Credentials that appear in this repository. Never acceptable as a real one. */
+const PUBLISHED_PASSWORDS = ['Demo@2026!', 'Admin123!', 'Owner123!', 'Reception123!', 'changeme', 'password'];
 
 const RESET = process.argv.includes('--reset');
 // Demo data is opt-in. A clean database with the schema, the app role and
@@ -57,6 +63,165 @@ async function connect(connectionString, label) {
   } catch (e) {
     die(`could not connect as ${label}: ${e.message}`);
   }
+}
+
+/* ── first-clinic helpers ─────────────────────────────────────────────── */
+
+/** A terminal on both ends. A pipe or a CI job gets no prompts. */
+function interactive() {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+function ask(question) {
+  if (!interactive()) return Promise.resolve('');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => rl.question(question, (a) => { rl.close(); resolve(a); }));
+}
+
+/**
+ * Same, without echoing. A password typed into a terminal ends up in
+ * scrollback and in whatever is scraping the pane; the point of asking for it
+ * rather than generating and printing one is that it never gets written down.
+ */
+function askSecret(question) {
+  if (!interactive()) return Promise.resolve('');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true,
+  });
+  let muted = false;
+  rl._writeToOutput = (s) => {
+    if (!muted) return rl.output.write(s);
+    // Keep the newline, hide everything else, so Enter still ends the line.
+    if (s.includes('\n')) rl.output.write('\n');
+  };
+  return new Promise((resolve) => {
+    rl.question(question, (a) => { rl.close(); resolve(a); });
+    muted = true;
+  });
+}
+
+/** Subdomains become hostnames: avicena.dentalcare.app. Keep them to that. */
+function validateSubdomain(value) {
+  const s = String(value).trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(s)) {
+    return 'letters, digits and hyphens only, 1-32 characters, not starting or ending with a hyphen';
+  }
+  // 'www' is the one label TenantMiddleware deliberately refuses to read as a
+  // clinic, so a clinic called www would resolve on localhost and nowhere else.
+  if (s === 'www' || s === 'api' || s === 'admin') {
+    return `"${s}" is reserved — it names something other than a clinic in production`;
+  }
+  return null;
+}
+
+/**
+ * Create the clinic and the account that administers it, in one transaction.
+ *
+ * Deliberately mirrors what the platform console does rather than inventing a
+ * second shape: a tenant row, and a `users` row with role 'admin' — the
+ * doctor, who is also the administrator, under the two-role model 0017
+ * settled on.
+ */
+async function createFirstClinic(client, io = { ask, askSecret }) {
+  const rawName = (await io.ask('  Clinic name:      ')).trim();
+  const name = rawName || 'My Clinic';
+
+  const suggestion = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32) || 'clinic';
+
+  let subdomain;
+  for (;;) {
+    const answer = (await io.ask(`  Subdomain:        [${suggestion}] `)).trim() || suggestion;
+    const problem = validateSubdomain(answer);
+    if (problem) { warn(problem); continue; }
+    const taken = await client.query('SELECT 1 FROM tenants WHERE subdomain = $1', [
+      answer.toLowerCase(),
+    ]);
+    if (taken.rowCount > 0) { warn(`"${answer}" is already taken`); continue; }
+    subdomain = answer.toLowerCase();
+    break;
+  }
+
+  const email = (await io.ask('  Your email:       ')).trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    die(`"${email}" is not an email address.`);
+  }
+  const fullName = (await io.ask('  Your name:        ')).trim() || email.split('@')[0];
+
+  let password;
+  for (;;) {
+    password = await io.askSecret('  Password:         ');
+    if (password.length < 12) {
+      warn('at least 12 characters');
+      continue;
+    }
+    if (PUBLISHED_PASSWORDS.some((p) => p.toLowerCase() === password.toLowerCase())) {
+      warn('that password is published in this repository — choose another');
+      continue;
+    }
+    const again = await io.askSecret('  Again:            ');
+    if (again !== password) { warn('they do not match'); continue; }
+    break;
+  }
+
+  const hash = await bcrypt.hash(password, 10);
+
+  await client.query('BEGIN');
+  try {
+    const t = await client.query(
+      `INSERT INTO tenants (name, subdomain, status)
+       VALUES ($1, $2, 'active') RETURNING id`,
+      [name, subdomain],
+    );
+    const tenantId = t.rows[0].id;
+    await client.query(
+      `INSERT INTO users (tenant_id, email, password_hash, full_name, role, status)
+       VALUES ($1, $2, $3, $4, 'admin', 'active')`,
+      [tenantId, email, hash, fullName],
+    );
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    die(`could not create the clinic: ${e.message}`);
+  }
+
+  ok(`created "${name}" (${subdomain}) with ${email} as its administrator`);
+  writeEnvVar('DEV_TENANT_SUBDOMAIN', subdomain);
+  ok(`.env now points localhost at "${subdomain}"`);
+}
+
+/**
+ * Set one variable in .env, in place.
+ *
+ * Rewrites the existing line if there is one — including a commented-out one,
+ * so `# DEV_TENANT_SUBDOMAIN=demo` does not end up shadowed by a second live
+ * copy further down — and appends otherwise. Everything else in the file,
+ * comments included, is left exactly as it was.
+ */
+function writeEnvVar(key, value, envPath = path.resolve(__dirname, '../.env')) {
+  if (!fs.existsSync(envPath)) {
+    warn(`.env not found — set ${key}=${value} by hand`);
+    return;
+  }
+  const original = fs.readFileSync(envPath, 'utf8');
+  const eol = original.includes('\r\n') ? '\r\n' : '\n';
+  const lines = original.split(/\r?\n/);
+  const re = new RegExp(`^\\s*#?\\s*${key}\\s*=`);
+  let replaced = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (re.test(lines[i])) {
+      lines[i] = `${key}=${value}`;
+      replaced = true;
+      break;
+    }
+  }
+  if (!replaced) lines.push(`${key}=${value}`);
+  fs.writeFileSync(envPath, lines.join(eol));
 }
 
 async function main() {
@@ -240,10 +405,75 @@ async function main() {
     }
   }
 
-  /* ── 7. verify the way the API will actually connect ────────────────── */
+  /* ── 7. the first clinic ────────────────────────────────────────────── */
+  /* The gap this closes: everything above can succeed and leave a database
+     with a schema, an app role, correct grants — and no clinic. The clinic
+     app resolves localhost through DEV_TENANT_SUBDOMAIN, so with no clinic
+     matching it every request 404s in TenantMiddleware before login is
+     reached, and the browser shows a failed sign-in for a password that was
+     never compared. `ready` used to print instructions for fixing that by
+     hand; it is one prompt instead.
+
+     Not the demo clinic. `--with-demo` still exists and still seeds Vienna
+     with a year of history; this makes YOUR clinic, with your account, which
+     is what a real first run wants. */
+  step('7. clinic');
+  if (!WITH_DEMO) {
+    const admin2 = await connect(adminUrlRaw, 'admin');
+    const existing = await admin2.query(
+      'SELECT subdomain, status FROM tenants ORDER BY created_at',
+    );
+    const wanted = (process.env.DEV_TENANT_SUBDOMAIN || '').toLowerCase();
+    const match = existing.rows.find((t) => t.subdomain === wanted);
+
+    if (match) {
+      ok(`DEV_TENANT_SUBDOMAIN "${wanted}" -> ${match.status}`);
+    } else if (existing.rowCount > 0) {
+      const names = existing.rows.map((t) => t.subdomain).join(', ');
+      if (wanted) {
+        warn(`DEV_TENANT_SUBDOMAIN is "${wanted}" and no clinic has that subdomain.`);
+      } else {
+        warn('DEV_TENANT_SUBDOMAIN is not set.');
+      }
+      if (!interactive()) {
+        // ask() answers '' with nobody at the keyboard, and taking that as
+        // "yes, the first one" would rewrite .env in a CI job. Say what to
+        // set and carry on to the verification below, which is the part that
+        // matters without a terminal.
+        warn(`Set DEV_TENANT_SUBDOMAIN to one of: ${names}`);
+      } else {
+        const pick = await ask(`  Point .env at which clinic? (${names}) [${existing.rows[0].subdomain}] `);
+        const chosen = (pick || existing.rows[0].subdomain).toLowerCase();
+        if (existing.rows.some((t) => t.subdomain === chosen)) {
+          writeEnvVar('DEV_TENANT_SUBDOMAIN', chosen);
+          ok(`.env now points at "${chosen}"`);
+        } else {
+          warn(`no clinic called "${chosen}" — .env left alone`);
+        }
+      }
+    } else if (!interactive()) {
+      // A pipe, a CI job, a container. Say what is missing and move on; a
+      // prompt with nobody to answer it is a hang, not a feature.
+      warn('no clinics exist. Run this again from a terminal to create one,');
+      warn('or create one from the platform console on :5174.');
+    } else {
+      info('no clinics exist yet');
+      const create = await ask('  Create one now? [Y/n] ');
+      if (/^n/i.test(create.trim())) {
+        info('skipped — create one from the platform console on :5174');
+      } else {
+        await createFirstClinic(admin2);
+      }
+    }
+    await admin2.end();
+  } else {
+    ok('demo clinic seeded above');
+  }
+
+  /* ── 8. verify the way the API will actually connect ────────────────── */
   /* Everything above can succeed and login still 500 if the app role cannot
      log in. Prove it here, as app_user, not as the admin. */
-  step('7. verification (as the API sees it)');
+  step('8. verification (as the API sees it)');
   const app = await connect(appUrlRaw, appUser);
 
   // resolve_tenant(p_subdomain) RETURNS TABLE (id uuid, status text) — it is
@@ -255,7 +485,7 @@ async function main() {
   // No clinic yet is the normal state of a fresh database -- you create the
   // first one from the admin console. Only the RLS check below is mandatory.
   if (tenant.rowCount === 0) {
-    ok('app role connects; no clinic exists yet');
+    ok(`app role connects; nothing resolves for "${wantSubdomain}"`);
     const rls0 = await app.query('SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user');
     if (rls0.rows[0].rolsuper || rls0.rows[0].rolbypassrls) {
       warn('the app role can bypass RLS — tenant isolation is NOT enforced.');
@@ -330,4 +560,10 @@ function ready(seeded) {
 `);
 }
 
-main().catch((e) => die(e.message));
+if (require.main === module) {
+  main().catch((e) => die(e.message));
+}
+
+// Exported so the pieces with real logic in them — subdomain rules, the .env
+// rewrite, and clinic creation itself — can be tested without a terminal.
+module.exports = { validateSubdomain, writeEnvVar, createFirstClinic };

@@ -35,6 +35,19 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().optional(),
 
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
+  /**
+   * Signs platform console tokens. Separate from JWT_SECRET because a
+   * platform token is authority over every clinic in the deployment, and
+   * sharing one key means a leak from the clinic plane hands that over too.
+   *
+   * Optional here and required in production (below) — development falls
+   * back to JWT_SECRET so an existing .env keeps working. See
+   * modules/platform/auth/platform-secret.ts.
+   */
+  PLATFORM_JWT_SECRET: z
+    .string()
+    .min(16, 'PLATFORM_JWT_SECRET must be at least 16 characters')
+    .optional(),
   JWT_ACCESS_TTL: z.string().min(1).default('15m'),
   REMINDER_SCAN_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),
   JWT_REFRESH_TTL: z.string().min(1).default('7d'),
@@ -132,6 +145,41 @@ const envSchema = z.object({
         message:
           'required in production — the tenant plane must use the non-superuser app_user role so Row-Level Security is enforced',
       });
+    }
+
+    // The platform plane gets its own key in production. Development may
+    // fall back to JWT_SECRET; a deployment may not, and a value equal to
+    // JWT_SECRET is that fallback wearing a different name.
+    if (!val.PLATFORM_JWT_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PLATFORM_JWT_SECRET'],
+        message:
+          'required in production — the platform console signs cross-tenant ' +
+          'tokens and must not share a key with the clinic plane',
+      });
+    } else {
+      if (val.PLATFORM_JWT_SECRET === val.JWT_SECRET) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PLATFORM_JWT_SECRET'],
+          message: 'must not be the same value as JWT_SECRET',
+        });
+      }
+      if (val.PLATFORM_JWT_SECRET.includes('dev-only-change-me')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PLATFORM_JWT_SECRET'],
+          message: 'must not be the development placeholder from .env.example',
+        });
+      }
+      if (val.PLATFORM_JWT_SECRET.length < 32) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PLATFORM_JWT_SECRET'],
+          message: 'must be at least 32 characters in production',
+        });
+      }
     }
 
     // The shipped example secret must never reach production.

@@ -9,6 +9,7 @@ import { validateEnv } from './env.validation';
  * The app used to log a warning and boot anyway.
  */
 const STRONG_SECRET = 'a'.repeat(40);
+const PLATFORM_SECRET = 'b'.repeat(40);
 
 const base = {
   DATABASE_URL: 'postgres://u:p@localhost:5432/dentalcare',
@@ -37,7 +38,15 @@ describe('validateEnv', () => {
   });
 
   describe('production', () => {
-    const prod = { ...base, NODE_ENV: 'production' };
+    // A production config that is complete apart from whatever each test
+    // takes away. PLATFORM_JWT_SECRET belongs here because production
+    // requires it — the development fallback to JWT_SECRET stops at the
+    // production boundary.
+    const prod = {
+      ...base,
+      NODE_ENV: 'production',
+      PLATFORM_JWT_SECRET: PLATFORM_SECRET,
+    };
 
     it('refuses to boot without APP_DATABASE_URL', () => {
       expect(() => validateEnv(prod)).toThrow(/APP_DATABASE_URL/);
@@ -70,6 +79,57 @@ describe('validateEnv', () => {
           JWT_SECRET: 'short-but-over-16-chars',
         }),
       ).toThrow(/at least 32 characters/);
+    });
+  });
+
+  describe('platform secret', () => {
+    const prodBase = {
+      ...base,
+      NODE_ENV: 'production',
+      APP_DATABASE_URL: 'postgres://app_user:p@localhost:5432/dentalcare',
+    };
+
+    // The clinic plane and the platform plane shared one key. A leak of the
+    // secret held by the process that serves every clinic request was also a
+    // leak of the key that signs cross-tenant authority.
+    it('requires PLATFORM_JWT_SECRET in production', () => {
+      expect(() => validateEnv(prodBase)).toThrow(/PLATFORM_JWT_SECRET/);
+    });
+
+    it('accepts a distinct platform secret', () => {
+      expect(() =>
+        validateEnv({ ...prodBase, PLATFORM_JWT_SECRET: PLATFORM_SECRET }),
+      ).not.toThrow();
+    });
+
+    // Setting it to the same string is the development fallback wearing a
+    // different name, and would make the split look done while changing
+    // nothing.
+    it('rejects a platform secret equal to JWT_SECRET', () => {
+      expect(() =>
+        validateEnv({ ...prodBase, PLATFORM_JWT_SECRET: STRONG_SECRET }),
+      ).toThrow(/must not be the same value as JWT_SECRET/);
+    });
+
+    it('rejects a platform secret shorter than 32 characters', () => {
+      expect(() =>
+        validateEnv({ ...prodBase, PLATFORM_JWT_SECRET: 'short-but-over-16-chars' }),
+      ).toThrow(/at least 32 characters/);
+    });
+
+    it('rejects the development placeholder as the platform secret', () => {
+      expect(() =>
+        validateEnv({
+          ...prodBase,
+          PLATFORM_JWT_SECRET: 'dev-only-change-me-please-32chars-min',
+        }),
+      ).toThrow(/PLATFORM_JWT_SECRET/);
+    });
+
+    // Development must not need a second secret generated before the app
+    // will start; platformJwtSecret() falls back to JWT_SECRET there.
+    it('does not require it outside production', () => {
+      expect(() => validateEnv({ ...base, NODE_ENV: 'development' })).not.toThrow();
     });
   });
 

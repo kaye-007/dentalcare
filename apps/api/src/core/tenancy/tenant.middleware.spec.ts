@@ -82,6 +82,60 @@ describe('TenantMiddleware — tenant status gate', () => {
   });
 });
 
+describe('TenantMiddleware — the unknown-clinic message', () => {
+  /**
+   * "Clinic not found." was true and unhelpful. The common way to reach it
+   * is local — DEV_TENANT_SUBDOMAIN naming a clinic that was never created —
+   * and it fires before AuthService runs, so it reads as a broken login for
+   * a password that was never compared.
+   */
+  it('names the subdomain and where it came from, in development', async () => {
+    const { middleware } = makeMiddleware({
+      env: { ALLOW_TENANT_HEADER: '1', DEV_TENANT_SUBDOMAIN: 'demo' },
+      tenant: null,
+    });
+    await expect(middleware.use(req(), res, jest.fn())).rejects.toThrow(
+      /No clinic with subdomain "demo".*DEV_TENANT_SUBDOMAIN in .env/s,
+    );
+  });
+
+  it('names the header when the header chose the clinic', async () => {
+    const { middleware } = makeMiddleware({
+      env: { ALLOW_TENANT_HEADER: '1', DEV_TENANT_SUBDOMAIN: 'demo' },
+      tenant: null,
+    });
+    await expect(
+      middleware.use(req({ 'x-tenant-subdomain': 'smile' }), res, jest.fn()),
+    ).rejects.toThrow(/No clinic with subdomain "smile".*X-Tenant-Subdomain/s);
+  });
+
+  /**
+   * Production says nothing extra. The caller controls the Host header, so a
+   * message confirming which subdomains do and do not exist is free tenant
+   * enumeration against a public endpoint.
+   */
+  it('stays terse in production and leaks no subdomain', async () => {
+    const { middleware } = makeMiddleware({
+      env: { NODE_ENV: 'production' },
+      tenant: null,
+    });
+    const error = await middleware
+      .use(
+        { headers: { host: 'probe.dentalcare.app' } } as unknown as Request,
+        res,
+        jest.fn(),
+      )
+      .then(
+        () => null,
+        (e: Error) => e,
+      );
+
+    expect(error).toBeInstanceOf(NotFoundException);
+    expect(error!.message).toBe('Clinic not found.');
+    expect(error!.message).not.toMatch(/probe|DEV_TENANT_SUBDOMAIN|dev:setup/);
+  });
+});
+
 describe('TenantMiddleware — subdomain resolution', () => {
   it('honours X-Tenant-Subdomain when explicitly allowed', async () => {
     const { middleware, db } = makeMiddleware({

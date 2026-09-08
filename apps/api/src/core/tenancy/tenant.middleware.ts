@@ -33,7 +33,7 @@ export class TenantMiddleware implements NestMiddleware {
     }>('SELECT id, status, trial_ends_at FROM resolve_tenant($1)', [subdomain]);
     const tenant = rows[0];
     if (!tenant) {
-      throw new NotFoundException('Clinic not found.');
+      throw new NotFoundException(this.clinicNotFound(subdomain, req));
     }
     // Allowlist, not denylist: any status other than 'active' loses access.
     // Migration 0004 replaced ('trial','active','suspended','cancelled') with
@@ -62,6 +62,41 @@ export class TenantMiddleware implements NestMiddleware {
     this.ctx.run(
       { id: tenant.id, subdomain, status: tenant.status, trialEndsAt, readOnly },
       () => next(),
+    );
+  }
+
+  /**
+   * "Clinic not found." was true and useless.
+   *
+   * The overwhelmingly common way to see it is local: .env ships
+   * DEV_TENANT_SUBDOMAIN=demo, nothing in ordinary setup creates a clinic
+   * called demo, and so every login on localhost 404s here — before
+   * AuthService runs, before a password is ever compared. Read as a login
+   * failure it points at bcrypt, at the seed, at the token; it is none of
+   * those, and the message gave no way to find that out.
+   *
+   * So in development it says which subdomain was looked up, where that
+   * subdomain came from, and what to do about it. In production it stays
+   * exactly as terse as it was: the caller controls the Host, and confirming
+   * which clinics do and do not exist is free tenant enumeration.
+   */
+  private clinicNotFound(subdomain: string, req: Request): string {
+    if (this.config.get<string>('NODE_ENV') === 'production') {
+      return 'Clinic not found.';
+    }
+
+    const fromHeader =
+      this.tenantHeaderAllowed() && Boolean(req.headers['x-tenant-subdomain']);
+    const source = fromHeader
+      ? 'the X-Tenant-Subdomain header'
+      : this.config.get<string>('DEV_TENANT_SUBDOMAIN')?.toLowerCase() === subdomain
+        ? 'DEV_TENANT_SUBDOMAIN in .env'
+        : 'the Host header';
+
+    return (
+      `No clinic with subdomain "${subdomain}" (from ${source}). ` +
+      'Set DEV_TENANT_SUBDOMAIN to a clinic that exists, or create one: ' +
+      'npm run dev:setup'
     );
   }
 
