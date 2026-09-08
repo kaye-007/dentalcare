@@ -3,13 +3,13 @@
 Everything runs on Cloudflare. The container path is kept, tested and
 supported as a fallback — see the last section.
 
-| Component | Target | Notes |
-|---|---|---|
-| `apps/tenant-web` | Worker + static assets, `*.dentalcare.com/*` | One clinic per subdomain. Proxies `/api/*` to the API Worker. |
-| `apps/admin-web` | Worker + static assets, `admin.dentalcare.com` | Same proxy, no tenant subdomain. |
-| `apps/api` | Worker, `nodejs_compat` | NestJS over `httpServerHandler`. Hourly Cron Trigger for reminders. |
-| PostgreSQL | Supabase, fronted by **two** Hyperdrive configs | RLS is the isolation boundary. Direct port 5432, not the 6543 pooler. |
-| Patient documents | Any S3-compatible bucket (R2, S3, MinIO) | Signed with `aws4fetch`; private bucket, pre-signed URLs only. |
+| Component         | Target                                          | Notes                                                                 |
+| ----------------- | ----------------------------------------------- | --------------------------------------------------------------------- |
+| `apps/tenant-web` | Worker + static assets, `*.dentalcare.com/*`    | One clinic per subdomain. Proxies `/api/*` to the API Worker.         |
+| `apps/admin-web`  | Worker + static assets, `admin.dentalcare.com`  | Same proxy, no tenant subdomain.                                      |
+| `apps/api`        | Worker, `nodejs_compat`                         | NestJS over `httpServerHandler`. Hourly Cron Trigger for reminders.   |
+| PostgreSQL        | Supabase, fronted by **two** Hyperdrive configs | RLS is the isolation boundary. Direct port 5432, not the 6543 pooler. |
+| Patient documents | Any S3-compatible bucket (R2, S3, MinIO)        | Signed with `aws4fetch`; private bucket, pre-signed URLs only.        |
 
 ## What changed, and why it works now
 
@@ -37,13 +37,13 @@ SigV4, identical on both runtimes. **The API Worker currently bundles to
 Bundling successfully proves nothing. Every one of these compiled, passed
 `wrangler deploy --dry-run`, and then threw on the first request:
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `Cannot read properties of undefined (reading 'stringifySym')` | wrangler's bundler honours npm `browser` fields; pino's browser build exports no `symbols`, which pino-http reads at module scope | pino runs on Node only; `worker/stubs/pino-logger.js` stands in |
-| `require_streams(...) is not a function` | same cause — `iconv-lite` maps `./lib/streams` to `false` for browsers, and body-parser pulls it in, so **every request with a body** died | pre-bundle with `platform: 'node'`, where browser fields are not consulted |
-| `Code generation from strings disallowed` | Express 4's `depd` builds deprecation wrappers with `new Function`, which Workers forbid | `worker/stubs/depd.js` — it only suppressed warnings anyway |
-| `Class extends value #<Object> is not a constructor` | pinning esbuild `mainFields` to `module,main` picked pg's ESM wrapper, whose re-export leaves `Pool` a plain object | don't override `mainFields`; `platform: 'node'` is enough |
-| `CloudflareSocket is not a constructor` | `pg-cloudflare` exports its real socket only under the `workerd` export condition | add `conditions: ['workerd']` to the pre-bundle |
+| Symptom                                                        | Cause                                                                                                                                      | Fix                                                                        |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `Cannot read properties of undefined (reading 'stringifySym')` | wrangler's bundler honours npm `browser` fields; pino's browser build exports no `symbols`, which pino-http reads at module scope          | pino runs on Node only; `worker/stubs/pino-logger.js` stands in            |
+| `require_streams(...) is not a function`                       | same cause — `iconv-lite` maps `./lib/streams` to `false` for browsers, and body-parser pulls it in, so **every request with a body** died | pre-bundle with `platform: 'node'`, where browser fields are not consulted |
+| `Code generation from strings disallowed`                      | Express 4's `depd` builds deprecation wrappers with `new Function`, which Workers forbid                                                   | `worker/stubs/depd.js` — it only suppressed warnings anyway                |
+| `Class extends value #<Object> is not a constructor`           | pinning esbuild `mainFields` to `module,main` picked pg's ESM wrapper, whose re-export leaves `Pool` a plain object                        | don't override `mainFields`; `platform: 'node'` is enough                  |
+| `CloudflareSocket is not a constructor`                        | `pg-cloudflare` exports its real socket only under the `workerd` export condition                                                          | add `conditions: ['workerd']` to the pre-bundle                            |
 
 The first four are open wrangler bug [workers-sdk#9309](https://github.com/cloudflare/workers-sdk/issues/9309)
 and the platform's eval ban. None is exotic; all of them are the first request
@@ -55,16 +55,42 @@ in production if nobody runs the thing first.
 
 ```bash
 # 1. Provision Postgres, then point DATABASE_URL at it (privileged role).
-# 2. Run migrations — these create the app_user role (migration 0003).
+# 2. Run migrations — these create the app_user role.
 npm run migrate:up
 ```
 
-Migration `0003` reads `APP_DB_USER` / `APP_DB_PASSWORD` and creates a
+The baseline migration reads `APP_DB_USER` / `APP_DB_PASSWORD` and creates a
 `NOSUPERUSER … NOBYPASSRLS` role. **Avoid single quotes in the password** —
 the migration interpolates it into `CREATE ROLE` SQL.
 
 Migrations run from your machine or CI against Supabase directly. They are not
 run from the Worker.
+
+#### A database created before the migration squash
+
+The history `0001…0021` was replaced by a single generated `0001_baseline`
+that produces a byte-identical schema. A **new** database needs nothing
+special. A database that already ran the old history needs one flag, once:
+
+```bash
+npm run migrate:up -- --no-check-order
+```
+
+Without it node-pg-migrate refuses, because `0001_baseline` sorts before
+migrations it has already applied — a sound default, and exactly what a squash
+creates. With it, the baseline sees the schema is already there, checks that
+**all** 21 superseded migrations were applied, converges the role, records
+itself, and changes nothing else.
+
+A database that ran only _some_ of the old migrations is refused outright,
+naming the first one missing. Bring it up to date from a checkout made before
+the squash and then run the command above.
+
+Re-verify the baseline reproduces the schema at any time:
+
+```bash
+npm run migrate:baseline -- --verify
+```
 
 ### First platform administrator
 
@@ -115,7 +141,7 @@ Three things here are not optional:
   on, one clinic's rows can be served to another. Caching is a property of the
   config, not of the binding, so it can only be set here.
 - **Port 5432, the direct host.** Not Supabase's 6543 transaction pooler.
-  Hyperdrive *is* the pooler, and `set_config('app.current_tenant_id', …, true)`
+  Hyperdrive _is_ the pooler, and `set_config('app.current_tenant_id', …, true)`
   needs the session that a transaction-mode pooler will not keep.
 - **`app_user`, not `postgres`, on `dentalcare-app`.** The API verifies this at
   boot: if the tenant role turns out to be a superuser or to hold `BYPASSRLS`,
@@ -141,13 +167,13 @@ wrangler secret put S3_ENDPOINT           # set for R2/MinIO, omit for AWS S3
 The API validates every variable at boot and **refuses to start** on a bad
 config rather than running unsafely:
 
-| Variable | Failure if wrong |
-|---|---|
+| Variable                                   | Failure if wrong                                                                                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `APP_DATABASE_URL` (from `HYPERDRIVE_APP`) | Missing → boot refused. Points at a superuser or `BYPASSRLS` role → boot refused. Either would silently disable RLS and expose every clinic's data to every other clinic. |
-| `JWT_SECRET` | Missing, under 32 chars, or the `.env.example` placeholder → boot refused. |
-| `DATABASE_URL` (from `HYPERDRIVE_ADMIN`) | Missing → boot refused. |
-| `NODE_ENV` | Must be `production`. It disables the client-supplied tenant header and switches logging to JSON. |
-| `RUNTIME` | `workers` on Cloudflare, `node` in the container. Chooses the connection strategy and silences the in-process scheduler. |
+| `JWT_SECRET`                               | Missing, under 32 chars, or the `.env.example` placeholder → boot refused.                                                                                                |
+| `DATABASE_URL` (from `HYPERDRIVE_ADMIN`)   | Missing → boot refused.                                                                                                                                                   |
+| `NODE_ENV`                                 | Must be `production`. It disables the client-supplied tenant header and switches logging to JSON.                                                                         |
+| `RUNTIME`                                  | `workers` on Cloudflare, `node` in the container. Chooses the connection strategy and silences the in-process scheduler.                                                  |
 
 ## 4. Deploy
 

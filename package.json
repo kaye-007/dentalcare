@@ -14,6 +14,7 @@
     "migrate:down": "npm run migrate:down -w @dentalcare/api",
     "migrate:reset": "npm run migrate:reset -w @dentalcare/api",
     "migrate:create": "npm run migrate:create -w @dentalcare/api",
+    "migrate:baseline": "node scripts/build-baseline.js",
     "web:dev": "npm run dev -w @dentalcare/tenant-web",
     "web:build": "npm run build -w @dentalcare/tenant-web",
     "admin:dev": "npm run dev -w @dentalcare/admin-web",

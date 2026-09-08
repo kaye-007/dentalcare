@@ -16,14 +16,13 @@
   "compatibility_date": "2026-08-04",
   "compatibility_flags": ["nodejs_compat"],
 
-
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "placement": { "mode": "smart" },
 
   // ── Database ────────────────────────────────────────────────────────────
   //
   // TWO bindings, deliberately. The tenant plane connects as app_user, which
-  // migration 0003 creates NOSUPERUSER / NOBYPASSRLS, so Row-Level Security is
+  // the baseline creates NOSUPERUSER / NOBYPASSRLS, so Row-Level Security is
   // enforced; the platform plane connects with the privileged role and
   // bypasses RLS by design. Pointing both at one Hyperdrive config would mean
   // every clinic reads every other clinic's records.
@@ -47,13 +46,13 @@
     {
       "binding": "HYPERDRIVE_APP",
       "id": "REPLACE_WITH_HYPERDRIVE_APP_ID",
-      "localConnectionString": "postgres://app_user:app_user_dev_pw@127.0.0.1:5432/dentalcare"
+      "localConnectionString": "postgres://app_user:app_user_dev_pw@127.0.0.1:5432/dentalcare",
     },
     {
       "binding": "HYPERDRIVE_ADMIN",
       "id": "REPLACE_WITH_HYPERDRIVE_ADMIN_ID",
-      "localConnectionString": "postgres://dentalcare:dentalcare@127.0.0.1:5432/dentalcare"
-    }
+      "localConnectionString": "postgres://dentalcare:dentalcare@127.0.0.1:5432/dentalcare",
+    },
   ],
 
   // ── Background work ─────────────────────────────────────────────────────
@@ -77,6 +76,6 @@
     "APP_BASE_URL": "https://dentalcare.com",
     "ADMIN_BASE_URL": "https://admin.dentalcare.com",
     "S3_REGION": "auto",
-    "S3_FORCE_PATH_STYLE": "1"
-  }
+    "S3_FORCE_PATH_STYLE": "1",
+  },
 }

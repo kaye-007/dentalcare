@@ -36,7 +36,7 @@ src/
 ```
 
 **The plane is the security boundary, so it is the first thing in the path.**
-`modules/clinic/*` runs as `app_user`, which migration 0003 creates
+`modules/clinic/*` runs as `app_user`, which the baseline migration creates
 `NOSUPERUSER … NOBYPASSRLS`. `modules/platform/*` connects with the privileged
 role, because the vendor console has to see across every clinic. A flat
 `modules/<domain>` would make those two indistinguishable at a glance — not a
