@@ -42,6 +42,26 @@ import { PlansModule } from '@/modules/platform/plans';
  */
 const IS_WORKERS = process.env.RUNTIME === 'workers';
 
+/**
+ * pino-pretty when it is actually installed, plain JSON otherwise.
+ *
+ * It is a devDependency, and the container image installs with --omit=dev.
+ * Asking pino for a transport that is not on disk is not a degraded log
+ * format, it is a throw inside the logger constructor — so the API
+ * crash-looped on every `docker compose up`, because compose defaults
+ * NODE_ENV to development and this used to key on nothing else. Readable
+ * output is a convenience; booting is not.
+ */
+function prettyTransport() {
+  if (process.env.NODE_ENV === 'production') return undefined;
+  try {
+    require.resolve('pino-pretty');
+  } catch {
+    return undefined;
+  }
+  return { target: 'pino-pretty', options: { singleLine: true } };
+}
+
 @Module({
   imports: [
     AppConfigModule,
@@ -60,10 +80,7 @@ const IS_WORKERS = process.env.RUNTIME === 'workers';
           LoggerModule.forRoot({
             pinoHttp: {
               level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-              transport:
-                process.env.NODE_ENV === 'production'
-                  ? undefined
-                  : { target: 'pino-pretty', options: { singleLine: true } },
+              transport: prettyTransport(),
               genReqId: (req, res) => {
                 const incoming = req.headers['x-request-id'];
                 const id =

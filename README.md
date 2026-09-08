@@ -31,43 +31,75 @@ This is the core of the design. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Getting started
 
-Requires Node 20+ and Postgres (local install or `docker compose up -d postgres`).
+Requires Docker. Node 20+ as well if you want to work on the SPAs.
 
 ```bash
 cp .env.example .env          # Windows: Copy-Item .env.example .env
-npm install
-npm run dev:setup             # database, app role, migrations, demo data — verified
+npm run dev:up
 ```
 
-`dev:setup` is idempotent: run it as often as you like. It creates the database
-if missing, **converges the app_user password to match .env** (a role outlives
-the database it was created for, so a rebuilt database inherits a stale one),
-runs migrations, re-applies grants, seeds, and then proves the result by
-connecting *as the application role* and reading the data back. Add `--reset`
-to drop the database first:
+That is the whole database setup. `dev:up` is `docker compose up -d --build`,
+and compose runs three things in order: Postgres, then a one-shot `migrate`
+container, then the API — which starts only once `migrate` has exited 0, so
+the API can never come up against an unmigrated database. Re-run it as often
+as you like; every step is a no-op when it has already happened.
+
+Set `PLATFORM_ADMIN_EMAIL` and `PLATFORM_ADMIN_PASSWORD` in `.env` before the
+first `dev:up` and it also creates your platform console account. Otherwise:
 
 ```bash
-npm run dev:reset
+npm run admin:create          # PLATFORM_ADMIN_EMAIL=... PLATFORM_ADMIN_PASSWORD=...
 ```
 
-If it prints `ready`, the app will run. If it fails, it names the step.
+Then sign in to the console on `:5174`, create your first clinic, and put its
+subdomain in `DEV_TENANT_SUBDOMAIN` so `:5173` knows which clinic localhost
+is. Migrations create schema only — the database starts with no data.
 
-Migrations create schema only — they contain no data. The database starts
-empty; create your first platform administrator as described in
-[DEPLOYMENT.md § First platform administrator](docs/DEPLOYMENT.md#first-platform-administrator),
-then create clinics from the platform console on `:5174`.
+```bash
+npm run dev:down              # stop everything, KEEP the database
+npm run dev:reset             # stop everything, DELETE the database, start fresh
+```
+
+`dev:down` is `docker compose down`, which removes the containers and leaves
+the `pgdata` volume alone: your clinics and patients are still there when you
+come back. Only `dev:reset` (`docker compose down -v`) destroys it.
 
 If ports 3000 or 5432 are already in use on your machine, set `API_PORT` and
 `POSTGRES_PORT` in `.env` — the containers are unaffected, only the host
 bindings change.
 
-Then, in three terminals:
+Then, in two terminals:
 
 ```bash
-npm run api:dev               # API on :3000
 npm run web:dev               # clinic SPA on :5173
 npm run admin:dev             # platform console on :5174
 ```
+
+Both proxy `/api` to the API container. To run the API from source instead —
+for a debugger, or to iterate on it — leave Postgres up and start it directly:
+
+```bash
+npm run api:dev               # API on :3000, using the HOST connection strings
+```
+
+### Running Postgres yourself
+
+If you would rather not use compose for the database, `dev:setup` does the
+same job against whatever `DATABASE_URL` points at:
+
+```bash
+npm run dev:setup             # database, app role, migrations — verified
+npm run dev:setup:reset       # drop the database first, then all of the above
+```
+
+`dev:setup` is idempotent. It creates the database if missing, **converges the
+app_user password to match .env** (a role outlives the database it was created
+for, so a rebuilt database inherits a stale one), runs migrations, repairs
+grants for any table created outside a migration, checks that the deliberate
+revocations are still in place, and then proves the result by connecting *as
+the application role* and reading the data back.
+
+If it prints `ready`, the app will run. If it fails, it names the step.
 
 ### Demo data (local development only)
 

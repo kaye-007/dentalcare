@@ -90,7 +90,7 @@ async function assertSchemaCurrent(client, migrationsDir) {
     `This database is ${missing.length} migration(s) behind the repository.\n` +
       `  First missing:  ${missing[0]}\n` +
       `  Latest on disk: ${onDisk[onDisk.length - 1]}\n` +
-      '  Run:  npm run migrate:up     (or npm run dev:reset to rebuild from scratch)',
+      '  Run:  npm run migrate:up     (or npm run dev:setup:reset to rebuild from scratch)',
   );
 }
 

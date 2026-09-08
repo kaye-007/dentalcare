@@ -1,3 +1,26 @@
+# DentalCare — local stack.
+#
+#   docker compose up          postgres, then migrations, then the API
+#   docker compose down        stops everything, KEEPS the database
+#   docker compose down -v     stops everything and DELETES the database
+#
+# The two SPAs are not here on purpose: Vite's dev server with hot reload is
+# what you want while working on them, and `npm run web:dev` / `npm run
+# admin:dev` proxy /api to this stack.
+#
+# ── Host configuration vs container configuration ─────────────────────────
+#
+# .env carries BOTH, and they differ in exactly one place: the database host.
+# A process on your machine reaches Postgres at localhost:${POSTGRES_PORT};
+# a container reaches it at postgres:5432, on compose's own network, where
+# the published port does not exist.
+#
+# So DATABASE_URL and APP_DATABASE_URL in .env are the HOST values — used by
+# npm run api:dev, dev-setup, doctor, and the migration CLI — and the two
+# services below build their own connection strings from POSTGRES_USER /
+# POSTGRES_PASSWORD / POSTGRES_DB instead of inheriting them. Nothing rewrites
+# a URL at runtime; each side is written out where it is used.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,6 +34,8 @@ services:
       # Postgres already bound to 5432. Set POSTGRES_PORT in .env to change it.
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
+      # Named volume, so `docker compose down` does NOT lose the database.
+      # `docker compose down -v` is the one that does.
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dentalcare} -d ${POSTGRES_DB:-dentalcare}"]
@@ -18,37 +43,84 @@ services:
       timeout: 5s
       retries: 10
 
+  # Runs to completion, then exits. The API waits for that exit.
+  #
+  # Its own image (the `migrate` stage) rather than a command on the API
+  # image: migrations need node-pg-migrate, which is a devDependency, and the
+  # serving image is installed with --omit=dev. Adding the tool there to make
+  # this work would ship a schema-rewriting CLI next to the process exposed to
+  # the internet.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      # Privileged role — migrations create tables, roles and policies.
+      DATABASE_URL: postgres://${POSTGRES_USER:-dentalcare}:${POSTGRES_PASSWORD:-dentalcare}@postgres:5432/${POSTGRES_DB:-dentalcare}
+      # Migration 0003 converges the runtime role's password to these on every
+      # run. A Postgres ROLE is cluster-scoped while a DATABASE is not, so a
+      # recreated database inherits whatever password the surviving role was
+      # born with — which is why this is a convergence and not a create.
+      APP_DB_USER: ${APP_DB_USER:-app_user}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-app_user_dev_pw}
+      # Optional. Set both in .env and the first `docker compose up` also
+      # creates the platform console account; leave them unset and the step is
+      # skipped. Never printed back, and never overwritten once it exists.
+      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-}
+      PLATFORM_ADMIN_NAME: ${PLATFORM_ADMIN_NAME:-Platform Administrator}
+      ADMIN_BASE_URL: ${ADMIN_BASE_URL:-http://localhost:5174}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      target: runtime
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 3000
+      # Container-side connection strings — see the note at the top of the
+      # file. `postgres` is the service name on compose's network.
       DATABASE_URL: postgres://${POSTGRES_USER:-dentalcare}:${POSTGRES_PASSWORD:-dentalcare}@postgres:5432/${POSTGRES_DB:-dentalcare}
       APP_DATABASE_URL: postgres://${APP_DB_USER:-app_user}:${APP_DB_PASSWORD:-app_user_dev_pw}@postgres:5432/${POSTGRES_DB:-dentalcare}
-      DEV_TENANT_SUBDOMAIN: ${DEV_TENANT_SUBDOMAIN:-demo}
+      DEV_TENANT_SUBDOMAIN: ${DEV_TENANT_SUBDOMAIN:-}
       ALLOW_TENANT_HEADER: ${ALLOW_TENANT_HEADER:-1}
       # Required by env validation — the container has no .env baked in
       # (.dockerignore excludes it), so it must be supplied here.
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      PLATFORM_JWT_SECRET: ${PLATFORM_JWT_SECRET:-}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
       REMINDER_SCAN_INTERVAL_MS: ${REMINDER_SCAN_INTERVAL_MS:-60000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+      ADMIN_BASE_URL: ${ADMIN_BASE_URL:-http://localhost:5174}
     ports:
       # Same reasoning as postgres — avoids a clash with anything already on
       # 3000. The container always listens on 3000 internally.
       - "${API_PORT:-3000}:3000"
     healthcheck:
+      # /api/health answers 503 when it cannot reach the database, so `r.ok`
+      # is the whole check. It used to answer 200 with "degraded" in the body,
+      # which made this report a healthy API that could serve nothing.
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
+      # The API never starts against an unmigrated database.
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

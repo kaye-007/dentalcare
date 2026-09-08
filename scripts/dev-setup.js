@@ -225,7 +225,7 @@ async function main() {
     for (const row of forbidden.rows) {
       warn(`${appUser} holds ${row.privilege_type} on ${row.table_name}, which a migration revoked`);
     }
-    die('the app role is over-privileged — rebuild with: npm run dev:reset');
+    die('the app role is over-privileged — rebuild with: npm run dev:setup:reset');
   }
   ok('money, audit and commercial-state privileges are still revoked');
   await admin.end();

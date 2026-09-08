@@ -105,7 +105,7 @@ async function main() {
   } catch (e) {
     bad(e.message.split('\n')[0]);
     e.message.split('\n').slice(1).forEach((l) => info(l.trim()));
-    problem('schema behind', 'npm run dev:reset');
+    problem('schema behind', 'npm run dev:setup:reset');
     await admin.end();
     return report();
   }
@@ -125,7 +125,7 @@ async function main() {
       const role = rows[0] || {};
       if (role.rolsuper || role.rolbypassrls) {
         bad('app_user is a superuser or holds BYPASSRLS — clinic isolation is OFF');
-        problem('app_user over-privileged', 'npm run dev:reset');
+        problem('app_user over-privileged', 'npm run dev:setup:reset');
       } else {
         ok('app_user connects and cannot bypass Row-Level Security');
       }
@@ -145,7 +145,7 @@ async function main() {
     admins = rows;
   } catch (e) {
     bad(`platform_admins is unreadable: ${e.message}`);
-    problem('platform_admins missing', 'npm run dev:reset');
+    problem('platform_admins missing', 'npm run dev:setup:reset');
   }
 
   if (admins) {
