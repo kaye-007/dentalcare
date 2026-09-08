@@ -24,8 +24,17 @@
  *     comment; this makes it true.
  *
  * app_user is the only role the API ever connects as. The privileged
- * migration/platform role is unaffected, so a clinic can still be removed
- * wholesale from the admin plane.
+ * migration/platform role keeps its DML on the money tables, so the admin
+ * plane is unaffected by the REVOKEs above.
+ *
+ * It is NOT, however, still able to delete a clinic outright — an earlier
+ * version of this comment claimed it was, and that was wrong. clinic_audit_log
+ * cascades from `tenants`, and the trigger below fires for every role
+ * including the table owner, so `DELETE FROM tenants` is refused for any
+ * clinic that has recorded a single action. Nothing ships that does this: the
+ * console suspends and archives, and has no delete. Removing a clinic for
+ * real means dropping the trigger first, deliberately, exactly as described
+ * under "immutable even to the owner" below.
  *
  * ── The audit log is immutable even to the owner ───────────────────────────
  *
@@ -75,7 +84,12 @@ exports.up = (pgm) => {
   /* ── 1. the clinic audit log ───────────────────────────────────────── */
   pgm.createTable('clinic_audit_log', {
     id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
-    tenant_id: { type: 'uuid', notNull: true, references: 'tenants', onDelete: 'CASCADE' },
+    tenant_id: {
+      type: 'uuid',
+      notNull: true,
+      references: 'tenants',
+      onDelete: 'CASCADE',
+    },
 
     /**
      * The user is a reference for filtering, but the LABEL and ROLE are
@@ -138,7 +152,9 @@ exports.up = (pgm) => {
   addVoidColumns(pgm, 'expenses');
 
   /* ── 3. take away the ability to destroy or rewrite it ─────────────── */
-  pgm.sql(`REVOKE DELETE ON payments, invoices, expenses, ledger_entries FROM ${appUser};`);
+  pgm.sql(
+    `REVOKE DELETE ON payments, invoices, expenses, ledger_entries FROM ${appUser};`,
+  );
 
   // Narrow UPDATE to the void columns. Anything else about a recorded payment
   // — amount, method, date, who took it — is now immutable to the API.

@@ -76,31 +76,6 @@ export async function asTenant<T>(
   }
 }
 
-/**
- * As app_user with NO tenant context at all.
- *
- * The important case, and the one an application-level filter would never
- * catch: with the GUC unset every policy evaluates against NULL, so a correct
- * schema returns zero rows rather than all of them. Failing closed is the
- * property being tested.
- */
-export async function withoutTenant<T>(
-  fn: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await app().connect();
-  try {
-    await client.query('BEGIN');
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (e) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    throw e;
-  } finally {
-    client.release();
-  }
-}
-
 /** Convenience for one-off owner queries. */
 export async function ownerQuery<T extends QueryResultRow = QueryResultRow>(
   text: string,
