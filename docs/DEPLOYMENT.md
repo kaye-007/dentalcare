@@ -310,6 +310,85 @@ container path remains **single-replica**. The duplicate-claim path is safe —
 `reminders_auto_unique` refuses the second insert and each claim runs in its
 own transaction — but a second replica is wasted work.
 
+## Staging verification — required before any of this is believed
+
+**The Workers deployment has never served a real request.** Everything below
+has been verified statically: the bundles build, every binding resolves,
+`wrangler deploy --dry-run` passes for all three Workers, and
+`apps/api/test/integration/cloudflare-config.itest.ts` asserts the topology
+that can be checked from configuration alone.
+
+None of that is evidence the thing works. The table in
+[Five things that only showed up by running it](#five-things-that-only-showed-up-by-running-it)
+lists five failures that each compiled, each passed a dry run, and each threw
+on the first real request. A dry run proves the shape of the deployment, not
+its behaviour.
+
+So this section is a checklist to be performed against a staging environment,
+not a description of a system known to work.
+
+### What is verified statically
+
+| Property                                                     | How                                                      |
+| ------------------------------------------------------------ | -------------------------------------------------------- |
+| Three Workers bundle                                         | `npm run cf:dry-run`, in CI on every push                |
+| Every binding resolves                                       | same — wrangler fails a dry run on an unresolved binding |
+| Two distinct Hyperdrive configs                              | `cloudflare-config.itest.ts`                             |
+| Tenant plane binds `app_user`, platform plane the owner role | same                                                     |
+| `NODE_ENV=production`, so the tenant header override is dead | same                                                     |
+| `ALLOW_TENANT_HEADER` unset                                  | same                                                     |
+| Direct port 5432, never the 6543 pooler                      | same                                                     |
+| No secret in `vars`                                          | same                                                     |
+| Both SPAs proxy `/api` by service binding                    | same                                                     |
+
+### What can only be verified on staging
+
+Work down this list in order. Each step's failure mode is named, because
+every one of them looks like something else from the outside.
+
+- [ ] **Both Hyperdrive configs created with `--caching-disabled`.**
+      Caching lives on the config, not on the binding, so nothing in this
+      repository can assert it. Hyperdrive's result cache is keyed on the
+      query, not on the transaction that set `app.current_tenant_id` — a
+      cached row from one clinic can be served to another. Confirm with
+      `wrangler hyperdrive list` and check `caching.disabled` on each.
+      _This is the single highest-consequence item on the page._
+
+- [ ] **`HYPERDRIVE_APP` points at `app_user`, not the owner role.**
+      The API refuses to boot in production if the tenant role is a superuser
+      or holds BYPASSRLS (`DatabaseService.assertTenantRoleIsRestricted`), so
+      the symptom is a failed deploy, not a silent leak. Check the boot log
+      shows no RLS warning.
+
+- [ ] **The Worker serves one real request.** `GET /api/health` through the
+      deployed hostname. 200 with `"database":"up"`.
+
+- [ ] **Two clinics, isolated, on staging.** Create two, sign in to each, and
+      repeat by hand what `tenant-isolation.itest.ts` and
+      `api-tenant-binding.itest.ts` do locally: A cannot list B's patients,
+      A's token on B's host is 401, and `GET /patients/{B's patient}` as A is 404. Passing locally proves the policies; passing here proves the
+      Hyperdrive path preserves the session state the policies depend on.
+
+- [ ] **Google sign-in, end to end, on the deployed Worker.** The callback is
+      the one route that arrives on the API host with no clinic subdomain and
+      resolves its clinic from a signed `state` parameter. It has never run
+      outside a local process.
+
+- [ ] **A document upload, against the real bucket.** Object storage was
+      rewritten over `aws4fetch` for bundle size; the SigV4 signing path has
+      never been exercised against S3 or R2 from a Worker.
+
+- [ ] **The Cron Trigger fires once.** The reminder sweep moved from an
+      in-process `setInterval` to a Cron Trigger. Observe one invocation in
+      the dashboard.
+
+- [ ] **A backup restored.** Not "backups are enabled" — a restore actually
+      performed into a scratch database and the schema diffed against
+      `npm run migrate:baseline -- --verify`.
+
+Until every box above is ticked, this deployment is unproven. Do not describe
+it as production ready, and do not put a real clinic's records on it.
+
 ## Before first paying customer
 
 - [ ] `NODE_ENV=production`, `JWT_SECRET` rotated off any shared value
