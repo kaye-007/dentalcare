@@ -139,17 +139,95 @@ async function main() {
   }
 
   /* ── 5. grants ──────────────────────────────────────────────────────── */
-  /* Migration 0003 sets default privileges, which only cover objects created
-     afterwards BY THE SAME ROLE. Re-applying is cheap and closes the gap when
-     anything was created out of band. */
+  /* Migration 0003 sets default privileges, which cover every table a later
+     migration creates as the same owner. What they do not cover is a table
+     created out of band, so this looks for tables the app role cannot touch
+     at all and grants only those.
+
+     What used to be here was
+
+         GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+
+     which is indiscriminate. It handed back DELETE on payments and invoices,
+     UPDATE on ledger_entries, UPDATE and DELETE on clinic_audit_log, and
+     UPDATE and DELETE on tenants — every privilege 0004, 0018 and 0021
+     deliberately take away. Running dev-setup therefore undid the database's
+     own money-immutability and commercial-state guarantees, reported "can
+     read and write every table in public" as if that were the goal, and left
+     the local database quietly weaker than the migrations describe. */
   step('5. grants');
   const admin = await connect(adminUrlRaw, 'admin');
   await admin.query(`GRANT CONNECT ON DATABASE ${ident(dbName)} TO ${ident(appUser)}`);
   await admin.query(`GRANT USAGE ON SCHEMA public TO ${ident(appUser)}`);
-  await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${ident(appUser)}`);
   await admin.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ident(appUser)}`);
   await admin.query(`GRANT EXECUTE ON FUNCTION resolve_tenant(text) TO ${ident(appUser)}`);
-  ok(`${appUser} can read and write every table in public`);
+
+  /* Tables the app role is meant to hold nothing on. Without this list the
+     "no privileges at all" test below would read them as an out-of-band gap
+     and grant exactly what 0004 and 0021 revoked. */
+  const DENIED_BY_DESIGN = new Set(['platform_admins', 'audit_log', 'pgmigrations']);
+
+  const orphans = await admin.query(
+    `SELECT t.tablename
+       FROM pg_tables t
+      WHERE t.schemaname = 'public'
+        AND NOT EXISTS (
+              SELECT 1 FROM information_schema.table_privileges p
+               WHERE p.table_schema = 'public'
+                 AND p.table_name = t.tablename
+                 AND p.grantee = $1)
+        AND NOT EXISTS (
+              SELECT 1 FROM information_schema.column_privileges c
+               WHERE c.table_schema = 'public'
+                 AND c.table_name = t.tablename
+                 AND c.grantee = $1)
+      ORDER BY t.tablename`,
+    [appUser],
+  );
+  const missing = orphans.rows
+    .map((r) => r.tablename)
+    .filter((name) => !DENIED_BY_DESIGN.has(name));
+
+  for (const table of missing) {
+    await admin.query(
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON ${ident(table)} TO ${ident(appUser)}`,
+    );
+  }
+  if (missing.length > 0) {
+    ok(`granted DML on ${missing.length} table(s) created outside a migration: ${missing.join(', ')}`);
+  } else {
+    ok('every table already carries the grants its migration gave it');
+  }
+
+  /* Prove the deliberate narrowings survived. A privilege that is supposed to
+     be absent is worth checking precisely because nothing fails when it is
+     present — the app never issues those statements, so the only symptom of
+     losing this boundary is that it is gone. */
+  const forbidden = await admin.query(
+    `SELECT table_name, privilege_type
+       FROM information_schema.table_privileges
+      WHERE grantee = $1
+        AND table_schema = 'public'
+        AND ( (table_name = 'tenants'          AND privilege_type IN ('UPDATE','DELETE'))
+           OR (table_name = 'plans'            AND privilege_type IN ('INSERT','UPDATE','DELETE'))
+           OR (table_name = 'pgmigrations')
+           OR (table_name = 'platform_admins')
+           OR (table_name = 'audit_log')
+           OR (table_name IN ('payments','invoices','expenses','ledger_entries')
+               AND privilege_type = 'DELETE')
+           OR (table_name IN ('payments','expenses','ledger_entries')
+               AND privilege_type = 'UPDATE')
+           OR (table_name = 'clinic_audit_log' AND privilege_type IN ('UPDATE','DELETE','TRUNCATE')) )
+      ORDER BY table_name, privilege_type`,
+    [appUser],
+  );
+  if (forbidden.rowCount > 0) {
+    for (const row of forbidden.rows) {
+      warn(`${appUser} holds ${row.privilege_type} on ${row.table_name}, which a migration revoked`);
+    }
+    die('the app role is over-privileged — rebuild with: npm run dev:reset');
+  }
+  ok('money, audit and commercial-state privileges are still revoked');
   await admin.end();
 
   /* ── 6. demo data ───────────────────────────────────────────────────── */
