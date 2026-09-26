@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
+import { RequestContextService } from '@/core/request-context/request-context';
 import { Role, normalizeRole } from '@dentalcare/shared';
 
 /**
@@ -36,11 +37,75 @@ export const AUDIT_ACTIONS = [
   'staff.created',
   'staff.updated',
   'staff.password_reset',
+  'staff.mfa_reset',
+  // Account security (0005). Sign-ins themselves are not audited here; the
+  // session table records those.
+  'auth.mfa_enrolled',
+  'auth.mfa_disabled',
+  'auth.recovery_codes_regenerated',
+  'auth.recovery_code_used',
   'salary.recorded',
   'settings.updated',
+  'settings.logo_changed',
+  'schedule.closure_added',
+  'schedule.closure_removed',
+  'patient.imported',
+  'patient.photo_changed',
+  'fiscal.settings_updated',
+  'fiscal.certificate_installed',
+  'fiscal.invoice_registered',
+  'fiscal.cash_deposit_registered',
   'treatment.created',
   'treatment.updated',
   'document.deleted',
+  'inventory.item_created',
+  'inventory.item_updated',
+  'inventory.item_archived',
+  'inventory.movement_recorded',
+  'inventory.lot_tracking_enabled',
+  'inventory.lot_recalled',
+
+  // Features and the cash drawer (0013, 0014).
+  'features.updated',
+  'drawer.created',
+  'drawer.updated',
+  'drawer.policy_updated',
+  'drawer.opened',
+  'drawer.cash_dropped',
+  'drawer.float_added',
+  'drawer.payout',
+  'drawer.no_sale',
+  'drawer.counted',
+  'drawer.closed',
+  'drawer.approval_requested',
+  'drawer.variance_approved',
+  'drawer.force_closed',
+  'auth.approval_pin_set',
+
+  // Patients and the clinical record (0004). Writes only; who READ a record
+  // goes to patient_access_log, which is a different question with a
+  // different volume.
+  'patient.created',
+  'patient.updated',
+  'patient.archived',
+  'patient.restored',
+  'clinical.note_added',
+  'clinical.note_withdrawn',
+  'clinical.finding_recorded',
+  'clinical.finding_updated',
+  'clinical.finding_withdrawn',
+  'clinical.procedure_logged',
+  'clinical.procedure_updated',
+  'clinical.procedure_signed',
+  'clinical.procedure_withdrawn',
+  'clinical.perio_exam_started',
+  'clinical.perio_exam_updated',
+  'clinical.perio_readings_saved',
+  'clinical.perio_exam_signed',
+  'clinical.perio_exam_withdrawn',
+  'clinical.history_recorded',
+  'clinical.history_updated',
+  'clinical.history_withdrawn',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -117,11 +182,16 @@ export class ClinicAuditService {
   constructor(
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
+    private readonly request: RequestContextService,
   ) {}
 
   /**
    * Record an action. MUST be given the client of the transaction that
    * performed it — never `this.db` — so the two commit or fail together.
+   *
+   * The request it came from — id, client IP, user agent — is recorded with
+   * it (0013). A scheduler has no request, and records NULL rather than a
+   * made-up one.
    */
   async record(
     executor: Executor,
@@ -129,11 +199,13 @@ export class ClinicAuditService {
     entry: ClinicAuditEntry,
   ): Promise<void> {
     const tenantId = this.tenant.getRequiredTenantId();
+    const req = this.request.get();
     await executor.query(
       `INSERT INTO clinic_audit_log
          (tenant_id, actor_user_id, actor_label, actor_role,
-          action, entity_type, entity_id, summary, metadata)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          action, entity_type, entity_id, summary, metadata,
+          request_id, ip, user_agent)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
         tenantId,
         actor.userId,
@@ -144,6 +216,9 @@ export class ClinicAuditService {
         entry.entityId ?? null,
         entry.summary,
         JSON.stringify(entry.metadata ?? {}),
+        req?.requestId ?? null,
+        req?.ip ?? null,
+        req?.userAgent ?? null,
       ],
     );
   }

@@ -2,7 +2,10 @@
 
 Describes the system as built.
 
-> **Status.** Sections 1–5 remain accurate. Section 6 (Findings) and section 7
+> **Status.** Sections 2–4 were brought up to date on 2026-09-14 for
+> migrations 0003–0008 (roles, clinical record integrity, sessions and MFA,
+> money in minor units, inventory lots, reminder delivery); the build figures
+> in section 5 predate them. Section 6 (Findings) and section 7
 > (Vercel assessment) were written _before_ the `production-hardening` branch;
 > most Critical and High findings there are now fixed. For current state see
 > [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md), [`CHANGELOG.md`](CHANGELOG.md), and
@@ -101,10 +104,11 @@ and is reachable only behind `PlatformJwtGuard`.
    `SECURITY DEFINER` function (needed because the lookup must run _before_ any
    tenant context exists; it returns only `id` + `status` for the one subdomain
    asked about, so it leaks nothing).
-2. **Database** — every one of the 14 tenant tables carries
+2. **Database** — every table that carries a `tenant_id` has
    `ENABLE` + `FORCE ROW LEVEL SECURITY` and an identical `tenant_isolation`
-   policy keyed on `current_setting('app.current_tenant_id')`. Verified table
-   by table; coverage is complete, with no gaps.
+   policy keyed on `current_setting('app.current_tenant_id')`.
+   `role.itest.ts` reads the list from the catalogue, so a new table without a
+   policy fails the suite.
 3. **Token binding** — `JwtAuthGuard` rejects a token whose `tenantId` does not
    match the subdomain being addressed, so a valid token for clinic A is inert
    on clinic B's subdomain.
@@ -114,46 +118,75 @@ This is only safe because layer 2 is complete — which it is.
 
 ### Permission model
 
-Exactly two clinic roles: **`owner`** and **`frontdesk`**. `position`
-(Dentist, Assistant, …) is descriptive free text and grants nothing.
-`OwnerGuard` gates: treatments create/update, staff management, salary log,
-expense deletion, settings writes, and all of reports.
+Permission-first. `packages/shared/src/permissions.ts` defines the permissions
+(`patients:read`, `clinical:sign`, `inventory:manage`, …) and grants them to
+five roles: **`admin`**, **`dentist`**, **`hygienist`**, **`assistant`**,
+**`receptionist`**. Routes declare permissions, never roles, and
+`PermissionsGuard` requires all of them. Signing a clinical entry is limited
+to clinicians; administration (staff, settings, audit, payroll) to `admin`.
+`route-coverage.spec.ts` fails the build on a clinic route that declares no
+permission or does not enforce the one it declares. The SPA reads the same
+matrix to decide what to show.
 
 ---
 
-## 3. Data model (17 tables)
+## 3. Data model
 
-**Tenant-scoped (RLS enforced):** `tenants`, `users`, `patients`,
-`patient_notes`, `appointments`, `treatments`, `tooth_records`,
-`clinic_settings`, `invoices`, `invoice_line_items`, `payments`, `expenses`,
-`reminders`, `salary_payments`
+Every table carrying a `tenant_id` is RLS-enforced; `role.itest.ts` holds the
+authoritative list. By domain:
 
-**Platform-only (no RLS by design; `app_user` explicitly `REVOKE`d):**
-`plans`, `platform_admins`, `audit_log`
+- **Clinic and people:** `tenants`, `clinic_settings`, `users`,
+  `user_sessions`, `user_mfa_factors`, `user_mfa_recovery_codes`
+- **Patients and the clinical record:** `patients`, `patient_notes`,
+  `patient_allergies`, `patient_conditions`, `patient_medications`,
+  `tooth_conditions`, `clinical_procedures`, `perio_exams`,
+  `perio_measurements`, `perio_tooth_findings`, patient documents,
+  `patient_access_log`
+- **Scheduling:** `appointments`, `operatories`, `reminders`
+- **Money:** `treatments`, `procedure_codes`, `treatment_plans`,
+  `treatment_plan_items`, `invoices`, `invoice_line_items`, `payments`,
+  `ledger_entries`, `expenses`, `salary_payments`
+- **Stock:** `inventory_items`, `inventory_lots`, `stock_movements`
+- **Audit:** `clinic_audit_log`
+- **Platform only (no grants to `app_user`):** `plans`, `platform_admins`,
+  `platform_sessions`, `platform_mfa_factors`, `platform_mfa_recovery_codes`,
+  `audit_log`
 
-Notable schema decisions, all sound:
+Decisions that carry weight:
 
-- Money is **integer Lekë**, never floats.
+- **Money is integer minor units** — cents — in one currency per clinic
+  (0006). Triggers stamp the clinic's currency on every invoice and ledger
+  entry, refuse to change it, and refuse to change the clinic's currency once
+  money exists.
+- **Evidence is append-only.** Payments, ledger entries, expenses, stock
+  movements, the clinic audit log and the record-access log give the runtime
+  role no UPDATE or DELETE; a mistake is corrected by a new, opposing row.
+- **The clinical record is withdrawn, not deleted** (0004): entered in error,
+  with a reason; signed rows are locked by trigger.
+- **Stock by lot** where it matters (0007): an item's quantity equals the sum
+  of its lots, checked at commit, and usage can name the patient.
 - Invoice numbers are per-tenant sequential (`UNIQUE (tenant_id, seq)`).
 - Teeth use **FDI numbering**, enforced by a `CHECK` constraint _and_ in code.
 - At most one automatic reminder per appointment via a **partial unique index**
-  — this is what makes the scheduler scan idempotent.
+  — this is what makes the reminder pass idempotent.
 - Appointment overlap protection uses `tstzrange && tstzrange`.
 
 ---
 
 ## 4. Feature surface (all implemented and wired)
 
-Patients · Appointments (day/week calendar, overlap protection) · Treatments
-catalog · Odontogram + per-tooth medical records · Staff & payroll log ·
-Invoices, partial payments, expenses · Owner-only reports · Reminders
-(scheduler + manual + log) · Clinic settings · Superadmin tenant management
-with audit log.
+Patients and medical history · Odontogram charting and procedures with
+signing · Periodontal charting · Treatment plans with cost estimates ·
+Scheduling with rooms and overlap protection · Reminders over SMS or an
+internal log · Invoices, payments, patient ledger, receivables ageing ·
+Expenses and payroll · Reports and analytics · Inventory with lots, expiry and
+recalls · Clinic activity trail and record-access log · Two-step sign-in,
+recovery codes and signed-in devices · Platform console with tenant management
+and audit log.
 
-Reminders currently deliver through a **`LogChannel`** that writes to the
-reminder log and server log — nothing is sent to patients, and the UI says so.
-The `ReminderChannel` interface is the seam where SMS/email would plug in
-without schema or UI changes.
+Reminders deliver through the **`ReminderChannel`** seam:
+`TwilioSmsChannel` when `SMS_PROVIDER=twilio`, the internal `LogChannel`
+otherwise. Neither writes patient data to the application log.
 
 ---
 

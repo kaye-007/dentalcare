@@ -12,6 +12,8 @@ import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
+import { auditActor } from '@/core/audit/clinic-audit.service';
+import { LogPatientAccess } from '@/core/audit/patient-access';
 import { ChartingService } from './charting.service';
 import { CreateToothConditionDto } from './dto/charting.dto';
 
@@ -24,6 +26,7 @@ export class ChartController {
 
   @Get()
   @RequirePermissions('clinical:read')
+  @LogPatientAccess('chart')
   chart(@Param('patientId', ParseUUIDPipe) patientId: string) {
     return this.charting.chart(patientId);
   }
@@ -33,8 +36,8 @@ export class ChartController {
   add(
     @Param('patientId', ParseUUIDPipe) patientId: string,
     @Body() dto: CreateToothConditionDto,
-    @CurrentUser() user: AccessTokenPayload,
+    @CurrentUser() user?: AccessTokenPayload,
   ) {
-    return this.charting.addCondition(patientId, dto, user.sub);
+    return this.charting.addCondition(patientId, dto, auditActor(user));
   }
 }

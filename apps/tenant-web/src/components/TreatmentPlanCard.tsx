@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { ClipboardList, FileText, Plus, Trash2, X } from 'lucide-react';
+import { ClipboardList, FileText, Plus, Printer, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import {
   ApiError,
   billingApi,
@@ -15,6 +16,7 @@ import {
   type TreatmentPlan,
 } from '../lib/api';
 import { formatMoney as money } from '../lib/format';
+import MoneyInput from './MoneyInput';
 import { surfaceName, surfacesFor, toothLabel } from '@dentalcare/shared';
 import { useAuth } from '../lib/auth';
 import { EmptyState, StatusPill } from './ui';
@@ -29,7 +31,7 @@ import { EmptyState, StatusPill } from './ui';
  */
 export default function TreatmentPlanCard({ patientId }: { patientId: string }) {
   const { can } = useAuth();
-  const canEdit = can('clinical:write');
+  const canEdit = can('plans:write');
 
   const [plans, setPlans] = useState<TreatmentPlan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export default function TreatmentPlanCard({ patientId }: { patientId: string }) 
   }
 
   return (
-    <section className="card span-12">
+    <section className="card card--record span-12">
       <header className="card__head">
         <h3>
           <ClipboardList size={16} aria-hidden /> Treatment plans
@@ -279,6 +281,12 @@ function PlanBlock({
               </>
             )}
           </div>
+
+          {plan.items.length > 0 && (
+            <Link to={`/treatment-plans/${plan.id}/estimate`} className="btn btn--ghost btn--sm" style={{ alignSelf: 'flex-start' }}>
+              <Printer size={14} aria-hidden /> Printable estimate
+            </Link>
+          )}
 
           {plan.declineReason && (
             <p className="muted" style={{ fontSize: 12.5 }}>
@@ -638,21 +646,11 @@ function PlanItemForm({
         </label>
         <label className="field">
           <span>Fee each</span>
-          <input
-            type="number"
-            min={0}
-            value={unitFee}
-            onChange={(e) => setUnitFee(Number(e.target.value) || 0)}
-          />
+          <MoneyInput value={unitFee} onChange={(v) => setUnitFee(v ?? 0)} placeholder="0.00" />
         </label>
         <label className="field">
           <span>Discount</span>
-          <input
-            type="number"
-            min={0}
-            value={discount}
-            onChange={(e) => setDiscount(Number(e.target.value) || 0)}
-          />
+          <MoneyInput value={discount} onChange={(v) => setDiscount(v ?? 0)} placeholder="0.00" />
         </label>
       </div>
 

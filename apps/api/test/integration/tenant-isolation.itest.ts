@@ -1,5 +1,5 @@
 import { asTenant, closePools, errorCodeOf, owner, rawClient } from './db';
-import { createScenario, destroyScenario, Scenario } from './fixtures';
+import { createOperatory, createScenario, destroyScenario, Scenario } from './fixtures';
 
 /**
  * Tenant isolation, as app_user, against real policies.
@@ -278,18 +278,40 @@ describe('writing across clinics', () => {
     expect(rows[0].first_name).toBe('Test');
   });
 
-  it('clinic A cannot delete clinic B’s patient', async () => {
+  /**
+   * Since 0004 no clinic can delete a patient at all — its own or anyone
+   * else's — so that statement is refused before RLS is consulted. The RLS
+   * property this test exists for is still worth proving on DELETE, so it is
+   * proved on a table the runtime role may still delete from.
+   */
+  it('clinic A cannot delete clinic B’s rows', async () => {
+    const roomB = await createOperatory(s.b);
     const deleted = await asTenant(
       s.a.id,
-      async (c) =>
-        (await c.query('DELETE FROM patients WHERE id = $1', [s.b.patientId])).rowCount,
+      async (c) => (await c.query('DELETE FROM operatories WHERE id = $1', [roomB])).rowCount,
     );
     expect(deleted).toBe(0);
 
-    const { rows } = await owner().query('SELECT id FROM patients WHERE id = $1', [
-      s.b.patientId,
-    ]);
+    const { rows } = await owner().query('SELECT id FROM operatories WHERE id = $1', [roomB]);
     expect(rows).toHaveLength(1);
+  });
+
+  it('no clinic can delete a patient, its own included', async () => {
+    for (const [tenant, patientId] of [
+      [s.a.id, s.b.patientId],
+      [s.a.id, s.a.patientId],
+    ]) {
+      const code = await errorCodeOf(
+        asTenant(tenant, (c) => c.query('DELETE FROM patients WHERE id = $1', [patientId])),
+      );
+      expect(code).toBe('42501');
+    }
+
+    const { rows } = await owner().query(
+      'SELECT id FROM patients WHERE id = ANY($1::uuid[])',
+      [[s.a.patientId, s.b.patientId]],
+    );
+    expect(rows).toHaveLength(2);
   });
 
   /**

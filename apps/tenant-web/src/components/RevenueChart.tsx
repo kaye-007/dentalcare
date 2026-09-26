@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { formatMoney } from '../lib/format';
-import { dateLocale } from '../lib/i18n';
+import { dateLocale } from '../lib/strings';
 
 /**
  * Billed vs collected over time.
@@ -27,7 +27,7 @@ export interface RevenuePoint {
 
 const SERIES = [
   // Two measures on one axis, so the pair was checked for colour-vision
-  // separation rather than picked: teal vs ochre clears deutan/protan and
+  // separation rather than picked: indigo vs ochre clears deutan/protan and
   // normal-vision thresholds. Collected wears the brand hue because it is
   // the measure the clinic actually cares about.
   { key: 'billed' as const, label: 'Billed', color: 'var(--data-2)' },
@@ -67,7 +67,11 @@ export default function RevenueChart({
   }, [data]);
 
   if (data.length === 0) {
-    return <p className="muted" style={{ fontSize: 13 }}>No activity in this period.</p>;
+    return (
+      <p className="muted" style={{ fontSize: 13 }}>
+        No activity in this period.
+      </p>
+    );
   }
 
   const plotW = W - PAD.left - PAD.right;
@@ -127,8 +131,10 @@ export default function RevenueChart({
           <table className="table table--compact">
             <thead>
               <tr>
-                <th>Period</th><th className="num">Billed</th>
-                <th className="num">Collected</th><th className="num">Gap</th>
+                <th>Period</th>
+                <th className="num">Billed</th>
+                <th className="num">Collected</th>
+                <th className="num">Gap</th>
               </tr>
             </thead>
             <tbody>
@@ -158,13 +164,17 @@ export default function RevenueChart({
             {gridLines.map((f) => (
               <g key={f}>
                 <line
-                  x1={PAD.left} x2={W - PAD.right}
-                  y1={PAD.top + plotH * (1 - f)} y2={PAD.top + plotH * (1 - f)}
+                  x1={PAD.left}
+                  x2={W - PAD.right}
+                  y1={PAD.top + plotH * (1 - f)}
+                  y2={PAD.top + plotH * (1 - f)}
                   className="viz__grid"
                 />
                 <text
-                  x={PAD.left - 8} y={PAD.top + plotH * (1 - f) + 4}
-                  className="viz__axislabel" textAnchor="end"
+                  x={PAD.left - 8}
+                  y={PAD.top + plotH * (1 - f) + 4}
+                  className="viz__axislabel"
+                  textAnchor="end"
                 >
                   {shortMoney(Math.round(max * f))}
                 </text>
@@ -175,8 +185,10 @@ export default function RevenueChart({
               i % tickEvery === 0 ? (
                 <text
                   key={p.period}
-                  x={x(i)} y={H - 10}
-                  className="viz__axislabel" textAnchor="middle"
+                  x={x(i)}
+                  y={H - 10}
+                  className="viz__axislabel"
+                  textAnchor="middle"
                 >
                   {label(p.period)}
                 </text>
@@ -185,14 +197,24 @@ export default function RevenueChart({
 
             {hover !== null && (
               <line
-                x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={PAD.top + plotH}
+                x1={x(hover)}
+                x2={x(hover)}
+                y1={PAD.top}
+                y2={PAD.top + plotH}
                 className="viz__crosshair"
               />
             )}
 
             {SERIES.map((s) => (
-              <path key={s.key} d={path(s.key)} fill="none" stroke={s.color} strokeWidth={2}
-                strokeLinejoin="round" strokeLinecap="round" />
+              <path
+                key={s.key}
+                d={path(s.key)}
+                fill="none"
+                stroke={s.color}
+                strokeWidth={2}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
             ))}
 
             {/* Markers only on the hovered period — never a dot on every point. */}
@@ -200,8 +222,12 @@ export default function RevenueChart({
               SERIES.map((s) => (
                 <circle
                   key={s.key}
-                  cx={x(hover)} cy={y(points[hover]![s.key])} r={4.5}
-                  fill={s.color} stroke="var(--surface)" strokeWidth={2}
+                  cx={x(hover)}
+                  cy={y(points[hover]![s.key])}
+                  r={4.5}
+                  fill={s.color}
+                  stroke="var(--surface)"
+                  strokeWidth={2}
                 />
               ))}
           </svg>

@@ -15,13 +15,15 @@ import { ROLES, Role } from '@dentalcare/shared';
 /*
  * Staff = platform access + clinic personnel/payroll tracking.
  *
- * Access roles are EXACTLY two: 'owner' and 'frontdesk'. "Position" is a
- * free-text job title (Dentist, Assistant, Receptionist, Manager, …) — it is
+ * Access roles are the five in @dentalcare/shared ROLES. "Position" is a
+ * free-text job title (Clinic Director, Orthodontist, Manager, …) — it is
  * descriptive only and grants no permissions.
  *
- * Salary data (amount/note) and the salary payment log are owner-only:
- * frontdesk receives the staff list without payroll fields.
+ * Salary data (amount/note) and the salary payment log are admin-only: every
+ * other role receives the staff list without payroll fields.
  */
+
+const ROLE_MESSAGE = `Access role must be one of: ${ROLES.join(', ')}`;
 
 /* ── DTOs ────────────────────────────────────────────────── */
 export class CreateStaffDto {
@@ -37,7 +39,7 @@ export class CreateStaffDto {
   password!: string;
 
   @IsIn(ROLES, {
-    message: 'Access role must be Admin, Dentist or Receptionist',
+    message: ROLE_MESSAGE,
   })
   role!: Role;
 
@@ -66,7 +68,7 @@ export class UpdateStaffDto {
 
   @IsOptional()
   @IsIn(ROLES, {
-    message: 'Access role must be Admin, Dentist or Receptionist',
+    message: ROLE_MESSAGE,
   })
   role?: Role;
 

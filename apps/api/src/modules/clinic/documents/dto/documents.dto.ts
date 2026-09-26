@@ -8,11 +8,16 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 
 /* ══════════════════════════ DTOs ══════════════════════════ */
+
+/** How a clinical photo relates to treatment (0009). Declared before the decorators that read it. */
+export const PHOTO_TAGS = ['before', 'after', 'progress'] as const;
+export type PhotoTag = (typeof PHOTO_TAGS)[number];
 
 /**
  * Multipart fields arrive as strings, so numeric and optional values are
@@ -39,9 +44,18 @@ export class UploadDocumentDto {
 
   @IsOptional() @IsString() @MaxLength(300)
   caption?: string;
+
+  /** Before / after / progress, on clinical photos only. */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
+  @IsIn([...PHOTO_TAGS])
+  photoTag?: PhotoTag;
 }
 
 export class UpdateDocumentDto {
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsIn([...PHOTO_TAGS])
+  photoTag?: PhotoTag | null;
+
   @IsOptional() @IsIn(DOCUMENT_KINDS)
   kind?: DocumentKind;
 

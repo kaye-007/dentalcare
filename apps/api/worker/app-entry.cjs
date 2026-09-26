@@ -12,4 +12,7 @@ module.exports = {
   ReminderSchedulerService:
     require('../dist/modules/clinic/reminders/reminder-scheduler.service.js')
       .ReminderSchedulerService,
+  FiscalSchedulerService:
+    require('../dist/modules/clinic/fiscalization/fiscal-scheduler.service.js')
+      .FiscalSchedulerService,
 };

@@ -13,6 +13,7 @@ import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
+import { LogPatientAccess } from '@/core/audit/patient-access';
 import { PLAN_STATUSES, type PlanStatus } from './cost-engine';
 import { CreatePlanDto } from './dto/treatment-plans.dto';
 import { TreatmentPlansService } from './treatment-plans.service';
@@ -26,6 +27,7 @@ export class PatientPlansController {
 
   @Get()
   @RequirePermissions('clinical:read')
+  @LogPatientAccess('treatment_plans')
   list(
     @Param('patientId', ParseUUIDPipe) patientId: string,
     @Query('status') status?: string,
@@ -37,7 +39,7 @@ export class PatientPlansController {
   }
 
   @Post()
-  @RequirePermissions('clinical:write')
+  @RequirePermissions('plans:write')
   create(
     @Param('patientId', ParseUUIDPipe) patientId: string,
     @Body() dto: CreatePlanDto,

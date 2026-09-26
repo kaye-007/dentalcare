@@ -2,7 +2,19 @@ import type { Permission, Role } from './permissions';
 // Re-exporting a type does not put it in local scope, and the response
 // interfaces below refer to these by name.
 import type {
+  CurrencyCode,
+  FeatureGroup,
+  FeatureKey,
+  FeatureState,
+  VarianceBand,
+  ImportDateFormat,
+  ImportIssue,
+  ReminderChannelId,
+  ReminderLocale,
   DocumentKind,
+  VatCategory,
+  VatGroup,
+  MessagePurpose,
   PerioSite,
   Surface,
   ToothCondition,
@@ -33,6 +45,14 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /**
+     * The API's machine-readable reason, when it gave one — `drawer_not_open`,
+     * `feature_unavailable`. What a screen branches on; `message` is what it
+     * shows.
+     */
+    public code: string | null = null,
+    /** The rest of the error body, e.g. the invoices a drawer close refused over. */
+    public details: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -44,15 +64,33 @@ export class ApiError extends Error {
  */
 async function toApiError(res: Response): Promise<ApiError> {
   let message = res.statusText;
+  let code: string | null = null;
+  let details: Record<string, unknown> = {};
   try {
     const body = await res.json();
     message = Array.isArray(body.message)
       ? body.message.join(', ')
       : (body.message ?? message);
+    if (typeof body.code === 'string') code = body.code;
+    if (body && typeof body === 'object') details = body as Record<string, unknown>;
   } catch {
     /* response had no JSON body — keep statusText */
   }
-  return new ApiError(res.status, message);
+  return new ApiError(res.status, message, code, details);
+}
+
+/**
+ * A key for one user action that moves money, sent as `Idempotency-Key`.
+ * Make it once per action — when the payment sheet opens — and send the same
+ * key on every retry of that action, so a double tap or a lost response
+ * cannot take the money twice (API migration 0013).
+ */
+export function newIdempotencyKey(): string {
+  return `web-${crypto.randomUUID()}`;
+}
+
+function idempotent(key?: string): HeadersInit | undefined {
+  return key ? { 'Idempotency-Key': key } : undefined;
 }
 
 /** Called when the session cannot be recovered, so the app can log out. */
@@ -82,9 +120,11 @@ async function refreshAccessToken(): Promise<boolean> {
       body: JSON.stringify({ refreshToken }),
     });
     if (!res.ok) return false;
-    const body = (await res.json()) as { accessToken?: string };
-    if (!body.accessToken) return false;
-    tokenStore.set(body.accessToken);
+    const body = (await res.json()) as { accessToken?: string; refreshToken?: string };
+    if (!body.accessToken || !body.refreshToken) return false;
+    // Refresh tokens rotate (migration 0005): the one just sent is spent, so
+    // its successor has to be stored before anything else can reach for it.
+    tokenStore.set(body.accessToken, body.refreshToken);
     return true;
   } catch {
     return false;
@@ -114,6 +154,35 @@ async function send(
 }
 
 /**
+ * A binary response — an invoice PDF — fetched with the session's token.
+ * Returned as a Blob so the caller can open or save it; an `<a href>` to the
+ * API cannot carry the Authorization header. Retries once on 401 like
+ * `request` does.
+ */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const doSend = () => {
+    const headers = new Headers();
+    applyTenantHeader(headers);
+    if (tokenStore.access) headers.set('Authorization', `Bearer ${tokenStore.access}`);
+    return fetch(`/api${path}`, { headers });
+  };
+  let res = await doSend();
+  if (res.status === 401 && tokenStore.refresh) {
+    refreshInFlight ??= refreshAccessToken().finally(() => {
+      refreshInFlight = null;
+    });
+    if (await refreshInFlight) {
+      res = await doSend();
+    } else {
+      tokenStore.clear();
+      onSessionExpired?.();
+    }
+  }
+  if (!res.ok) throw await toApiError(res);
+  return res.blob();
+}
+
+/**
  * Multipart upload. Deliberately does not set Content-Type: the browser must
  * generate it with the multipart boundary, and overriding it silently breaks
  * the upload. Retries once on 401 like `request` does.
@@ -125,6 +194,7 @@ export async function upload<T>(path: string, form: FormData): Promise<T> {
     if (tokenStore.access) {
       headers.set('Authorization', `Bearer ${tokenStore.access}`);
     }
+    // A FormData body can be sent again as-is, so the 401 retry below is safe.
     return fetch(`/api${path}`, { method: 'POST', body: form, headers });
   };
 
@@ -197,7 +267,95 @@ export interface AuthUser {
   permissions: Permission[];
   /** Absent on a session that predates the trial work; treated as unlimited. */
   trial?: TrialState;
+  /** Two-step sign-in state, for prompts. The API enforces the requirement. */
+  mfa?: { enrolled: boolean; required: boolean };
+  /** Every amount the API returns is minor units (cents) of this currency. */
+  currency?: CurrencyCode;
 }
+
+/* ── Sign-in, sessions and two-step sign-in (0005) ───────── */
+
+export interface AuthenticatedResult {
+  status: 'authenticated';
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUser;
+}
+
+/**
+ * A sign-in completes, or stops for a second factor. The challenge token is
+ * good for ten minutes and for the next step only — it opens no route.
+ */
+export type LoginResult =
+  | AuthenticatedResult
+  | { status: 'mfa_required'; challengeToken: string; methods: ('totp' | 'recovery')[] }
+  | { status: 'mfa_enrollment_required'; challengeToken: string };
+
+export type MfaStage = 'verify' | 'enroll';
+
+export interface TotpSetup {
+  /** Base32. Shown once, for typing in by hand; the QR code carries it too. */
+  secret: string;
+  otpauthUri: string;
+}
+
+export interface MfaStatus {
+  enrolled: boolean;
+  confirmedAt: string | null;
+  lockedUntil: string | null;
+  recoveryCodesRemaining: number;
+  required: boolean;
+}
+
+export interface ActiveSession {
+  familyId: string;
+  startedAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  userAgent: string | null;
+  ip: string | null;
+  mfaVerified: boolean;
+  current: boolean;
+}
+
+/** The signed-in user's own account security. Every role has these. */
+export const securityApi = {
+  mfaStatus() {
+    return request<MfaStatus>('/auth/mfa');
+  },
+  setupTotp() {
+    return request<TotpSetup>('/auth/mfa/totp/setup', { method: 'POST' });
+  },
+  confirmTotp(code: string) {
+    return request<{ recoveryCodes: string[] }>('/auth/mfa/totp/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  },
+  regenerateRecoveryCodes(code: string) {
+    return request<{ recoveryCodes: string[] }>('/auth/mfa/recovery-codes', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  },
+  disableMfa(password: string, code: string) {
+    return request<{ disabled: true }>('/auth/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password, code }),
+    });
+  },
+  sessions() {
+    return request<ActiveSession[]>('/auth/sessions');
+  },
+  revokeOtherSessions() {
+    return request<{ revoked: number }>('/auth/sessions/revoke-others', { method: 'POST' });
+  },
+  revokeSession(familyId: string) {
+    return request<{ revoked: true }>(`/auth/sessions/${familyId}/revoke`, {
+      method: 'POST',
+    });
+  },
+};
 
 export interface PatientListItem {
   id: string;
@@ -237,6 +395,18 @@ export interface Patient {
   archivedAt: string | null;
   archiveReason: string | null;
   archivedByName: string | null;
+  /** The patient is not sent reminders. */
+  remindersOptOut: boolean;
+  remindersOptOutAt: string | null;
+  /** Who decided: staff, the patient replying STOP, or the SMS provider. */
+  remindersOptOutSource: 'staff' | 'patient' | 'provider' | null;
+  /** Personal number or other national identifier. */
+  nationalId: string | null;
+  /** The patient's own reminder channel; null follows the clinic. */
+  preferredChannel: ReminderChannelId | null;
+  photoDocumentId: string | null;
+  /** Short-lived signed link to the profile picture. */
+  photoUrl?: string | null;
   /** Travels with every patient load so no screen can miss a severe allergy. */
   allergySummary: {
     count: number;
@@ -298,6 +468,7 @@ export const DOCUMENT_KIND_LABELS: Record<DocumentKind, string> = {
   consent: 'Consent form',
   referral: 'Referral',
   insurance: 'Insurance',
+  id_document: 'ID document',
   report: 'Report',
   other: 'Other',
 };
@@ -313,10 +484,22 @@ export interface PatientDocument {
   tooth: number | null;
   takenOn: string | null;
   caption: string | null;
+  /** Before / after / progress, on photos. */
+  photoTag: PhotoTag | null;
   uploadedByName: string | null;
   createdAt: string;
   isImage: boolean;
+  /** JPEG, PNG or WEBP — something a browser can draw as a thumbnail. */
+  isPreviewable: boolean;
 }
+
+export const PHOTO_TAGS = ['before', 'after', 'progress'] as const;
+export type PhotoTag = (typeof PHOTO_TAGS)[number];
+export const PHOTO_TAG_LABELS: Record<PhotoTag, string> = {
+  before: 'Before',
+  after: 'After',
+  progress: 'Progress',
+};
 export interface SignedLink {
   url: string;
   fileName: string;
@@ -344,13 +527,47 @@ export interface PatientPayload {
   emergencyContactName?: string;
   emergencyContactRelationship?: string;
   emergencyContactPhone?: string;
+  /** Edit only — a new patient has not refused anything yet. */
+  remindersOptOut?: boolean;
+  nationalId?: string;
+  /** '' follows the clinic's default channel. */
+  preferredChannel?: ReminderChannelId | '';
 }
 
 export const api = {
   login(email: string, password: string) {
-    return request<{ accessToken: string; refreshToken: string; user: AuthUser }>(
+    return request<LoginResult>(
       '/auth/login',
       { method: 'POST', body: JSON.stringify({ email, password }) },
+      false,
+    );
+  },
+  verifyMfa(challengeToken: string, input: { code?: string; recoveryCode?: string }) {
+    return request<AuthenticatedResult>(
+      '/auth/mfa/verify',
+      { method: 'POST', body: JSON.stringify({ challengeToken, ...input }) },
+      false,
+    );
+  },
+  beginEnrollment(challengeToken: string) {
+    return request<TotpSetup>(
+      '/auth/mfa/enroll/start',
+      { method: 'POST', body: JSON.stringify({ challengeToken }) },
+      false,
+    );
+  },
+  confirmEnrollment(challengeToken: string, code: string) {
+    return request<AuthenticatedResult & { recoveryCodes: string[] }>(
+      '/auth/mfa/enroll/confirm',
+      { method: 'POST', body: JSON.stringify({ challengeToken, code }) },
+      false,
+    );
+  },
+  /** Ends the session server-side. Holding the refresh token is the authority. */
+  logout(refreshToken: string) {
+    return request<{ signedOut: true }>(
+      '/auth/logout',
+      { method: 'POST', body: JSON.stringify({ refreshToken }) },
       false,
     );
   },
@@ -393,8 +610,12 @@ export const api = {
       body: JSON.stringify({ body }),
     });
   },
-  deleteNote(noteId: string) {
-    return request<void>(`/patients/notes/${noteId}`, { method: 'DELETE' });
+  /** Notes are never edited or deleted; a wrong one is withdrawn with a reason. */
+  withdrawNote(noteId: string, reason: string) {
+    return request<{ withdrawn: true }>(`/patients/notes/${noteId}/entered-in-error`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   },
 
   /**
@@ -412,6 +633,40 @@ export const api = {
     return request<Patient>(`/patients/${id}/restore`, { method: 'POST' });
   },
 };
+
+/* ── Record access: who opened this patient's record ──────── */
+
+export type PatientAccessResource =
+  | 'record'
+  | 'chart'
+  | 'procedures'
+  | 'perio'
+  | 'history'
+  | 'documents'
+  | 'document_file'
+  | 'treatment_plans'
+  | 'billing'
+  | 'messages';
+
+export interface PatientAccessEntry {
+  id: string;
+  resource: PatientAccessResource;
+  accessedAt: string;
+  actor: { userId: string | null; label: string; role: string; currentName: string | null };
+}
+
+export const patientAccessApi = {
+  /** Administrator only (`audit:read`). */
+  list(patientId: string, limit = 200) {
+    return request<PatientAccessEntry[]>(`/patients/${patientId}/access-log?limit=${limit}`);
+  },
+};
+
+/** The body every "withdraw as entered in error" call sends. */
+const withdrawal = (reason: string) => ({
+  method: 'POST',
+  body: JSON.stringify({ reason }),
+});
 
 /* ── Medical history: allergies, conditions, medications ─── */
 
@@ -452,10 +707,11 @@ export const historyApi = {
       body: JSON.stringify(payload),
     });
   },
-  deleteAllergy(patientId: string, id: string) {
-    return request<{ deleted: true }>(`/patients/${patientId}/allergies/${id}`, {
-      method: 'DELETE',
-    });
+  withdrawAllergy(patientId: string, id: string, reason: string) {
+    return request<{ withdrawn: true }>(
+      `/patients/${patientId}/allergies/${id}/entered-in-error`,
+      withdrawal(reason),
+    );
   },
 
   listConditions(patientId: string) {
@@ -490,10 +746,11 @@ export const historyApi = {
       body: JSON.stringify(payload),
     });
   },
-  deleteCondition(patientId: string, id: string) {
-    return request<{ deleted: true }>(`/patients/${patientId}/conditions/${id}`, {
-      method: 'DELETE',
-    });
+  withdrawCondition(patientId: string, id: string, reason: string) {
+    return request<{ withdrawn: true }>(
+      `/patients/${patientId}/conditions/${id}/entered-in-error`,
+      withdrawal(reason),
+    );
   },
 
   listMedications(patientId: string) {
@@ -532,10 +789,11 @@ export const historyApi = {
       body: JSON.stringify(payload),
     });
   },
-  deleteMedication(patientId: string, id: string) {
-    return request<{ deleted: true }>(`/patients/${patientId}/medications/${id}`, {
-      method: 'DELETE',
-    });
+  withdrawMedication(patientId: string, id: string, reason: string) {
+    return request<{ withdrawn: true }>(
+      `/patients/${patientId}/medications/${id}/entered-in-error`,
+      withdrawal(reason),
+    );
   },
 };
 
@@ -565,6 +823,7 @@ export const documentsApi = {
       tooth?: number;
       takenOn?: string;
       caption?: string;
+      photoTag?: PhotoTag;
     } = {},
   ) {
     const form = new FormData();
@@ -573,10 +832,28 @@ export const documentsApi = {
     if (meta.tooth !== undefined) form.append('tooth', String(meta.tooth));
     if (meta.takenOn) form.append('takenOn', meta.takenOn);
     if (meta.caption) form.append('caption', meta.caption);
+    if (meta.photoTag) form.append('photoTag', meta.photoTag);
     return upload<PatientDocument & { duplicate: boolean }>(
       `/patients/${patientId}/documents`,
       form,
     );
+  },
+
+  /** Signed view links for every drawable image of the patient, for thumbnails. */
+  thumbnails(patientId: string) {
+    return request<{ id: string; url: string }[]>(`/patients/${patientId}/documents/thumbnails`);
+  },
+
+  /** The cropped profile picture, already re-encoded by the browser. */
+  setProfilePhoto(patientId: string, image: Blob) {
+    const form = new FormData();
+    form.append('file', image, 'profile.jpg');
+    return upload<{ photoDocumentId: string; photoUrl: string }>(`/patients/${patientId}/photo`, form);
+  },
+  clearProfilePhoto(patientId: string) {
+    return request<{ photoDocumentId: null; photoUrl: null }>(`/patients/${patientId}/photo`, {
+      method: 'DELETE',
+    });
   },
 
   /** Short-lived signed URL for inline preview. */
@@ -704,8 +981,39 @@ export interface FreeSlots {
   date: string;
   weekday: number;
   slots: { startsAt: string; endsAt: string }[];
-  reason: 'not_working' | null;
+  /** not_working: no shift that weekday. closed: a holiday or time off. */
+  reason: 'not_working' | 'closed' | null;
+  /** Why, when closed. */
+  closure?: string;
+  wholeClinic?: boolean;
 }
+
+/** A holiday or closure (staffId null) or one person's time off. */
+export interface Closure {
+  id: string;
+  staffId: string | null;
+  staffName: string | null;
+  startsOn: string;
+  endsOn: string;
+  reason: string;
+  createdAt: string;
+}
+
+export const closuresApi = {
+  list(from?: string, to?: string) {
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    const s = qs.toString();
+    return request<Closure[]>(`/closures${s ? `?${s}` : ''}`);
+  },
+  create(p: { staffId?: string; startsOn: string; endsOn: string; reason: string }) {
+    return request<Closure>('/closures', { method: 'POST', body: JSON.stringify(clean(p)) });
+  },
+  remove(id: string) {
+    return request<{ deleted: true }>(`/closures/${id}`, { method: 'DELETE' });
+  },
+};
 export interface StaffMember {
   id: string;
   fullName: string;
@@ -877,6 +1185,8 @@ export interface Treatment {
   durationMinutes: number;
   visitType: 'single' | 'multiple' | null;
   status: 'active' | 'inactive';
+  /** TVSH: medical is exempt, cosmetic carries the clinic's VAT rate. */
+  vatCategory: VatCategory;
 }
 export interface TreatmentPayload {
   name: string;
@@ -884,6 +1194,7 @@ export interface TreatmentPayload {
   durationMinutes: number;
   visitType: 'single' | 'multiple' | null;
   status?: 'active' | 'inactive';
+  vatCategory?: VatCategory;
 }
 /* ── Clinical charting (Phase 4) ─────────────────────────── */
 
@@ -967,6 +1278,11 @@ export interface ClinicalProcedure {
   diagnosisSystem?: string | null;
   planItemId?: string | null;
   appointmentId?: string | null;
+  /** 'clinician' today; 'import' and 'ai_suggestion' are reserved for provenance. */
+  source?: string;
+  /** Set once signed. A signed procedure cannot be edited, only withdrawn. */
+  signedAt?: string | null;
+  signedByName?: string | null;
 }
 
 export const chartApi = {
@@ -1002,8 +1318,12 @@ export const chartApi = {
       body: JSON.stringify(p),
     });
   },
-  deleteCondition(id: string) {
-    return request<{ deleted: true }>(`/tooth-conditions/${id}`, { method: 'DELETE' });
+  /** Findings are never deleted; a wrong one is withdrawn with a reason. */
+  withdrawCondition(id: string, reason: string) {
+    return request<{ withdrawn: true }>(
+      `/tooth-conditions/${id}/entered-in-error`,
+      withdrawal(reason),
+    );
   },
 };
 
@@ -1095,8 +1415,15 @@ export const proceduresApi = {
       body: JSON.stringify(p),
     });
   },
-  remove(id: string) {
-    return request<{ deleted: true }>(`/procedures/${id}`, { method: 'DELETE' });
+  /** Final: the database refuses every edit to a signed procedure. */
+  sign(id: string) {
+    return request<ClinicalProcedure>(`/procedures/${id}/sign`, { method: 'POST' });
+  },
+  withdraw(id: string, reason: string) {
+    return request<{ withdrawn: true }>(
+      `/procedures/${id}/entered-in-error`,
+      withdrawal(reason),
+    );
   },
 };
 
@@ -1134,6 +1461,8 @@ export interface PerioExamSummary {
   clinicianName: string | null;
   note: string | null;
   createdAt: string;
+  signedAt: string | null;
+  signedByName: string | null;
   siteCount: number;
   bleedingCount: number;
   bleedingPercent: number;
@@ -1147,6 +1476,9 @@ export interface PerioExam {
   clinicianName: string | null;
   note: string | null;
   createdAt: string;
+  /** Set once signed. A signed exam's readings are locked by the database. */
+  signedAt: string | null;
+  signedByName: string | null;
   measurements: PerioMeasurement[];
   findings: PerioToothFinding[];
   summary: {
@@ -1204,8 +1536,14 @@ export const perioApi = {
       body: JSON.stringify(body),
     });
   },
-  deleteExam(examId: string) {
-    return request<{ deleted: true }>(`/perio-exams/${examId}`, { method: 'DELETE' });
+  signExam(examId: string) {
+    return request<PerioExam>(`/perio-exams/${examId}/sign`, { method: 'POST' });
+  },
+  withdrawExam(examId: string, reason: string) {
+    return request<{ withdrawn: true }>(
+      `/perio-exams/${examId}/entered-in-error`,
+      withdrawal(reason),
+    );
   },
 };
 
@@ -1283,6 +1621,75 @@ export interface TreatmentPlan {
   cost: PlanCost;
   allowedTransitions: PlanStatus[];
 }
+
+export interface Estimate {
+  clinic: {
+    name: string;
+    legalName: string | null;
+    nipt: string | null;
+    address: string | null;
+    city: string | null;
+    phone: string | null;
+    email: string | null;
+    website: string | null;
+    brandColor: string | null;
+    logoUrl: string | null;
+  };
+  patient: { id: string; name: string; phone: string | null; dateOfBirth: string | null };
+  plan: {
+    id: string;
+    title: string;
+    status: PlanStatus;
+    note: string | null;
+    dentistName: string | null;
+    createdAt: string;
+    acceptedAt: string | null;
+  };
+  issuedOn: string;
+  validUntil: string;
+  currency: CurrencyCode;
+  quote: {
+    currency: CurrencyCode;
+    rate: number;
+    source: 'live' | 'fixed';
+    provider: string | null;
+    asOf: string;
+    stale: boolean;
+  } | null;
+  items: {
+    description: string;
+    code: string | null;
+    tooth: number | null;
+    status: string;
+    quantity: number;
+    unitPrice: number;
+    discountAmount: number;
+    vatCategory: VatCategory;
+    taxRateBp: number;
+    net: number;
+    taxAmount: number;
+    total: number;
+    totalQuote: number | null;
+  }[];
+  vat: VatGroup[];
+  totals: {
+    subtotal: number;
+    discount: number;
+    net: number;
+    tax: number;
+    total: number;
+    netQuote: number | null;
+    taxQuote: number | null;
+    totalQuote: number | null;
+  };
+}
+
+export const estimatesApi = {
+  /** currency: a code for a second currency, 'none' for none, omitted for the clinic's default. */
+  forPlan(planId: string, currency?: CurrencyCode | 'none') {
+    return request<Estimate>(`/treatment-plans/${planId}/estimate${currency ? `?currency=${currency}` : ''}`);
+  },
+};
 
 export const treatmentPlansApi = {
   listForPatient(patientId: string, status?: PlanStatus) {
@@ -1452,6 +1859,12 @@ export const staffApi = {
       body: JSON.stringify({ password }),
     });
   },
+  /** Lost phone and recovery codes. Never allowed on your own account. */
+  resetMfa(staffId: string) {
+    return request<{ reset: true; hadFactor: boolean }>(`/staff/${staffId}/mfa/reset`, {
+      method: 'POST',
+    });
+  },
   recordSalaryPayment(
     staffId: string,
     p: { amount: number; paidOn?: string; note?: string },
@@ -1479,16 +1892,291 @@ export interface ClinicSettings {
   remindersEnabled: boolean;
   reminderHoursBefore: number;
   payrollLoggingEnabled: boolean;
+  /** Two-step sign-in for every role, not only administrators. */
+  mfaRequiredForAll: boolean;
+  /** Fixed once the clinic records its first price or payment. */
+  currency: CurrencyCode;
+  /** IANA zone reminders are written in. */
+  timezone: string;
+  reminderLocale: ReminderLocale;
+  /** The clinic's own wording, or null for the built-in message. */
+  reminderTemplate: string | null;
+  /** For numbers written the local way ("069 …"), without + or 00. */
+  phoneCountryCode: string;
+  /** The clinic's default automatic-reminder channel. */
+  reminderChannel: ReminderChannelId;
+  legalName: string | null;
+  registrationNumber: string | null;
+  /** NIPT. */
+  taxNumber: string | null;
+  website: string | null;
+  brandColor: string | null;
+  /** Short-lived signed link; read-only. */
+  logoUrl: string | null;
+  logoUpdatedAt: string | null;
+  invoicePrefix: string;
+  /** Basis points: 2000 is 20%. */
+  vatRateBp: number;
+  paymentTermsDays: number;
+  paymentMethods: ClinicPaymentMethod[];
+  /** Second currency printed on estimates, or null for none. */
+  quoteCurrency: CurrencyCode | null;
+  fxRateSource: 'live' | 'fixed';
+  /** Clinic-currency units per ONE quote-currency unit, when fixed. */
+  fxFixedRate: number | null;
+  /** What the payment screen preselects when money is taken (API 0015). */
+  defaultCheckoutMode: 'internal' | 'fiscal' | 'ask';
+  /** Off for a clinic that fiscalizes everything: the option disappears. */
+  internalReceiptsEnabled: boolean;
 }
+
+export interface ClinicPaymentMethod {
+  id: string;
+  label: string;
+  kind: PaymentMethod;
+  active: boolean;
+}
+
+/** Everything settings accepts; logoUrl and logoUpdatedAt are not settable. */
+export type SettingsPayload = Partial<Omit<ClinicSettings, 'logoUrl' | 'logoUpdatedAt'>>;
+
 export const settingsApi = {
   get() {
     return request<ClinicSettings>('/settings');
   },
-  update(p: Partial<ClinicSettings>) {
+  update(p: SettingsPayload) {
     return request<ClinicSettings>('/settings', {
       method: 'PATCH',
       body: JSON.stringify(p),
     });
+  },
+  /** A JPEG the browser has already resized onto white. */
+  uploadLogo(image: Blob) {
+    const form = new FormData();
+    form.append('file', image, 'logo.jpg');
+    return upload<ClinicSettings>('/settings/logo', form);
+  },
+  removeLogo() {
+    return request<ClinicSettings>('/settings/logo', { method: 'DELETE' });
+  },
+};
+
+/* ── Fiscalization (Albania) ─────────────────────────────── */
+
+export interface FiscalSettings {
+  /** The deployment has a software code; without it nothing can be registered. */
+  available: boolean;
+  enabled: boolean;
+  environment: 'test' | 'production';
+  businessUnitCode: string | null;
+  tcrCode: string | null;
+  isIssuerInVat: boolean;
+  vatExemptionCode: string;
+  certificate: { subject: string | null; notAfter: string | null } | null;
+  seller: {
+    nipt: string | null;
+    niptValid: boolean;
+    name: string;
+    address: string | null;
+    town: string | null;
+    currency: string;
+  };
+  operators: { userId: string; fullName: string; role: Role; operatorCode: string | null }[];
+}
+
+export interface FiscalRecord {
+  id: string;
+  invoiceId: string;
+  status: 'pending' | 'fiscalized' | 'rejected';
+  environment: 'test' | 'production';
+  typeOfInvoice: 'CASH' | 'NONCASH';
+  businessUnitCode: string;
+  tcrCode: string;
+  operatorCode: string;
+  softwareCode: string;
+  invOrdNum: number;
+  invNum: string;
+  issueDateTime: string;
+  /** Issuer Security Code (IIC). */
+  nslf: string;
+  /** Fiscal Identification Code (FIC), once the authority confirms. */
+  nivf: string | null;
+  qrUrl: string;
+  attempts: number;
+  lastAttemptAt: string | null;
+  nextAttemptAt: string | null;
+  fiscalizedAt: string | null;
+  lastError: string | null;
+  lastErrorCode: string | null;
+  createdAt: string;
+}
+
+export interface FiscalReceipt {
+  environment: 'test' | 'production';
+  status: FiscalRecord['status'];
+  seller: { name: string; nipt: string; address: string; town: string; phone: string | null; email: string | null };
+  invoiceNumber: string;
+  buyerName: string;
+  fiscal: FiscalRecord;
+  cashier: { name: string | null; operatorCode: string };
+  isIssuerInVat: boolean;
+  vatExemptionCode: string;
+  currency: 'ALL';
+  items: {
+    name: string;
+    code: string | null;
+    unit: string;
+    quantity: number;
+    unitPrice: number;
+    discountAmount: number;
+    taxRateBp: number;
+    taxAmount: number;
+    total: number;
+  }[];
+  vat: VatGroup[];
+  totals: { net: number; vat: number; total: number };
+  payments: { type: 'BANKNOTE' | 'CARD' | 'ACCOUNT'; amount: number }[];
+}
+
+export interface CashDeposit {
+  id: string;
+  operation: 'INITIAL' | 'WITHDRAW';
+  amount: number;
+  changeDateTime: string;
+  status: 'registered' | 'rejected' | 'unreachable';
+  fcdc: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export const fiscalApi = {
+  settings() {
+    return request<FiscalSettings>('/fiscal/settings');
+  },
+  update(p: Partial<Pick<FiscalSettings, 'enabled' | 'environment' | 'businessUnitCode' | 'tcrCode' | 'isIssuerInVat' | 'vatExemptionCode'>>) {
+    return request<FiscalSettings>('/fiscal/settings', { method: 'PATCH', body: JSON.stringify(p) });
+  },
+  installCertificate(pem: string) {
+    return request<FiscalSettings>('/fiscal/certificate', { method: 'POST', body: JSON.stringify({ pem }) });
+  },
+  /** The .p12/.pfx as issued. The password opens it on the server and is not kept. */
+  installCertificateFile(p12Base64: string, password: string) {
+    return request<FiscalSettings>('/fiscal/certificate', {
+      method: 'POST',
+      body: JSON.stringify({ p12Base64, password }),
+    });
+  },
+  setOperatorCode(userId: string, operatorCode: string | null) {
+    return request<FiscalSettings>(`/fiscal/operators/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ operatorCode }),
+    });
+  },
+  cashDeposits() {
+    return request<CashDeposit[]>('/fiscal/cash-deposits');
+  },
+  registerCashDeposit(p: { operation: 'INITIAL' | 'WITHDRAW'; amount: number }) {
+    return request<CashDeposit>('/fiscal/cash-deposits', { method: 'POST', body: JSON.stringify(p) });
+  },
+  forInvoice(invoiceId: string) {
+    return request<FiscalRecord | null>(`/invoices/${invoiceId}/fiscal`);
+  },
+  /** The printable receipt, built from what the tax authority received. */
+  receipt(invoiceId: string) {
+    return request<FiscalReceipt>(`/invoices/${invoiceId}/fiscal/receipt`);
+  },
+  fiscalize(invoiceId: string) {
+    return request<FiscalRecord>(`/invoices/${invoiceId}/fiscal`, { method: 'POST' });
+  },
+  /** Everything still owed to the tax authority, with the 48-hour clock. */
+  queue() {
+    return request<FiscalQueue>('/fiscal/queue');
+  },
+  retry(id: string) {
+    return request<FiscalRecord>(`/fiscal/queue/${id}/retry`, { method: 'POST' });
+  },
+};
+
+export type QueueUrgency = 'routine' | 'watch' | 'urgent' | 'overdue';
+
+export interface FiscalQueueItem {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  patientName: string;
+  status: 'pending' | 'rejected';
+  environment: 'test' | 'production';
+  total: number;
+  issueDateTime: string;
+  nslf: string;
+  attempts: number;
+  nextAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  lastError: string | null;
+  lastErrorCode: string | null;
+  ageMs: number;
+  /** The 48-hour limit for a subsequent delivery. */
+  deliverBy: string;
+  msLeft: number;
+  overdue: boolean;
+  urgency: QueueUrgency;
+}
+
+export interface FiscalQueue {
+  items: FiscalQueueItem[];
+  counts: { pending: number; rejected: number; overdue: number; urgent: number };
+}
+
+/* ── Patient import ──────────────────────────────────────── */
+
+export interface ImportRowResult {
+  row: number;
+  status: 'valid' | 'invalid' | 'duplicate';
+  name: string;
+  errors: ImportIssue[];
+  duplicateOf:
+    | { kind: 'file'; row: number }
+    | { kind: 'patient'; patientId: string; name: string; match: 'nationalId' | 'phone' }
+    | null;
+  patientId?: string | null;
+}
+
+export interface ImportBatch {
+  fileName: string;
+  sourceLabel?: string;
+  dateFormat: ImportDateFormat;
+  skipDuplicates: boolean;
+  rowOffset: number;
+  rows: Record<string, string>[];
+}
+
+export interface ImportRecord {
+  id: string;
+  fileName: string;
+  sourceLabel: string | null;
+  rowsReceived: number;
+  rowsImported: number;
+  rowsSkipped: number;
+  balancesTotal: number;
+  createdAt: string;
+  createdByName: string | null;
+}
+
+export const patientImportApi = {
+  list() {
+    return request<ImportRecord[]>('/patient-imports');
+  },
+  preview(batch: ImportBatch) {
+    return request<{ valid: number; invalid: number; duplicates: number; rows: ImportRowResult[] }>(
+      '/patient-imports/preview',
+      { method: 'POST', body: JSON.stringify(batch) },
+    );
+  },
+  commit(batch: ImportBatch) {
+    return request<{ importId: string; imported: number; skipped: number; rows: ImportRowResult[] }>(
+      '/patient-imports',
+      { method: 'POST', body: JSON.stringify(batch) },
+    );
   },
 };
 
@@ -1498,11 +2186,23 @@ export type PaymentMethod = 'cash' | 'card' | 'bank';
 export type ExpenseCategory =
   'rent' | 'materials' | 'utilities' | 'salaries' | 'lab' | 'other';
 
+/**
+ * Which document a payment issued: `fiscal` (faturë e fiskalizuar, registered
+ * with the tax authority) or `internal` (faturë fiktive, the clinic's own
+ * receipt). The intent; `FiscalRecord` says what the authority did with it.
+ */
+export type InvoiceDocumentKind = 'internal' | 'fiscal';
+
 export interface InvoiceSummaryRow {
   id: string;
   invoiceNumber: string;
   status: InvoiceStatus;
+  /** What the clinic meant to issue with it. */
+  documentKind: InvoiceDocumentKind;
   total: number;
+  /** TVSH included in the total. */
+  taxAmount: number;
+  currency: CurrencyCode;
   paid: number;
   balance: number;
   issuedAt: string;
@@ -1514,6 +2214,11 @@ export interface InvoiceItem {
   description: string;
   quantity: number;
   unitPrice: number;
+  discountAmount: number;
+  /** Basis points; 0 is TVSH-exempt. */
+  taxRateBp: number;
+  taxAmount: number;
+  /** Including TVSH. */
   amount: number;
   treatmentId: string | null;
   treatmentName: string | null;
@@ -1535,6 +2240,8 @@ export interface InvoicePayment extends Voidable {
   id: string;
   amount: number;
   method: PaymentMethod;
+  /** The clinic's own name for the method, when it has one. */
+  methodLabel: string | null;
   note: string | null;
   paidAt: string;
   recordedBy: string | null;
@@ -1548,11 +2255,14 @@ export interface LineItemPayload {
   description: string;
   quantity: number;
   unitPrice: number;
+  /** Omitted: the treatment's category, or medical for a custom line. */
+  vatCategory?: VatCategory;
 }
 export interface PaymentHistoryRow extends Voidable {
   id: string;
   amount: number;
   method: PaymentMethod;
+  methodLabel: string | null;
   note: string | null;
   paidAt: string;
   invoiceId: string;
@@ -1580,6 +2290,13 @@ export interface FinanceSummary {
   totalExpenses?: number;
 }
 
+export interface CheckoutResult extends InvoiceSummaryRow {
+  /** The registration, when this payment issued a fiscal invoice. */
+  fiscal: FiscalRecord | null;
+  /** Why it could not be registered, with the payment already recorded. */
+  fiscalError: string | null;
+}
+
 export const financeApi = {
   listInvoices(params: { q?: string; status?: string } = {}) {
     const qs = new URLSearchParams();
@@ -1600,13 +2317,33 @@ export const financeApi = {
   cancelInvoice(id: string) {
     return request<InvoiceSummaryRow>(`/invoices/${id}/cancel`, { method: 'PATCH' });
   },
+  /** The printable invoice, fetched with the session so it can be opened as a Blob URL. */
+  invoicePdf(id: string) {
+    return fetchBlob(`/invoices/${id}/pdf`);
+  },
+  /**
+   * Take a payment and issue its document.
+   *
+   * `document: 'fiscal'` registers the invoice with the tax authority right
+   * after the money is recorded. The payment is committed first, so a refusal
+   * or an unreachable CIS comes back as `fiscalError` with the payment
+   * already taken — never as a failed payment.
+   */
   recordPayment(
     invoiceId: string,
-    p: { amount: number; method: PaymentMethod; note?: string },
+    p: {
+      amount: number;
+      method?: PaymentMethod;
+      methodId?: string;
+      note?: string;
+      document?: InvoiceDocumentKind;
+    },
+    idempotencyKey?: string,
   ) {
-    return request<InvoiceSummaryRow>(`/invoices/${invoiceId}/payments`, {
+    return request<CheckoutResult>(`/invoices/${invoiceId}/payments`, {
       method: 'POST',
       body: JSON.stringify(p),
+      headers: idempotent(idempotencyKey),
     });
   },
   listPayments() {
@@ -1721,7 +2458,37 @@ export interface ReportOverview {
   appointmentsByDentist: ReportDentistRow[];
 }
 
+export interface VatBand {
+  rateBp: number;
+  net: number;
+  vat: number;
+  gross: number;
+  invoices: number;
+}
+
+export interface VatReport {
+  from: string;
+  to: string;
+  bands: VatBand[];
+  totals: { net: number; vat: number; gross: number };
+  documents: {
+    documentKind: InvoiceDocumentKind;
+    registered: boolean;
+    net: number;
+    vat: number;
+    gross: number;
+    invoices: number;
+  }[];
+}
+
 export const reportsApi = {
+  vat(from?: string, to?: string) {
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    const s = qs.toString();
+    return request<VatReport>(`/reports/vat${s ? `?${s}` : ''}`);
+  },
   overview(from?: string, to?: string) {
     const qs = new URLSearchParams();
     if (from) qs.set('from', from);
@@ -1732,19 +2499,54 @@ export const reportsApi = {
 };
 
 /* ── Reminders (M10) ────────────────────────────────────── */
+/**
+ * pending   waiting for its first attempt, or for a retry
+ * sending   an attempt is in flight (or was interrupted — check the provider)
+ * sent      accepted by the provider, or handed off to WhatsApp / email
+ * delivered the carrier confirmed it arrived
+ * failed    refused, or out of attempts; `error` says why
+ * skipped   deliberately not sent; `error` says why
+ */
+export type ReminderStatus = 'pending' | 'sending' | 'sent' | 'delivered' | 'failed' | 'skipped';
+
 export interface Reminder {
   id: string;
-  appointmentId: string;
+  /** Null for a message that is not about one appointment (a balance notice). */
+  appointmentId: string | null;
+  patientId: string;
+  purpose: MessagePurpose;
+  invoiceId: string | null;
+  /** Who sent it; null for an automatic reminder. */
+  sentByName: string | null;
   type: 'automatic' | 'manual';
+  /** 'sms' | 'log' | 'whatsapp' | 'email' */
   channel: string;
-  status: 'pending' | 'sent' | 'failed';
+  status: ReminderStatus;
   message: string;
   error: string | null;
+  errorCode: string | null;
+  toAddress: string | null;
+  attempts: number;
+  nextAttemptAt: string | null;
+  providerStatus: string | null;
   sentAt: string | null;
+  deliveredAt: string | null;
   createdAt: string;
   patientName: string | null;
   appointmentStartsAt: string | null;
   appointmentReason: string | null;
+}
+
+export interface ReminderChannels {
+  active: string;
+  /** An SMS provider is configured for this deployment. */
+  sms: boolean;
+  /** WhatsApp Business is configured (approved sender and template). */
+  whatsappBusiness: boolean;
+  /** Viber Business Messages is configured. */
+  viber: boolean;
+  /** Delivery receipts come back, so "Delivered" means something. */
+  deliveryReceipts: boolean;
 }
 
 export const remindersApi = {
@@ -1752,15 +2554,105 @@ export const remindersApi = {
     const s = appointmentId ? `?appointmentId=${appointmentId}` : '';
     return request<Reminder[]>(`/reminders${s}`);
   },
+  channels() {
+    return request<ReminderChannels>('/reminders/channels');
+  },
   /**
-   * Records that a reminder was sent. For 'whatsapp' and 'email' the message
-   * is handed to the staff member's own app — the row is a hand-off record,
-   * not proof of delivery.
+   * 'sms' sends now through the provider. For 'whatsapp' and 'email' the
+   * message is handed to the staff member's own app — the row is a hand-off
+   * record, not proof of delivery.
    */
-  sendManual(appointmentId: string, channel: 'log' | 'whatsapp' | 'email' = 'log') {
+  sendManual(appointmentId: string, channel: 'sms' | 'log' | 'whatsapp' | 'email' = 'log') {
     return request<Reminder>(`/appointments/${appointmentId}/reminders`, {
       method: 'POST',
       body: JSON.stringify({ channel }),
+    });
+  },
+};
+
+/* ── Messages: one conversation per patient ─────────────── */
+
+export type ConversationFilter = 'all' | 'whatsapp' | 'viber' | 'sms' | 'other';
+export type SendChannel = 'sms' | 'whatsapp_business' | 'viber' | 'whatsapp' | 'log';
+
+export interface Conversation {
+  patientId: string;
+  patientName: string;
+  phone: string | null;
+  preferredChannel: string | null;
+  optedOut: boolean;
+  messageCount: number;
+  failedCount: number;
+  last: {
+    id: string;
+    channel: string;
+    status: ReminderStatus;
+    purpose: MessagePurpose;
+    message: string;
+    createdAt: string;
+  };
+}
+
+export interface MessageThread {
+  patient: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone: string | null;
+    e164: string | null;
+    preferredChannel: string | null;
+    optedOut: boolean;
+    optOutSource: string | null;
+  };
+  clinic: {
+    name: string;
+    phone: string | null;
+    address: string | null;
+    locale: ReminderLocale;
+    reminderTemplate: string | null;
+    defaultChannel: string;
+  };
+  channels: {
+    sms: boolean;
+    whatsappBusiness: boolean;
+    viber: boolean;
+    whatsappPurposes: MessagePurpose[];
+  };
+  messages: Reminder[];
+  context: {
+    upcoming: { id: string; startsAt: string; reason: string | null; dentist: string | null; date: string; time: string }[];
+    visits: { id: string; startsAt: string; reason: string | null; dentist: string | null; visitDate: string }[];
+    latestVisit: { visitDate: string; dentist: string | null } | null;
+    invoices: { id: string; invoiceNumber: string; issuedAt: string; balance: number; balanceText: string }[];
+    balance: number;
+    balanceText: string;
+    currency: CurrencyCode;
+  };
+}
+
+export const messagesApi = {
+  conversations(filter: { channel?: ConversationFilter; purpose?: MessagePurpose; q?: string } = {}) {
+    const params = new URLSearchParams();
+    if (filter.channel && filter.channel !== 'all') params.set('channel', filter.channel);
+    if (filter.purpose) params.set('purpose', filter.purpose);
+    if (filter.q?.trim()) params.set('q', filter.q.trim());
+    const qs = params.toString();
+    return request<Conversation[]>(`/messages/conversations${qs ? `?${qs}` : ''}`);
+  },
+  thread(patientId: string) {
+    return request<MessageThread>(`/patients/${patientId}/messages`);
+  },
+  /**
+   * Sends now through the provider, or — for 'whatsapp' — returns a link that
+   * opens the staff member's own WhatsApp with the text (a hand-off).
+   */
+  send(
+    patientId: string,
+    body: { purpose: MessagePurpose; channel: SendChannel; appointmentId?: string; invoiceId?: string },
+  ) {
+    return request<{ message: Reminder; handoffUrl: string | null }>(`/patients/${patientId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     });
   },
 };
@@ -2010,5 +2902,521 @@ export const analyticsApi = {
   },
   byProcedure(from?: string, to?: string) {
     return request<BreakdownReport>(`/analytics/by-procedure${dateRange(from, to)}`);
+  },
+};
+
+/* ── Inventory ───────────────────────────────────────────── */
+
+export type MovementKind = 'receipt' | 'usage' | 'adjustment' | 'write_off';
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: string | null;
+  unit: string;
+  quantity: number;
+  minimumQuantity: number;
+  notes: string | null;
+  status: 'active' | 'archived';
+  /**
+   * Resolved by the API, not recomputed here. The list, the dashboard badge
+   * and the alerts endpoint have to agree about what "low" means, and the one
+   * way to guarantee that is for only one of them to decide.
+   */
+  lowStock: boolean;
+  outOfStock: boolean;
+  /** Lot numbers and expiry dates are recorded for this item. */
+  trackLots: boolean;
+  expiryWarningDays: number;
+  /** Earliest expiry among lots still holding stock. */
+  nextExpiry: string | null;
+  /** Resolved by the API against the database's date, like `lowStock`. */
+  expiry: ExpiryState;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockMovement {
+  id: string;
+  itemId: string;
+  itemName: string;
+  unit: string;
+  kind: MovementKind;
+  /** Signed: negative for usage and write-offs. */
+  quantityDelta: number;
+  quantityAfter: number;
+  reason: string | null;
+  createdAt: string;
+  actorName: string | null;
+  lotId: string | null;
+  lotNumber: string | null;
+  patientId: string | null;
+  patientName: string | null;
+}
+
+/** "none" — no expiry date; "expired" from the day after the date on the packet. */
+export type ExpiryState = 'none' | 'ok' | 'expiring' | 'expired';
+
+export interface InventoryLot {
+  id: string;
+  itemId: string;
+  itemName: string;
+  unit: string;
+  lotNumber: string;
+  expiresOn: string | null;
+  receivedOn: string;
+  quantity: number;
+  status: 'active' | 'recalled';
+  recalledAt: string | null;
+  recallReason: string | null;
+  recalledByName: string | null;
+  expiry: ExpiryState;
+  createdAt: string;
+}
+
+export interface InventoryAlerts {
+  items: InventoryItem[];
+  lowCount: number;
+  outOfStockCount: number;
+  /** Active lots with stock inside their warning window, or past it. */
+  expiringLots: InventoryLot[];
+  expiringCount: number;
+  expiredCount: number;
+  /** Recalled lots somebody still has to take off the shelf. */
+  recalledLots: InventoryLot[];
+}
+
+export interface LotUsage {
+  lot: InventoryLot;
+  uses: {
+    id: string;
+    createdAt: string;
+    quantity: number;
+    patientId: string | null;
+    patientName: string | null;
+    procedureId: string | null;
+    procedureDescription: string | null;
+    performedOn: string | null;
+    actorName: string | null;
+  }[];
+  patientCount: number;
+  /** Used from this lot with no patient recorded — the limit of a recall list. */
+  unattributedQuantity: number;
+}
+
+export interface InventoryItemPayload {
+  name: string;
+  category?: string;
+  unit: string;
+  quantity?: number;
+  minimumQuantity?: number;
+  notes?: string;
+  trackLots?: boolean;
+  expiryWarningDays?: number;
+  /** The lot of the opening stock, for a lot-tracked item. */
+  lotNumber?: string;
+  expiresOn?: string;
+}
+
+/**
+ * A movement, in the clinic's own terms.
+ *
+ * `amount` is always positive — the kind decides the direction, so nobody has
+ * to type a minus sign. An adjustment instead carries what was actually
+ * counted, and the API works out the difference.
+ */
+export interface MovementPayload {
+  kind: MovementKind;
+  amount?: number;
+  countedQuantity?: number;
+  reason?: string;
+  /** Lot-tracked items: an existing lot. Usage may leave it out (earliest expiry first). */
+  lotId?: string;
+  /** Lot-tracked receipts: the number on the packaging; a new one also takes expiresOn. */
+  lotNumber?: string;
+  expiresOn?: string;
+  /** Usage only. */
+  patientId?: string;
+  procedureId?: string;
+}
+
+export const inventoryApi = {
+  list(
+    params: {
+      q?: string;
+      status?: string;
+      category?: string;
+      low?: boolean;
+      expiring?: boolean;
+    } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q);
+    if (params.status && params.status !== 'all') qs.set('status', params.status);
+    if (params.category) qs.set('category', params.category);
+    if (params.low) qs.set('low', '1');
+    if (params.expiring) qs.set('expiring', '1');
+    const s = qs.toString();
+    return request<InventoryItem[]>(`/inventory${s ? `?${s}` : ''}`);
+  },
+  alerts() {
+    return request<InventoryAlerts>('/inventory/alerts');
+  },
+  categories() {
+    return request<string[]>('/inventory/categories');
+  },
+  recentMovements(limit = 100) {
+    return request<StockMovement[]>(`/inventory/movements?limit=${limit}`);
+  },
+  get(id: string) {
+    return request<InventoryItem>(`/inventory/${id}`);
+  },
+  create(p: InventoryItemPayload) {
+    return request<InventoryItem>('/inventory', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
+  },
+  update(
+    id: string,
+    p: Partial<InventoryItemPayload> & { status?: 'active' | 'archived' },
+  ) {
+    return request<InventoryItem>(`/inventory/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
+  },
+  movements(itemId: string, limit = 100) {
+    return request<StockMovement[]>(`/inventory/${itemId}/movements?limit=${limit}`);
+  },
+  recordMovement(itemId: string, p: MovementPayload) {
+    return request<{ item: InventoryItem; movement: StockMovement }>(
+      `/inventory/${itemId}/movements`,
+      { method: 'POST', body: JSON.stringify(p) },
+    );
+  },
+  lots(itemId: string) {
+    return request<InventoryLot[]>(`/inventory/${itemId}/lots`);
+  },
+  lotUsage(lotId: string) {
+    return request<LotUsage>(`/inventory/lots/${lotId}/usage`);
+  },
+  recallLot(lotId: string, reason: string) {
+    return request<{ lot: InventoryLot; patientsAffected: number }>(
+      `/inventory/lots/${lotId}/recall`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+    );
+  },
+};
+
+/* ── Features (API 0013) ─────────────────────────────────── */
+export interface ClinicFeature {
+  key: FeatureKey;
+  name: string;
+  description: string;
+  group: FeatureGroup;
+  alwaysOn: boolean;
+  state: FeatureState;
+  entitledBy: 'override' | 'plan' | 'default';
+  missing: FeatureKey[];
+  overrideExpiresAt: string | null;
+  changedAt: string | null;
+  changedBy: string | null;
+}
+
+export const featuresApi = {
+  list() {
+    return request<ClinicFeature[]>('/features');
+  },
+  set(key: FeatureKey, enabled: boolean) {
+    return request<ClinicFeature[]>(`/features/${key}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    });
+  },
+};
+
+/* ── Cash drawer (API 0014) ──────────────────────────────── */
+export type DrawerSessionStatus = 'open' | 'counting' | 'pending_approval' | 'closed' | 'force_closed';
+export type CurrencyAmounts = Partial<Record<CurrencyCode, number>>;
+export type DenominationCounts = Record<string, number>;
+export type Thresholds = Partial<Record<CurrencyCode, { tolerance: number; approval: number }>>;
+
+export interface DrawerPolicy {
+  blindCount: boolean;
+  maxRecounts: number;
+  thresholds: Thresholds;
+  defaultFloat: CurrencyAmounts;
+}
+
+export interface CashDrawer {
+  id: string;
+  name: string;
+  tcrCode: string | null;
+  currencies: CurrencyCode[];
+  isActive: boolean;
+  locationId: string;
+  openSession: { id: string; status: DrawerSessionStatus; heldBy: { id: string; name: string } } | null;
+}
+
+export interface DrawerReview {
+  currency: CurrencyCode;
+  expected: number;
+  counted: number;
+  variance: number;
+  band: VarianceBand;
+  note: string | null;
+}
+
+export interface DrawerEvent {
+  seq: number;
+  type: string;
+  currency: CurrencyCode;
+  amount: number;
+  paymentId: string | null;
+  reason: string | null;
+  actor: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  occurredAt: string;
+}
+
+export interface DrawerSession {
+  id: string;
+  drawer: { id: string; name: string };
+  locationId: string;
+  businessDate: string;
+  status: DrawerSessionStatus;
+  blind: boolean;
+  currencies: CurrencyCode[];
+  openedBy: { id: string; name: string };
+  openedAt: string;
+  countingStartedAt: string | null;
+  closedBy: { id: string; name: string } | null;
+  closedAt: string | null;
+  /** Null while a blind count is still to come, for the person counting. */
+  expected: CurrencyAmounts | null;
+  thresholds: Thresholds | null;
+  maxRecounts: number;
+  cashPayments: number;
+  cardTotal: number | null;
+  cardBatchTotal: number | null;
+  cardBatchNote: string | null;
+  counts: {
+    attempt: number;
+    currency: CurrencyCode;
+    total: number;
+    expected: number;
+    countedBy: string | null;
+    countedAt: string;
+    denominations: DenominationCounts;
+  }[];
+  reviews: DrawerReview[];
+  approvals: {
+    id: string;
+    action: 'drawer_variance' | 'drawer_payout' | 'drawer_force_close' | 'drawer_add_float';
+    approver: string | null;
+    method: 'pin' | 'session';
+    selfApproved: boolean;
+    reason: string;
+    approvedAt: string;
+  }[];
+  events: DrawerEvent[] | null;
+  chain: { valid: true } | { valid: false; brokenAtSeq: number } | null;
+}
+
+export interface FiscalDeclaration {
+  status: 'not_required' | 'registered' | 'rejected' | 'unreachable' | 'failed';
+  message: string | null;
+}
+
+export interface DrawerCurrent {
+  session: DrawerSession | null;
+  drawers: {
+    id: string;
+    name: string;
+    currencies: CurrencyCode[];
+    heldBy: string | null;
+    defaultFloat: CurrencyAmounts;
+  }[];
+  blindCount: boolean;
+}
+
+export interface DrawerChecklist {
+  openInvoices: { id: string; invoiceNumber: string; patientName: string; balance: number }[];
+  card: { count: number; total: number };
+  bank: { count: number; total: number };
+}
+
+export interface CountLine {
+  currency: CurrencyCode;
+  counted: number;
+  expected: number;
+  variance: number;
+  band: VarianceBand;
+}
+
+export interface CountResult {
+  attempt: number;
+  recountsLeft: number;
+  lines: CountLine[];
+}
+
+export interface DrawerSessionRow {
+  id: string;
+  drawer: { id: string; name: string };
+  businessDate: string;
+  status: DrawerSessionStatus;
+  blind: boolean;
+  openedBy: { id: string; name: string };
+  openedAt: string;
+  closedBy: { id: string; name: string } | null;
+  closedAt: string | null;
+  cardTotal: number | null;
+  cardBatchTotal: number | null;
+  reviews: DrawerReview[];
+  recounted: boolean;
+  selfApproved: boolean;
+  voidedAfterClose: boolean;
+}
+
+export interface PinApproval {
+  approverUserId: string;
+  pin: string;
+}
+
+type CountPayload = { currency: CurrencyCode; denominations: DenominationCounts }[];
+
+export const drawerApi = {
+  current() {
+    return request<DrawerCurrent>('/drawer/current');
+  },
+  policy() {
+    return request<DrawerPolicy>('/drawer/policy');
+  },
+  updatePolicy(p: Partial<DrawerPolicy>) {
+    return request<DrawerPolicy>('/drawer/policy', { method: 'PUT', body: JSON.stringify(p) });
+  },
+  drawers() {
+    return request<CashDrawer[]>('/drawer/drawers');
+  },
+  createDrawer(p: { name: string; currencies: CurrencyCode[]; tcrCode?: string | null }) {
+    return request<{ id: string }>('/drawer/drawers', { method: 'POST', body: JSON.stringify(p) });
+  },
+  updateDrawer(
+    id: string,
+    p: { name?: string; currencies?: CurrencyCode[]; tcrCode?: string | null; isActive?: boolean },
+  ) {
+    return request<{ id: string }>(`/drawer/drawers/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+  },
+  approvers() {
+    return request<{ id: string; name: string }[]>('/drawer/approvers');
+  },
+  setApprovalPin(currentPassword: string, pin: string) {
+    return request<{ set: true }>('/drawer/approval-pin', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, pin }),
+    });
+  },
+  open(
+    p: {
+      drawerId: string;
+      floats: { currency: CurrencyCode; amount: number; denominations?: DenominationCounts }[];
+    },
+    key: string,
+  ) {
+    return request<DrawerSession & { fiscalDeclaration: FiscalDeclaration }>('/drawer/sessions', {
+      method: 'POST',
+      body: JSON.stringify(p),
+      headers: idempotent(key),
+    });
+  },
+  drop(sessionId: string, p: { currency: CurrencyCode; amount: number; reason?: string }, key: string) {
+    return request<DrawerSession & { fiscalDeclaration: FiscalDeclaration }>(
+      `/drawer/sessions/${sessionId}/drops`,
+      { method: 'POST', body: JSON.stringify(p), headers: idempotent(key) },
+    );
+  },
+  approvedMovement(
+    kind: 'payout' | 'float',
+    sessionId: string,
+    p: { currency: CurrencyCode; amount: number; reason: string; approval?: PinApproval },
+    key: string,
+  ) {
+    return request<DrawerSession>(
+      `/drawer/sessions/${sessionId}/${kind === 'payout' ? 'payouts' : 'float'}`,
+      { method: 'POST', body: JSON.stringify(p), headers: idempotent(key) },
+    );
+  },
+  noSale(sessionId: string, reason: string) {
+    return request<DrawerSession>(`/drawer/sessions/${sessionId}/no-sale`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+  startCount(sessionId: string) {
+    return request<{ session: DrawerSession; checklist: DrawerChecklist }>(
+      `/drawer/sessions/${sessionId}/count/start`,
+      { method: 'POST' },
+    );
+  },
+  cancelCount(sessionId: string) {
+    return request<DrawerSession>(`/drawer/sessions/${sessionId}/count/cancel`, { method: 'POST' });
+  },
+  submitCount(sessionId: string, counts: CountPayload, key: string) {
+    return request<CountResult>(`/drawer/sessions/${sessionId}/counts`, {
+      method: 'POST',
+      body: JSON.stringify({ counts }),
+      headers: idempotent(key),
+    });
+  },
+  close(
+    sessionId: string,
+    p: {
+      notes?: Partial<Record<CurrencyCode, string>>;
+      cardBatchTotal?: number;
+      cardBatchNote?: string;
+      acknowledgeOpenInvoices?: boolean;
+    },
+    key: string,
+  ) {
+    return request<DrawerSession>(`/drawer/sessions/${sessionId}/close`, {
+      method: 'POST',
+      body: JSON.stringify(p),
+      headers: idempotent(key),
+    });
+  },
+  approve(sessionId: string, reason: string) {
+    return request<DrawerSession>(`/drawer/sessions/${sessionId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+  approveWithPin(sessionId: string, p: PinApproval & { reason: string }) {
+    return request<DrawerSession>(`/drawer/sessions/${sessionId}/approve-with-pin`, {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
+  },
+  forceClose(sessionId: string, p: { counts: CountPayload; reason: string }) {
+    return request<DrawerSession>(`/drawer/sessions/${sessionId}/force-close`, {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
+  },
+  sessions(
+    q: { from?: string; to?: string; userId?: string; drawerId?: string; varianceOnly?: boolean } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (q.from) qs.set('from', q.from);
+    if (q.to) qs.set('to', q.to);
+    if (q.userId) qs.set('userId', q.userId);
+    if (q.drawerId) qs.set('drawerId', q.drawerId);
+    if (q.varianceOnly) qs.set('varianceOnly', 'true');
+    const s = qs.toString();
+    return request<DrawerSessionRow[]>(`/drawer/sessions${s ? `?${s}` : ''}`);
+  },
+  session(id: string) {
+    return request<DrawerSession>(`/drawer/sessions/${id}`);
   },
 };

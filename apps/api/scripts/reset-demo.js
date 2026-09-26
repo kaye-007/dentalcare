@@ -54,12 +54,32 @@ const TENANT_TABLES = [
   'operatories',
   'treatments',
   'patients',
+  // Inventory (0002). Reached by the tenants cascade anyway; listed so the
+  // count printed below is the truth.
+  'stock_movements',
+  'inventory_items',
+  // Append-only audit trail. See APPEND_ONLY_TRIGGER below for why this one
+  // needs its guard lifted for the length of the reset.
+  'clinic_audit_log',
   'clinic_settings',
   'users',
   'tenants',
 ];
 
 const PLATFORM_TABLES = ['audit_log', 'platform_admins'];
+
+/**
+ * clinic_audit_log refuses TRUNCATE for every role, the owner included, and
+ * the tenants cascade reaches it — so without this the reset failed outright
+ * and printed nothing but the trigger's message.
+ *
+ * Disabling the guard inside the transaction is the same deliberate act the
+ * integration fixtures use (test/integration/fixtures.ts). ALTER TABLE is
+ * transactional in Postgres: if the truncate fails, the rollback restores the
+ * trigger too, so the guard can never be left switched off. The runtime role
+ * has no rights over the trigger, and this script refuses production.
+ */
+const APPEND_ONLY_TRIGGER = 'clinic_audit_log_no_truncate';
 
 async function main() {
   if (!process.env.DATABASE_URL) {
@@ -84,7 +104,9 @@ async function main() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`ALTER TABLE clinic_audit_log DISABLE TRIGGER ${APPEND_ONLY_TRIGGER}`);
     await client.query(`TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY CASCADE`);
+    await client.query(`ALTER TABLE clinic_audit_log ENABLE TRIGGER ${APPEND_ONLY_TRIGGER}`);
     await client.query('COMMIT');
     console.log('  Reset complete. Run `npm run seed` to load the demo clinic.\n');
   } catch (err) {

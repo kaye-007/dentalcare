@@ -138,6 +138,7 @@ export class AnalyticsService {
            FROM clinical_procedures cp
            LEFT JOIN users u ON u.id = cp.clinician_id
           WHERE cp.status = 'completed'
+            AND cp.entered_in_error_at IS NULL
             AND cp.performed_on BETWEEN $1::date AND $2::date
           GROUP BY cp.clinician_id, u.full_name
           ORDER BY sum(cp.fee) DESC NULLS LAST`,
@@ -180,6 +181,7 @@ export class AnalyticsService {
              FROM clinical_procedures cp
              LEFT JOIN appointments a ON a.id = cp.appointment_id
             WHERE cp.status = 'completed'
+              AND cp.entered_in_error_at IS NULL
               AND cp.performed_on BETWEEN $1::date AND $2::date
             GROUP BY a.operatory_id
          ),
@@ -240,6 +242,7 @@ export class AnalyticsService {
            LEFT JOIN treatments t ON t.id = cp.treatment_id
            LEFT JOIN procedure_codes pc ON pc.id = cp.procedure_code_id
           WHERE cp.status = 'completed'
+            AND cp.entered_in_error_at IS NULL
             AND cp.performed_on BETWEEN $1::date AND $2::date
           GROUP BY coalesce(t.name, pc.description, cp.description), pc.code
           ORDER BY sum(cp.fee) DESC NULLS LAST
@@ -290,6 +293,7 @@ export class AnalyticsService {
                AND starts_at::date BETWEEN $1::date AND $2::date)::text AS patients_seen,
            (SELECT count(*) FROM clinical_procedures
              WHERE status = 'completed'
+               AND entered_in_error_at IS NULL
                AND performed_on BETWEEN $1::date AND $2::date)::text AS procedures_done`,
         [from, to],
       );

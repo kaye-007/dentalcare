@@ -21,13 +21,19 @@ import {
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
+import { EnteredInErrorDto } from '@/shared/dto/entered-in-error.dto';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
+import { auditActor } from '@/core/audit/clinic-audit.service';
+import { LogPatientAccess, PatientAccessService } from '@/core/audit/patient-access';
 
 @Controller('patients')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PatientsController {
-  constructor(private readonly patients: PatientsService) {}
+  constructor(
+    private readonly patients: PatientsService,
+    private readonly access: PatientAccessService,
+  ) {}
 
   @Get()
   @RequirePermissions('patients:read')
@@ -47,32 +53,43 @@ export class PatientsController {
 
   @Get(':id')
   @RequirePermissions('patients:read')
+  @LogPatientAccess('record')
   getOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.patients.getById(id);
+  }
+
+  /** Who opened this patient's record, and which part of it. */
+  @Get(':id/access-log')
+  @RequirePermissions('audit:read')
+  accessLog(@Param('id', ParseUUIDPipe) id: string, @Query('limit') limit?: string) {
+    return this.access.list(id, Number(limit) || 200);
   }
 
   @Post()
   @RequirePermissions('patients:write')
   create(@Body() dto: CreatePatientDto, @CurrentUser() user?: AccessTokenPayload) {
-    if (!user) throw new UnauthorizedException();
-    return this.patients.create(dto, user.sub);
+    return this.patients.create(dto, auditActor(user));
   }
 
   @Patch(':id')
   @RequirePermissions('patients:write')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePatientDto) {
-    return this.patients.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePatientDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.patients.update(id, dto, auditActor(user));
   }
 
   @Post(':id/notes')
-  @RequirePermissions('clinical:write')
+  @RequirePermissions('history:write')
   addNote(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateNoteDto,
     @CurrentUser() user?: AccessTokenPayload,
   ) {
     if (!user) throw new UnauthorizedException();
-    return this.patients.addNote(id, dto.body, user.sub);
+    return this.patients.addNote(id, dto.body, auditActor(user));
   }
 
   /**
@@ -86,19 +103,26 @@ export class PatientsController {
     @Body() dto: ArchivePatientDto,
     @CurrentUser() user?: AccessTokenPayload,
   ) {
-    if (!user) throw new UnauthorizedException();
-    return this.patients.archive(id, dto, user.sub);
+    return this.patients.archive(id, dto, auditActor(user));
   }
 
   @Post(':id/restore')
   @RequirePermissions('patients:write')
-  restore(@Param('id', ParseUUIDPipe) id: string) {
-    return this.patients.restore(id);
+  restore(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.patients.restore(id, auditActor(user));
   }
 
-  @Delete('notes/:noteId')
-  @RequirePermissions('clinical:write')
-  deleteNote(@Param('noteId', ParseUUIDPipe) noteId: string) {
-    return this.patients.deleteNote(noteId);
+  /** A note is never edited or deleted; a wrong one is withdrawn with a reason. */
+  @Post('notes/:noteId/entered-in-error')
+  @RequirePermissions('history:write')
+  withdrawNote(
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @Body() dto: EnteredInErrorDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.patients.withdrawNote(noteId, dto.reason, auditActor(user));
   }
 }

@@ -4,6 +4,8 @@ import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { AGEING_BUCKETS, LEDGER_SIGN, type AgeingBucketKey, type LedgerEntryType, bucketFor, calculateInvoice, calculateInvoiceLine, planLinesToInvoiceLines } from '@/modules/clinic/finance';
 import { ClinicAuditService, ClinicAuditActor } from '@/core/audit/clinic-audit.service';
+import { moneyText } from '@/core/money/clinic-currency';
+import { nextInvoiceNumber } from '@/core/money/invoice-number';
 import { GenerateInvoiceDto, LedgerAdjustmentDto } from './dto/billing.dto';
 
 /**
@@ -169,7 +171,7 @@ export class BillingService {
             'SELECT coalesce(max(seq), 0) + 1 AS next FROM invoices',
           );
           const seq = Number(seqRows[0]!.next);
-          const number = `INV-${String(seq).padStart(4, '0')}`;
+          const number = await nextInvoiceNumber(client, seq);
 
           const { rows: invRows } = await client.query<{ id: string }>(
             `INSERT INTO invoices
@@ -232,7 +234,7 @@ export class BillingService {
             action: 'invoice.created',
             entityType: 'invoice',
             entityId: invoiceId,
-            summary: `Issued ${number} for ${totals.total} from plan "${plan.title}"`,
+            summary: `Issued ${number} for ${await moneyText(client, totals.total)} from plan "${plan.title}"`,
             metadata: {
               invoiceNumber: number,
               total: totals.total,
@@ -427,7 +429,7 @@ export class BillingService {
         action: 'invoice.adjusted',
         entityType: 'patient',
         entityId: patientId,
-        summary: `${dto.entryType} of ${dto.amount} — ${dto.description.trim()}`,
+        summary: `${dto.entryType.replace('_', ' ')} of ${await moneyText(client, dto.amount)} — ${dto.description.trim()}`,
         metadata: {
           entryType: dto.entryType,
           amount: dto.amount,

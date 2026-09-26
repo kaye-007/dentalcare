@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, useId, useRef, type MouseEvent, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { initials, avatarTint } from '../lib/format';
 
 /* ── Avatar ──────────────────────────────────────────────── */
@@ -17,6 +18,7 @@ export function Avatar({ name, size = 34 }: { name: string; size?: number }) {
 
 /* ── Status pills — one semantic system across the app ───── */
 type PillKind = 'ok' | 'info' | 'warn' | 'danger' | 'neutral';
+const PILL_KINDS: readonly string[] = ['ok', 'info', 'warn', 'danger', 'neutral'];
 
 const PILL_MAP: Record<string, { kind: PillKind; label: string }> = {
   // appointments
@@ -42,15 +44,27 @@ const PILL_MAP: Record<string, { kind: PillKind; label: string }> = {
   // billing
   unpaid: { kind: 'danger', label: 'Unpaid' },
   partial: { kind: 'warn', label: 'Partial' },
+  partially_paid: { kind: 'warn', label: 'Partial' },
   paid: { kind: 'ok', label: 'Paid' },
 };
 
+/**
+ * `status` is either a domain status from the map above or, for callers that
+ * only want a colour, one of the five kinds themselves. The reminder log
+ * passes `info` for "Automatic" — that used to fall through to neutral.
+ */
 export function StatusPill({ status, label }: { status: string; label?: string }) {
-  const m = PILL_MAP[status] ?? { kind: 'neutral' as PillKind, label: status };
+  const m =
+    PILL_MAP[status] ??
+    (PILL_KINDS.includes(status)
+      ? { kind: status as PillKind, label: status }
+      : { kind: 'neutral' as PillKind, label: status });
   return <span className={`pill pill--${m.kind}`}>{label ?? m.label}</span>;
 }
 
-/* ── Page header — single pattern for every module page ──── */
+/* ── Page header — single pattern for every module page ──────
+   The title is the page's h1. The topbar carries a breadcrumb, not a heading,
+   so there is exactly one h1 per screen and it is the one the reader sees. */
 export function PageHeader({
   title,
   meta,
@@ -67,7 +81,7 @@ export function PageHeader({
       {back}
       <div className="page__head">
         <div className="page__head-main">
-          {title && <h2 className="section-title">{title}</h2>}
+          {title && <h1 className="section-title">{title}</h1>}
           {meta && <p className="page__meta">{meta}</p>}
         </div>
         {actions && <div className="page__actions">{actions}</div>}
@@ -100,7 +114,110 @@ export function EmptyState({
   );
 }
 
-/* ── Modal ────────────────────────────────────────────────── */
+/* ── Dialog behaviour shared by Modal and SidePanel ──────────── */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * What makes an overlay a dialog rather than a div that happens to float:
+ * focus moves into it, Tab cannot wander out behind it, Escape closes it, and
+ * focus returns to whatever opened it. An `autoFocus` field inside wins over
+ * the container, so a form still opens with its cursor in the right place.
+ */
+function useDialog(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!node.contains(document.activeElement)) node.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const items = node.querySelectorAll<HTMLElement>(FOCUSABLE);
+      if (items.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === node)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (opener && document.contains(opener)) opener.focus();
+    };
+  }, []);
+
+  return ref;
+}
+
+/**
+ * Close on a click that both starts and ends on the backdrop. A plain onClick
+ * also fires when someone drags to select text in a field and lets go outside
+ * the dialog — which used to throw away a half-filled form.
+ */
+function useBackdropClose(onClose: () => void) {
+  const downOnBackdrop = useRef(false);
+  return {
+    onMouseDown: (e: MouseEvent) => {
+      downOnBackdrop.current = e.target === e.currentTarget;
+    },
+    onClick: (e: MouseEvent) => {
+      if (downOnBackdrop.current && e.target === e.currentTarget) onClose();
+      downOnBackdrop.current = false;
+    },
+  };
+}
+
+function DialogTitle({
+  id,
+  className,
+  title,
+  subtitle,
+  onClose,
+}: {
+  id: string;
+  className: string;
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className={className}>
+      <div className={`${className === 'panel__head' ? 'panel__titles' : 'modal__titles'}`}>
+        <h2 id={id}>{title}</h2>
+        {subtitle && <p>{subtitle}</p>}
+      </div>
+      <button
+        type="button"
+        className="iconbtn iconbtn--quiet"
+        onClick={onClose}
+        aria-label="Close"
+      >
+        <X size={18} />
+      </button>
+    </div>
+  );
+}
+
+/* ── Modal — short, focused decisions ─────────────────────── */
 export function Modal({
   title,
   subtitle,
@@ -114,13 +231,69 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const titleId = useId();
+  const ref = useDialog(onClose);
+  const backdrop = useBackdropClose(onClose);
   return (
-    <div className="modal__overlay" onClick={onClose}>
-      <div className={`modal${wide ? ' modal--wide' : ''}`} onClick={(e) => e.stopPropagation()}>
-        <div className="modal__head">
-          <h2>{title}</h2>
-          {subtitle && <p className="muted">{subtitle}</p>}
-        </div>
+    <div className="modal__overlay" {...backdrop}>
+      <div
+        ref={ref}
+        className={`modal${wide ? ' modal--wide' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
+        <DialogTitle
+          id={titleId}
+          className="modal__head"
+          title={title}
+          subtitle={subtitle}
+          onClose={onClose}
+        />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ── Side panel — work that needs the page behind it ──────────
+   Docked right on a desktop, a full-screen sheet on a phone. Children
+   supply `.panel__body` (scrolls) and `.panel__foot` (stays put), usually
+   wrapped in a `<form className="panel__form">`. */
+export function SidePanel({
+  title,
+  subtitle,
+  onClose,
+  children,
+  wide = false,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  const titleId = useId();
+  const ref = useDialog(onClose);
+  const backdrop = useBackdropClose(onClose);
+  return (
+    <div className="panel__overlay" {...backdrop}>
+      <div
+        ref={ref}
+        className={`panel${wide ? ' panel--wide' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
+        <DialogTitle
+          id={titleId}
+          className="panel__head"
+          title={title}
+          subtitle={subtitle}
+          onClose={onClose}
+        />
         {children}
       </div>
     </div>
@@ -137,7 +310,7 @@ export function Sparkline({ data }: { data: number[] }) {
     .join(' ');
   return (
     <svg className="spark" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden>
-      <polyline points={pts} fill="none" stroke="var(--teal-300)" strokeWidth="1.6" />
+      <polyline points={pts} fill="none" stroke="var(--primary-300)" strokeWidth="1.6" />
     </svg>
   );
 }

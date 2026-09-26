@@ -1,35 +1,64 @@
+import {
+  CURRENCY_NAMES,
+  MONEY_LOCALE,
+  currencySymbol as symbolOf,
+  formatMoney as formatMinor,
+  type CurrencyCode,
+} from '@dentalcare/shared';
+
 /**
  * Money formatting.
  *
- * Amounts are stored as integers in whole currency units (never floats, never
- * minor units). A stored 4500 is €4,500 — not €45.00. That mapping is
- * unchanged from when the product was denominated in Lekë; only the
- * presentation currency moved to EUR, so no historical amount changes value.
+ * Amounts arrive from the API as integer MINOR units — cents — in the clinic's
+ * currency (migration 0006). A stored 3750 is €37.50. The arithmetic and the
+ * parsing live in @dentalcare/shared so the API's activity lines and this
+ * screen cannot disagree about what a number means.
  *
- * There is no multi-currency system: the product is single-currency by
- * design, and this is the one place that decides how money is rendered.
+ * The currency is the clinic's, set once when the signed-in user loads (see
+ * AuthProvider). There is no conversion anywhere: one clinic, one currency.
  */
-export const CURRENCY = 'EUR';
-export const CURRENCY_SYMBOL = '€';
-export const CURRENCY_LABEL = 'Euro (EUR)';
+let currency: CurrencyCode = 'EUR';
+
+export function setCurrency(code: CurrencyCode) {
+  currency = code;
+}
+
+export function currentCurrency(): CurrencyCode {
+  return currency;
+}
+
+/** "€", "L", "CHF" — for field labels such as "Amount (€)". */
+export function currencySymbol(): string {
+  return symbolOf(currency, MONEY_LOCALE);
+}
+
+/** "Euro (EUR)" */
+export function currencyLabel(code: CurrencyCode = currency): string {
+  return `${CURRENCY_NAMES[code]} (${code})`;
+}
+
+/** Minor units -> "€45" or "€37.50", in the clinic's currency. */
+export function formatMoney(minor: number): string {
+  return formatMinor(minor, currency, MONEY_LOCALE);
+}
 
 /**
- * en-IE: English-language euro formatting — "€1,200".
+ * An API date string as a Date, reading a date-only value as a LOCAL day.
  *
- * de-DE was tried first and produced "1.200 €", which reads as "one point two"
- * to an English-speaking user and clashed with the rest of the UI, which is
- * English throughout (en-GB dates). Symbol-first with comma grouping is
- * unambiguous alongside that.
+ * `new Date('2026-09-17')` is midnight UTC, which formats as the 16th for
+ * anyone west of Greenwich: an invoice issued today read "16 Sept" on a
+ * laptop set to New York, and a shift report would name the wrong day. Values
+ * that carry a time ("2026-09-17T08:30:00Z") are instants and are parsed as
+ * they are.
+ *
+ * Use this wherever the API hands back a `date` column — issued_at,
+ * expense_date, occurred_on, performed_on, business_date, birth_date.
  */
-const moneyFormatter = new Intl.NumberFormat('en-IE', {
-  style: 'currency',
-  currency: CURRENCY,
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
-
-export function formatMoney(value: number): string {
-  return moneyFormatter.format(value);
+export function toDate(value: string): Date {
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value);
 }
 
 /** Titles carry no identifying information, so they are dropped before

@@ -3,8 +3,8 @@
  *
  * Pure functions over integers. Two decisions shape this file:
  *
- * 1. MONEY IS INTEGER, whole currency units, matching invoices, treatments and
- *    expenses. No floats touch a price at any point — a plan total that
+ * 1. MONEY IS INTEGER MINOR UNITS (cents, since migration 0006), matching
+ *    invoices, treatments and expenses. No floats touch a price at any point — a plan total that
  *    disagrees with the invoice raised from it by one cent is a support call
  *    and a loss of trust, and floating point makes that inevitable eventually.
  *
@@ -21,10 +21,10 @@
  */
 
 export interface PlanLineInput {
-  /** Fee for one unit, whole currency units. */
+  /** Fee for one unit, minor units. */
   unitFee: number;
   quantity: number;
-  /** Absolute discount on this line, whole currency units. */
+  /** Absolute discount on this line, minor units. */
   discountAmount: number;
   status: 'planned' | 'scheduled' | 'completed' | 'cancelled';
 }

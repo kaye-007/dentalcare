@@ -59,7 +59,11 @@ export const TENANT_MIDDLEWARE_EXCLUSIONS: readonly TenantExclusion[] = [
     because: 'answers before a clinic is known, and before any clinic exists',
   },
   {
-    path: 'platform/(.*)',
+    // Nest 11 matches exclusions with path-to-regexp v8, which has no unnamed
+    // `(.*)` group. Nest would auto-convert the old spelling to exactly this —
+    // an optional named splat, so bare `platform` still matches as it did —
+    // but it logs an "Unsupported route path" warning on every boot to do so.
+    path: 'platform/{*path}',
     method: RequestMethod.ALL,
     because: 'the console operates across clinics, not within one',
   },
@@ -77,6 +81,15 @@ export const TENANT_MIDDLEWARE_EXCLUSIONS: readonly TenantExclusion[] = [
     path: 'auth/google/callback',
     method: RequestMethod.ALL,
     because: 'arrives on the API host; the clinic comes from the signed state',
+  },
+  {
+    // POST only. The SMS provider reports delivery from its own servers, with
+    // no clinic subdomain. The URL this API gave it names the clinic, the
+    // provider's signature covers that URL, and ReminderDeliveryController
+    // checks the signature before reading anything.
+    path: 'reminders/delivery/twilio',
+    method: RequestMethod.POST,
+    because: 'called by the SMS provider; the clinic is named in a URL its signature covers',
   },
 ];
 

@@ -29,13 +29,13 @@ Not yet ready to onboard them as paying customers. Reasoning at the end.
 
 Additional clinic staff, all `<redacted>`, for demonstrating permissions:
 
-| Name              | Email                | Access    | Position         |
-| ----------------- | -------------------- | --------- | ---------------- |
-| Dr. Lukas Brandt  | `l.brandt@dentx.app` | Owner     | Dentist          |
-| Dr. Sofia Ricci   | `s.ricci@dentx.app`  | Frontdesk | Dentist          |
-| Dr. Julien Moreau | `j.moreau@dentx.app` | Frontdesk | Orthodontist     |
-| Marta Novák       | `m.novak@dentx.app`  | Frontdesk | Receptionist     |
-| Ana Silva         | `a.silva@dentx.app`  | Frontdesk | Dental Assistant |
+| Name                | Email                  | Access    | Position         |
+| ------------------- | ---------------------- | --------- | ---------------- |
+| Dr. Elira Shehu     | `e.shehu@dentx.app`    | Doctor    | Dentist          |
+| Dr. Endrit Krasniqi | `e.krasniqi@dentx.app` | Doctor    | Dentist          |
+| Dr. Anisa Prifti    | `a.prifti@dentx.app`   | Doctor    | Orthodontist     |
+| Migena Dervishi     | `m.dervishi@dentx.app` | Reception | Receptionist     |
+| Blerta Leka         | `b.leka@dentx.app`     | Reception | Dental Assistant |
 
 > **Deviation from spec.** The brief asked for a "Super Administrator" role
 > within the demo tenant. The schema permits exactly two clinic roles —

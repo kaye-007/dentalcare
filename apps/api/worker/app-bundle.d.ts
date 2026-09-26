@@ -25,4 +25,7 @@ declare module 'dentalcare-app-bundle' {
   export const ReminderSchedulerService: new (...args: never[]) => {
     tick(): Promise<void>;
   };
+  export const FiscalSchedulerService: new (...args: never[]) => {
+    tick(): Promise<void>;
+  };
 }

@@ -5,9 +5,22 @@ import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditService, ClinicAuditActor } from '@/core/audit/clinic-audit.service';
 import { BCRYPT_ROUNDS } from '@/core/security/bcrypt';
+import { MfaService } from '@/core/mfa/mfa.service';
+import { moneyText } from '@/core/money/clinic-currency';
+import { revokeAllFor } from '@/core/sessions/session-store';
 import { CreateStaffDto, RecordSalaryPaymentDto, UpdateStaffDto } from './dto/staff.dto';
 
 /* ── service ─────────────────────────────────────────────── */
+
+/** How the activity trail names each role. Matches the SPA's ROLE_LABELS. */
+const ROLE_TITLES: Readonly<Record<string, string>> = {
+  admin: 'Administrator',
+  dentist: 'Dentist',
+  hygienist: 'Hygienist',
+  assistant: 'Assistant',
+  receptionist: 'Reception',
+};
+
 interface StaffRow {
   id: string;
   full_name: string;
@@ -43,6 +56,7 @@ export class StaffService {
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
     private readonly audit: ClinicAuditService,
+    private readonly mfa: MfaService,
   ) {}
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
@@ -74,7 +88,7 @@ export class StaffService {
           action: 'staff.created',
           entityType: 'user',
           entityId: rows[0]!.id,
-          summary: `Created ${dto.role === 'admin' ? 'Doctor' : 'Reception'} account for ${dto.fullName}`,
+          summary: `Created ${ROLE_TITLES[dto.role] ?? dto.role} account for ${dto.fullName}`,
           metadata: { email: dto.email, role: dto.role, position: dto.position ?? null },
         });
         return mapStaff(rows[0]!, true);
@@ -135,6 +149,18 @@ export class StaffService {
       const changed = Object.keys(cols).filter((k) => (dto as unknown as Record<string, unknown>)[k] !== undefined);
       const roleMoved = prev.role !== next.role;
       const payMoved = prev.salary_amount !== next.salary_amount;
+
+      // A disabled account, or one whose authority just changed, keeps no
+      // session. Its access token lapses within JWT_ACCESS_TTL and the next
+      // refresh is refused; a role change signs in again under the new role.
+      if (prev.status !== 'disabled' && next.status === 'disabled') {
+        await revokeAllFor(client, 'user_sessions', id, 'account_disabled');
+      } else if (roleMoved) {
+        await revokeAllFor(client, 'user_sessions', id, 'role_changed');
+      }
+      const salaryChange = payMoved
+        ? `from ${await moneyText(client, prev.salary_amount ?? 0)} to ${await moneyText(client, next.salary_amount ?? 0)}`
+        : '';
       await this.audit.record(client, actor, {
         action: 'staff.updated',
         entityType: 'user',
@@ -142,7 +168,7 @@ export class StaffService {
         summary: roleMoved
           ? `Changed ${next.full_name}'s access from ${prev.role} to ${next.role}`
           : payMoved
-            ? `Changed ${next.full_name}'s salary from ${prev.salary_amount ?? 0} to ${next.salary_amount ?? 0}`
+            ? `Changed ${next.full_name}'s salary ${salaryChange}`
             : `Updated ${next.full_name} (${changed.join(', ') || 'no fields'})`,
         metadata: {
           fields: changed,
@@ -168,6 +194,9 @@ export class StaffService {
         [staffId, hash],
       );
       if (!res.rowCount) throw new NotFoundException('Staff member not found');
+      // A reset usually means the old password is compromised or forgotten;
+      // either way no session opened with it should survive.
+      await revokeAllFor(client, 'user_sessions', staffId, 'password_reset');
       await this.audit.record(client, actor, {
         action: 'staff.password_reset',
         entityType: 'user',
@@ -175,6 +204,40 @@ export class StaffService {
         summary: `Reset the password for ${res.rows[0]!.full_name}`,
       });
       return { reset: true };
+    });
+  }
+
+  /**
+   * Turn off a colleague's two-step sign-in — the recovery path for a lost
+   * phone AND lost recovery codes. They sign in with their password next, and
+   * enrol again if MFA is required for them. Every session they hold ends.
+   *
+   * Not for your own account: that would let a stolen administrator session
+   * remove the second factor without ever presenting one. Your own factor is
+   * changed from account security, with your password and a current code.
+   */
+  resetMfa(staffId: string, actor: ClinicAuditActor) {
+    if (staffId === actor.userId) {
+      throw new BadRequestException(
+        'Use your own account security settings to change your two-step sign-in.',
+      );
+    }
+    return this.tx(async (client) => {
+      const { rows } = await client.query<{ full_name: string }>(
+        'SELECT full_name FROM users WHERE id = $1',
+        [staffId],
+      );
+      if (!rows[0]) throw new NotFoundException('Staff member not found');
+      const hadFactor = await this.mfa.disable(client, 'clinic', staffId);
+      await revokeAllFor(client, 'user_sessions', staffId, 'mfa_changed');
+      await this.audit.record(client, actor, {
+        action: 'staff.mfa_reset',
+        entityType: 'user',
+        entityId: staffId,
+        summary: `Reset two-step sign-in for ${rows[0].full_name}`,
+        metadata: { hadFactor },
+      });
+      return { reset: true as const, hadFactor };
     });
   }
 
@@ -199,7 +262,7 @@ export class StaffService {
         action: 'salary.recorded',
         entityType: 'salary_payment',
         entityId: r.id,
-        summary: `Paid ${r.amount} salary to ${staff.rows[0]!.full_name}`,
+        summary: `Paid ${await moneyText(client, r.amount)} salary to ${staff.rows[0]!.full_name}`,
         metadata: { staffId, amount: r.amount, paidOn: r.paid_on },
       });
       return { id: r.id, staffId, amount: r.amount, paidOn: r.paid_on, note: r.note, position: r.position };

@@ -21,7 +21,10 @@ const APP_URL = process.env.APP_DATABASE_URL;
 if (!OWNER_URL || !APP_URL) {
   throw new Error(
     'The integration suite needs DATABASE_URL and APP_DATABASE_URL.\n' +
-      '  Locally:  npm run dev:up   (then run with the host URLs from .env)\n' +
+      '  Both are read from the repository .env automatically\n' +
+      '  (jest.integration.config.js -> test/integration/env.setup.js),\n' +
+      '  so reaching this means .env is missing or does not set them.\n' +
+      '  Locally:  cp .env.example .env && npm run dev:up\n' +
       '  APP_DATABASE_URL must point at app_user, not at the owner role, or\n' +
       '  the isolation tests prove nothing.',
   );

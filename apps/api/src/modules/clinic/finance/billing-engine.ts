@@ -4,8 +4,9 @@
  *
  * Pure integer functions. Three rules hold everything together:
  *
- * 1. MONEY IS INTEGER, whole currency units, consistent with every other
- *    money column in the product. No float ever touches a price.
+ * 1. MONEY IS INTEGER MINOR UNITS — cents — consistent with every other
+ *    money column in the product since migration 0006. No float ever touches
+ *    a price. VAT is therefore rounded half-up to the cent, not the euro.
  *
  * 2. DISCOUNTS LIVE ON LINES. A whole-invoice discount cannot coexist with
  *    correct VAT — tax is charged on the discounted value of each taxable
@@ -69,7 +70,7 @@ export function apportion(amount: number, weights: readonly number[]): number[] 
 export interface InvoiceLineInput {
   quantity: number;
   unitPrice: number;
-  /** Absolute discount on this line, whole currency units. */
+  /** Absolute discount on this line, minor units. */
   discountAmount: number;
   /** Basis points. 0 for an exempt service. */
   taxRateBp: number;
@@ -264,13 +265,9 @@ export function collectionRate(billed: number, collected: number): number | null
 /* ══════════════════════ currency ══════════════════════ */
 
 /**
- * Currencies a clinic can be denominated in. One per tenant: there is no
- * conversion anywhere in the system, so a stored integer means the same thing
- * for the whole life of that clinic's data.
+ * Currencies a clinic can be denominated in, one per clinic. Defined in
+ * @dentalcare/shared beside the formatting and parsing that depend on it, and
+ * enforced by the database since 0006; re-exported so this module's existing
+ * importers keep working.
  */
-export const CURRENCIES = ['EUR', 'ALL', 'USD', 'GBP', 'CHF'] as const;
-export type CurrencyCode = (typeof CURRENCIES)[number];
-
-export function isCurrency(v: unknown): v is CurrencyCode {
-  return typeof v === 'string' && (CURRENCIES as readonly string[]).includes(v);
-}
+export { CURRENCIES, isCurrency, type CurrencyCode } from '@dentalcare/shared';

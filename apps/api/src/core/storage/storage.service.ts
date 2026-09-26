@@ -163,6 +163,34 @@ export class StorageService implements OnModuleInit {
     return `tenants/${tenantId}/patients/${patientId}/${randomUUID()}.${extension}`;
   }
 
+  /**
+   * A key for a clinic's own branding (the logo). Same prefix discipline as
+   * patient files, so a per-clinic export or lifecycle rule still covers it.
+   */
+  buildBrandingKey(tenantId: string, extension: string): string {
+    return `tenants/${tenantId}/branding/logo-${randomUUID()}.${extension}`;
+  }
+
+  /**
+   * Read an object back. Used server-side only — embedding the logo in an
+   * invoice PDF — and never to proxy a patient file to a browser, which gets
+   * a signed URL instead. Null when the object is gone.
+   */
+  async get(key: string, maxBytes = 5 * 1024 * 1024): Promise<Uint8Array | null> {
+    const { aws, bucket } = this.requireStorage();
+    try {
+      const res = await aws.fetch(this.objectUrl(bucket, key), { method: 'GET' });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = new Uint8Array(await res.arrayBuffer());
+      if (body.byteLength > maxBytes) throw new Error(`object is ${body.byteLength} bytes`);
+      return body;
+    } catch (err) {
+      this.log.warn(`Could not read ${key}: ${String(err)}`);
+      return null;
+    }
+  }
+
   static checksum(body: Buffer): string {
     return createHash('sha256').update(body).digest('hex');
   }

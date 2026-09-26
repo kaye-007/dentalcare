@@ -5,6 +5,256 @@ All notable changes to this project. Format follows
 
 ## [Unreleased] — production-hardening branch
 
+### Platform console — 2026-09-19
+
+The NODE X console (`apps/admin-web`) moves onto the clinic app's Ink & Ember
+design system — its stylesheet said it was kept in step, and it had drifted to
+the old teal — and gains the screens an operator was missing. No migration.
+
+Verified: the new integration suite `platform-console` with `api-platform` and
+`platform-billing` (35 tests), `typecheck`, `build` and lint for the console,
+`tsc` for the API, and every screen rendered in Chrome at desktop and phone
+widths against the local stack with no console errors.
+
+#### Added
+
+- **Overview** (`/`, now the home screen): MRR, clinics, this month's
+  collection and overdue money; a *Needs attention* list (overdue invoices,
+  trials ending within three days, expired trials still active, an unbilled
+  month, clinics quiet for 30 days); invoiced vs collected by month; revenue
+  by plan; new clinics per month; the latest console activity.
+- **Plans** (`/plans`): the price list with clinics, paying clinics and MRR
+  per plan; create, rename, reprice and retire. A price change shows its
+  effect on MRR before it is saved and applies from the next billing run.
+  API: `GET /platform/plans/all`, `POST /platform/plans`,
+  `PATCH /platform/plans/:id`, each audited (`plan.created`, `plan.updated`,
+  `plan.retired`, `plan.restored`). The code is fixed once created, because
+  invoices snapshot it.
+- **Activity** (`/activity`): every console action across all clinics,
+  newest first, grouped by day, filterable by clinics / billing / plans and
+  searchable. API: `GET /platform/activity`, keyset-paged on
+  (created_at, id) with a microsecond cursor.
+- **Command palette** (Ctrl/⌘ K): jump to any clinic by name, subdomain or
+  owner, to any screen, or start a clinic or a demo — from anywhere.
+- **A clinic's page** is split into Overview, Staff, Billing, Activity and
+  Settings tabs; shows six months of appointments and invoices from the
+  existing `/platform/usage/:id` (never the clinic's own revenue); records a
+  payment in place; checks a new subdomain as it is typed.
+- **Clinics, Billing, Usage**: sortable columns, search, CSV export (with a
+  BOM for Albanian names and formula-prefix escaping); an *On trial* filter
+  and a plan filter; billing can be run for either of the two previous months,
+  with a warning that those invoices may be overdue on issue.
+- Confirmation dialogs replace `window.confirm`; success is a toast; a
+  password or a new clinic's hand-over cannot be dismissed by a stray click.
+
+### Albanian market — 2026-09-17
+
+Migration 0012. Patient messages beyond reminders, a Messages screen, TVSH by
+treatment category, EUR on estimates, fiscal certificates as issued, printed
+fiscal receipts, camera capture and identity documents.
+
+Verified this time, on a fresh PostgreSQL 16: migrations 0001–0012 up, 0012
+down and up again, the 0012 backfill and its rollback guard on real rows, the
+unit suite (653) and the integration suite (374), `npm run typecheck`,
+`npm run build`, lint, and the Worker bundle (898 KiB gzipped).
+
+#### Fixed
+
+- **Profile photos could not be saved.** `upload()` returned a spread of the
+  document, which dropped its non-enumerable storage key, so
+  `setProfilePhoto` signed a link for `undefined` and failed after the file
+  was already stored — staff saw an error and a stray photo in Documents.
+- **Ad-hoc invoices carried no TVSH.** "New invoice" wrote every line at 0%
+  whatever the treatment; only plan invoices applied VAT. Both now take the
+  rate from the treatment's category and the clinic rate, through one engine.
+- **The camera was blocked in production** by `Permissions-Policy: camera=()`
+  on the clinic app. It is `camera=(self)` there; the console keeps `()`.
+- **WhatsApp template configuration** is validated with the new per-kind form;
+  the old `en:HX…,sq:HX…` form still means appointment reminders.
+
+#### Added
+
+- **Messages** (`/messages`, nav and top bar): one conversation per patient,
+  filtered by WhatsApp / Viber / SMS / recorded; every message as sent, with
+  who sent it, the number, delivery state, attempts and errors. Compose an
+  appointment reminder, a post-procedure follow-up or an unpaid-balance notice
+  with a word-for-word preview, and send by WhatsApp, Viber, SMS, the staff
+  member's own WhatsApp (hand-off link) or record only. Opt-outs are honoured
+  on every route to the phone. Opening a conversation is written to the
+  patient access log (`messages`).
+- **Built-in Albanian and English wording** for the three kinds
+  (`packages/shared/src/messages.ts`). None names a treatment.
+- **TVSH categories** on treatments and procedure codes: medical (exempt) or
+  cosmetic (the clinic rate, 20% suggested). Invoice detail shows TVSH per
+  line and per rate.
+- **Printable estimate** for a treatment plan, priced by the invoice engine,
+  with a second currency (EUR by default for lek clinics) at the day's
+  published rate or the clinic's fixed rate, printed with its date and source.
+- **Fiscal certificate upload as .p12/.pfx with its password**, read in-process:
+  PBES2 (AES, 3DES), PKCS#12 PBE (3DES, RC2-40/128), SHA-1/-256/-384/-512
+  MAC, BER or DER. A wrong password says so. The PEM path remains.
+- **Fiscal receipt** (`/invoices/:id/receipt`, 80 mm): seller NIPT and address,
+  cashier name and operator code, items with TVSH, TVSH summary per rate,
+  payment, NIVF, NSLF, codes and the verification QR — built from the signed
+  registration. The A4 PDF gains TVSH per rate and the cashier's name.
+- **Camera capture** for profile photos, clinical photos (tagged progress) and
+  ID documents, with a card outline; a fallback to the device camera app.
+- **`id_document`** document kind.
+- New clinics created without a currency default to **ALL** with EUR quotes.
+
+#### Migration 0012
+
+`reminders` gains `patient_id` (backfilled, NOT NULL, kept equal to the
+appointment's patient by a trigger), `purpose` and `invoice_id`;
+`appointment_id` becomes optional except for reminders; automatic sending
+stays reminders-only. Adds `id_document`, the `messages` access-log resource,
+`clinic_settings.quote_currency / fx_rate_source / fx_fixed_rate` and the
+`fx_rates` cache. The down migration refuses while any non-reminder message
+exists.
+
+#### Not done
+
+- Live sends through Twilio WhatsApp and Vonage Viber, and the DPT CIS test
+  service, are still unexercised; each needs real accounts.
+- Invoices and payments in EUR. The ledger stays single-currency; EUR is a
+  quote currency on estimates only.
+- Automatic follow-ups and balance notices; replies from patients.
+
+### Clinic operations — 2026-09-15
+
+Migrations 0009–0011. Reception scope, multi-channel reminders, clinic
+profile and calendar, patient import, clinical photos, invoice PDFs, Albanian
+fiscalization, and console lifecycle controls.
+
+#### Breaking
+
+- **Reception no longer writes the clinical record.** `clinical:write` is
+  withdrawn from `receptionist`; two new permissions take over part of what it
+  covered. `history:write` (allergies, conditions, medications, notes) is held
+  by every role including reception; `plans:write` (treatment plans) by the
+  clinical roles. Reception still reads the chart, perio and plans. A
+  receptionist who charted before this release gets 403 on those routes.
+- **Reminders go out 12 or 24 hours before, nothing else** (0009). Stored
+  values are moved to the nearer of the two.
+- **`RecordPaymentDto.method` is optional** when `methodId` names one of the
+  clinic's payment methods. Clients sending `method` alone keep working.
+- **Tenant status gains `deleted`** (0011). `PATCH …/status` refuses a deleted
+  clinic; `POST …/restore` brings it back as suspended.
+
+#### Added
+
+- Permissions `history:write`, `plans:write`, `invoices:fiscalize` (admin,
+  reception), `patients:import` (admin only).
+- Reminder channels: WhatsApp Business through Twilio (approved Content
+  template) and Viber through the Vonage Messages API, chosen per clinic and
+  per patient, falling back to SMS and then the log. Placeholders `{dentist}`
+  and `{clinic_address}`.
+- Clinic settings: registered name, NIPT, registration number, website, brand
+  colour, logo (JPEG, private bucket), invoice prefix, default VAT, payment
+  terms, custom payment methods mapped to cash/card/bank. Settings page in tabs.
+- Holiday calendar and per-clinician time off (`/closures`); free-slot search
+  answers `closed`, and the booking panel warns.
+- Patient import (`/patient-imports/preview`, `/patient-imports`): CSV parsed
+  in the browser, column mapping, shared validation, duplicate detection by
+  national ID and phone, per-batch atomic commit with conditions and opening
+  balances, an import record and an activity entry.
+- Patients: national ID (unique per clinic), preferred reminder channel,
+  profile photo cropped in the browser (EXIF dropped).
+- Documents: upload dialog with type, before/after/progress tag, tooth, date
+  and caption; thumbnails through one batch of signed links; before/after
+  comparison.
+- Invoice PDF (`GET /invoices/:id/pdf`), written without a PDF library, with
+  logo, NIPT, lines, totals, payments, and — when registered — the fiscal
+  block with QR, NIVF and NSLF.
+- Fiscalization (`/fiscal/*`, `/invoices/:id/fiscal`): NSLF computed and
+  signed with the clinic's certificate (sealed at rest), RegisterInvoice and
+  RegisterCashDeposit requests with XML-DSig, per-register order numbers,
+  offline issue with automatic subsequent delivery, locks on cancel and void.
+- Console: per-clinic usage (active users, patients, appointments this month,
+  storage, plan), fleet overview, three-step onboarding with live subdomain
+  check and first settings, plan and address changes, soft delete with a
+  30-day restore window, and an audited per-clinic JSON export.
+
+#### Fixed
+
+- Deleting a patient document failed with a 500: it returned a `title` column
+  the table does not have.
+- Invoice detail never showed a voided payment as voided: the void columns
+  were selected and then dropped.
+
+#### Not verified
+
+No database was available when this was written: migrations 0009–0011 and
+the integration suite have not been run. Fiscalization is checked against an
+independent XML-DSig implementation, not against the DPT test service. WhatsApp,
+Viber and CIS have not been called for real. See SECURITY_AUDIT.md.
+
+### Production hardening — 2026-09-14
+
+Migrations 0003–0008. Closes the gaps recorded in the architecture review:
+MFA that existed only as a column, unrevocable sessions, a clinical record
+reception could delete, money without cents or a single currency, stock
+without lots, and reminders that sent nothing.
+
+#### Breaking
+
+- **Every amount is minor units.** 0006 multiplies stored money by 100, and
+  every amount the API accepts or returns is cents (`3750` is €37.50). The API
+  and both SPAs must be deployed together.
+- **Clinical deletes are gone.** `DELETE` on findings, procedures, perio exams,
+  notes and medical history is replaced by `POST …/:id/entered-in-error` with a
+  reason; `POST …/:id/sign` needs `clinical:sign`.
+- **Sign-in changed.** `POST /auth/login` may answer `mfa_required` or
+  `mfa_enrollment_required` instead of tokens. Refresh tokens are opaque and
+  rotate on every use; tokens issued before 0005 no longer work, so everyone
+  signs in again after the deploy.
+- **Roles.** `admin`, `dentist`, `hygienist`, `assistant`, `receptionist`
+  (0003).
+- **Production requires** `MFA_ENFORCEMENT=required` and `MFA_ENCRYPTION_KEYS`.
+- **Reminders** have statuses `pending`, `sending`, `sent`, `delivered`,
+  `failed`, `skipped`; the runtime role can no longer delete them (0008). The
+  Cron Trigger runs every 15 minutes instead of hourly.
+
+#### Security
+
+- TOTP two-step sign-in with sealed secrets, recovery codes, lockout and
+  replay protection; required for administrators and the console; staff and
+  console resets.
+- Server-side sessions with rotation, family revocation on replay, revocation
+  on password and role changes, and a signed-in-devices list.
+- Clinical record: DELETE revoked, withdrawal with reason, signing locks rows,
+  every change in the activity trail, every record opening in an append-only
+  access log.
+- SMS delivery receipts authenticated by Twilio's signature, applied under the
+  named clinic's RLS; the message leaves the treatment and surname off a lock
+  screen; provider error text never reaches the application log.
+
+#### Added
+
+- Currency per clinic, payer type on invoices and ledger entries, a money
+  input that accepts either decimal mark.
+- Inventory lots with expiry warnings, first-expiry-first-out usage, recall
+  with the list of patients who received a lot.
+- Twilio SMS behind `SMS_PROVIDER`, retries on 429/503, patient opt-out,
+  per-clinic time zone, language, wording and country code, SMS part count in
+  Settings.
+- Staff two-step reset, clinic-wide MFA requirement, record-access card on the
+  patient profile.
+
+#### Fixed
+
+- **Cancelling an invoice** failed with a 500 (it never set `cancelled_at`)
+  and would have left the charge on the patient's ledger. It now reverses it.
+- **Reminder times** were rendered in the server's zone — UTC on Cloudflare.
+- **Perio exam creation** read back its row from another transaction.
+
+#### Not verified
+
+- No SMS has been sent through Twilio itself; no receipt has come from it.
+- Hyperdrive caching on the real configs (`cf:check-caching` added, not run
+  against an account).
+- Neither runtime has served real clinic traffic; which is primary is open.
+
 ### Cloudflare migration — 2026-08-27
 
 The API runs on Cloudflare Workers; both SPAs are static-asset Workers. The
@@ -179,8 +429,10 @@ records what shipped at the time, not what is on disk today.
   constraint still holds for the container fallback, where the scheduler is
   back in-process and has no distributed lock. (`render.yaml`, which pinned
   `numInstances: 1`, has been deleted.)
-- No refresh-token rotation or revocation; logout is client-side only.
-- One `JWT_SECRET` shared across both planes.
+- ~~No refresh-token rotation or revocation; logout is client-side only.~~
+  Superseded by migration 0005 (2026-09-14).
+- ~~One `JWT_SECRET` shared across both planes.~~ Superseded by
+  `PLATFORM_JWT_SECRET`, required in production.
 - No CI pipeline. Tests exist but nothing runs them automatically.
 
 ---

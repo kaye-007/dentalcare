@@ -256,6 +256,45 @@ export const OUTLINE_RANK: Record<ToothOutline, number> = {
   phantom: 4,
 };
 
+/* ══════════════════════ display names ══════════════════════ */
+
+const PERMANENT_POSITION = [
+  '',
+  'central incisor',
+  'lateral incisor',
+  'canine',
+  'first premolar',
+  'second premolar',
+  'first molar',
+  'second molar',
+  'third molar',
+];
+const PRIMARY_POSITION = [
+  '',
+  'central incisor',
+  'lateral incisor',
+  'canine',
+  'first molar',
+  'second molar',
+];
+
+/**
+ * "Maxillary left lateral incisor" for 22, "Mandibular right primary first
+ * molar" for 84. Presentation, so it lives here rather than in the shared
+ * anatomy: the API has no use for the words, only for the number.
+ */
+export function anatomicalName(tooth: number): string {
+  const quad = Math.floor(tooth / 10);
+  const pos = tooth % 10;
+  const primary = quad >= 5;
+  const q = primary ? quad - 4 : quad;
+  const name = (primary ? PRIMARY_POSITION : PERMANENT_POSITION)[pos];
+  if (!name || q < 1 || q > 4) return `Tooth ${tooth}`;
+  const jaw = q === 1 || q === 2 ? 'Maxillary' : 'Mandibular';
+  const side = q === 1 || q === 4 ? 'right' : 'left';
+  return `${jaw} ${side} ${primary ? 'primary ' : ''}${name}`;
+}
+
 // WHOLE_TOOTH_CONDITIONS used to be repeated here. It comes from
 // @dentalcare/shared now, via the re-export above, so the list the chart
 // draws from and the list the API validates against are the same list.

@@ -7,6 +7,10 @@ import {
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
+import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
+import { withdrawEntry } from '@/core/audit/clinical-record';
+import { StorageService } from '@/core/storage/storage.service';
+import { normalizeNationalId } from '@dentalcare/shared';
 import {
   ArchivePatientDto,
   CreatePatientDto,
@@ -32,6 +36,20 @@ interface PatientRow {
   archived_at: string | null;
   archive_reason: string | null;
   archived_by_name?: string | null;
+  reminders_opt_out?: boolean;
+  reminders_opt_out_at?: string | null;
+  reminders_opt_out_source?: 'staff' | 'patient' | 'provider' | null;
+  national_id?: string | null;
+  preferred_channel?: string | null;
+  photo_document_id?: string | null;
+}
+
+/** A unique-index refusal on the national ID, in words. */
+function rethrowNationalId(err: unknown): never {
+  if ((err as { code?: string; constraint?: string }).code === '23505') {
+    throw new ConflictException('Another patient in this clinic already has this national ID');
+  }
+  throw err;
 }
 
 function mapPatient(r: PatientRow) {
@@ -58,19 +76,42 @@ function mapPatient(r: PatientRow) {
     archivedAt: r.archived_at,
     archiveReason: r.archive_reason,
     archivedByName: r.archived_by_name ?? null,
+    // Whether this patient is sent reminders, and — when not — who decided:
+    // staff, the patient replying STOP, or the SMS provider.
+    remindersOptOut: r.reminders_opt_out ?? false,
+    remindersOptOutAt: r.reminders_opt_out_at ?? null,
+    remindersOptOutSource: r.reminders_opt_out_source ?? null,
+    nationalId: r.national_id ?? null,
+    preferredChannel: r.preferred_channel ?? null,
+    photoDocumentId: r.photo_document_id ?? null,
   };
 }
 
 const FULL = `id, first_name, last_name, phone, email, gender,
   birth_date::text AS birth_date, address, city, postal_code, status, created_at,
   emergency_contact_name, emergency_contact_relationship, emergency_contact_phone,
-  archived_at, archive_reason`;
+  archived_at, archive_reason,
+  reminders_opt_out, reminders_opt_out_at, reminders_opt_out_source,
+  national_id, preferred_channel, photo_document_id`;
 
+/**
+ * Patients and their notes.
+ *
+ * Every change is written to the activity trail in the same transaction. The
+ * trail records WHICH fields changed, never their values: a phone number or
+ * an address in the audit log is a copy of personal data in a table built to
+ * be impossible to correct.
+ *
+ * A patient cannot be deleted by this service or by the database role behind
+ * it (0004); a note cannot be edited, only withdrawn as entered in error.
+ */
 @Injectable()
 export class PatientsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
+    private readonly audit: ClinicAuditService,
+    private readonly storage: StorageService,
   ) {}
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
@@ -95,7 +136,8 @@ export class PatientsService {
         const i = params.length;
         where.push(
           `(first_name ILIKE $${i} OR last_name ILIKE $${i} OR coalesce(phone,'') ILIKE $${i}
-            OR coalesce(email,'') ILIKE $${i} OR (first_name || ' ' || last_name) ILIKE $${i})`,
+            OR coalesce(email,'') ILIKE $${i} OR (first_name || ' ' || last_name) ILIKE $${i}
+            OR coalesce(national_id,'') ILIKE $${i})`,
         );
       }
       const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -150,7 +192,7 @@ export class PatientsService {
         substance: string;
       }>(
         `SELECT severity, substance FROM patient_allergies
-          WHERE patient_id = $1
+          WHERE patient_id = $1 AND entered_in_error_at IS NULL
           ORDER BY CASE severity
                      WHEN 'severe' THEN 0 WHEN 'moderate' THEN 1 ELSE 2
                    END, lower(substance)`,
@@ -161,12 +203,24 @@ export class PatientsService {
         `SELECT n.id, n.body, n.created_at, u.full_name AS author_name
            FROM patient_notes n
            LEFT JOIN users u ON u.id = n.author_id
-          WHERE n.patient_id = $1
+          WHERE n.patient_id = $1 AND n.entered_in_error_at IS NULL
           ORDER BY n.created_at DESC`,
         [id],
       );
+
+      // The profile photo travels as a short-lived link. Opening the record
+      // is already in the access log, and the picture is part of the record.
+      let photoUrl: string | null = null;
+      if (rows[0].photo_document_id && this.storage.isConfigured) {
+        const { rows: photo } = await client.query<{ storage_key: string }>(
+          'SELECT storage_key FROM patient_documents WHERE id = $1 AND deleted_at IS NULL',
+          [rows[0].photo_document_id],
+        );
+        if (photo[0]) photoUrl = await this.storage.signedViewUrl(photo[0].storage_key).catch(() => null);
+      }
       return {
         ...mapPatient(rows[0]),
+        photoUrl,
         notes: notes.rows,
         allergySummary: {
           count: allergyRows.length,
@@ -177,7 +231,7 @@ export class PatientsService {
     });
   }
 
-  async create(dto: CreatePatientDto, userId: string) {
+  async create(dto: CreatePatientDto, actor: ClinicAuditActor) {
     // Only first and last name are mandatory; every other field is optional.
     // Normalize empty strings to NULL so direct API clients are not forced
     // to omit keys to pass validation downstream.
@@ -189,8 +243,8 @@ export class PatientsService {
            (tenant_id, first_name, last_name, phone, email, gender, birth_date,
             address, city, postal_code, status, created_by,
             emergency_contact_name, emergency_contact_relationship,
-            emergency_contact_phone)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            emergency_contact_phone, national_id, preferred_channel)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING ${FULL}`,
         [
           tenantId,
@@ -206,17 +260,26 @@ export class PatientsService {
           // A patient cannot be created straight into the archive; archiving
           // is an explicit, attributed action.
           dto.status === 'archived' ? 'active' : dto.status ?? 'active',
-          userId,
+          actor.userId,
           opt(dto.emergencyContactName),
           opt(dto.emergencyContactRelationship),
           opt(dto.emergencyContactPhone),
+          dto.nationalId ? normalizeNationalId(dto.nationalId) : null,
+          dto.preferredChannel || null,
         ],
-      );
-      return mapPatient(rows[0]!);
+      ).catch(rethrowNationalId);
+      const row = rows[0]!;
+      await this.audit.record(client, actor, {
+        action: 'patient.created',
+        entityType: 'patient',
+        entityId: row.id,
+        summary: `Registered ${row.first_name} ${row.last_name}`,
+      });
+      return mapPatient(row);
     });
   }
 
-  async update(id: string, dto: UpdatePatientDto) {
+  async update(id: string, dto: UpdatePatientDto, actor: ClinicAuditActor) {
     const map: Record<string, string> = {
       firstName: 'first_name',
       lastName: 'last_name',
@@ -231,7 +294,12 @@ export class PatientsService {
       emergencyContactName: 'emergency_contact_name',
       emergencyContactRelationship: 'emergency_contact_relationship',
       emergencyContactPhone: 'emergency_contact_phone',
+      nationalId: 'national_id',
+      preferredChannel: 'preferred_channel',
     };
+    if (typeof dto.nationalId === 'string' && dto.nationalId.trim() !== '') {
+      dto.nationalId = normalizeNationalId(dto.nationalId);
+    }
     // Archiving carries a reason and an actor, so it has its own endpoint.
     // Allowing it through the generic PATCH would bypass both.
     if (dto.status === 'archived') {
@@ -241,12 +309,27 @@ export class PatientsService {
     }
     const sets: string[] = [];
     const params: unknown[] = [];
+    const fields: string[] = [];
     for (const [k, col] of Object.entries(map)) {
       const v = (dto as unknown as Record<string, unknown>)[k];
       if (v !== undefined) {
-        params.push(v === '' ? null : v);
+        params.push(v === '' || v === null ? null : v);
         sets.push(`${col} = $${params.length}`);
+        fields.push(k);
       }
+    }
+    // Opting out stamps when, and opting back in clears it, so the three
+    // columns can never disagree — 0008 checks that they do not. A source set
+    // by the patient or the provider is kept if staff tick the box again.
+    if (dto.remindersOptOut !== undefined) {
+      params.push(dto.remindersOptOut);
+      const p = `$${params.length}::boolean`;
+      sets.push(
+        `reminders_opt_out = ${p}`,
+        `reminders_opt_out_at = CASE WHEN ${p} THEN coalesce(reminders_opt_out_at, now()) END`,
+        `reminders_opt_out_source = CASE WHEN ${p} THEN coalesce(reminders_opt_out_source, 'staff') END`,
+      );
+      fields.push('remindersOptOut');
     }
     return this.tx(async (client) => {
       if (sets.length === 0) {
@@ -258,13 +341,23 @@ export class PatientsService {
         return mapPatient(cur.rows[0]);
       }
       params.push(id);
-      const { rows } = await client.query<PatientRow>(
-        `UPDATE patients SET ${sets.join(', ')}, updated_at = now()
-          WHERE id = $${params.length} RETURNING ${FULL}`,
-        params,
-      );
-      if (!rows[0]) throw new NotFoundException('Patient not found');
-      return mapPatient(rows[0]);
+      const { rows } = await client
+        .query<PatientRow>(
+          `UPDATE patients SET ${sets.join(', ')}, updated_at = now()
+            WHERE id = $${params.length} RETURNING ${FULL}`,
+          params,
+        )
+        .catch(rethrowNationalId);
+      const row = rows[0];
+      if (!row) throw new NotFoundException('Patient not found');
+      await this.audit.record(client, actor, {
+        action: 'patient.updated',
+        entityType: 'patient',
+        entityId: id,
+        summary: `Updated ${row.first_name} ${row.last_name}'s details (${fields.join(', ')})`,
+        metadata: { fields },
+      });
+      return mapPatient(row);
     });
   }
 
@@ -273,7 +366,7 @@ export class PatientsService {
    * are referenced by appointments, invoices and tooth records, so the row is
    * kept and flagged with who archived it, when, and why.
    */
-  async archive(id: string, dto: ArchivePatientDto, userId: string) {
+  async archive(id: string, dto: ArchivePatientDto, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
       const { rows: current } = await client.query<{ status: string }>(
         'SELECT status FROM patients WHERE id = $1',
@@ -294,23 +387,32 @@ export class PatientsService {
         [id],
       );
 
+      const reason = dto.reason?.trim() || null;
       const { rows } = await client.query<PatientRow>(
         `UPDATE patients
             SET status = 'archived', archived_at = now(),
                 archived_by = $2, archive_reason = $3, updated_at = now()
           WHERE id = $1
           RETURNING ${FULL}`,
-        [id, userId, dto.reason?.trim() || null],
+        [id, actor.userId, reason],
       );
+      const row = rows[0]!;
+      await this.audit.record(client, actor, {
+        action: 'patient.archived',
+        entityType: 'patient',
+        entityId: id,
+        summary: `Archived ${row.first_name} ${row.last_name}${reason ? `: ${reason}` : ''}`,
+        metadata: reason ? { reason } : {},
+      });
       return {
-        ...mapPatient(rows[0]),
+        ...mapPatient(row),
         upcomingAppointmentsAffected: Number(open[0]?.count ?? 0),
       };
     });
   }
 
-  /** Undo an archive. The reason is cleared; the audit trail is the notes. */
-  async restore(id: string) {
+  /** Undo an archive. The reason is cleared; the activity trail keeps it. */
+  async restore(id: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
       const { rows } = await client.query<PatientRow>(
         `UPDATE patients
@@ -320,37 +422,62 @@ export class PatientsService {
           RETURNING ${FULL}`,
         [id],
       );
-      if (!rows[0]) {
+      const row = rows[0];
+      if (!row) {
         throw new NotFoundException('No archived patient with that id');
       }
-      return mapPatient(rows[0]);
+      await this.audit.record(client, actor, {
+        action: 'patient.restored',
+        entityType: 'patient',
+        entityId: id,
+        summary: `Restored ${row.first_name} ${row.last_name} from the archive`,
+      });
+      return mapPatient(row);
     });
   }
 
-  async addNote(patientId: string, body: string, userId: string) {
+  async addNote(patientId: string, body: string, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const exists = await client.query('SELECT 1 FROM patients WHERE id = $1', [
-        patientId,
-      ]);
-      if (!exists.rowCount) throw new NotFoundException('Patient not found');
-      const { rows } = await client.query(
+      const { rows: patient } = await client.query<{ name: string }>(
+        `SELECT first_name || ' ' || last_name AS name FROM patients WHERE id = $1`,
+        [patientId],
+      );
+      if (!patient[0]) throw new NotFoundException('Patient not found');
+      const { rows } = await client.query<{ id: string; body: string; created_at: string }>(
         `INSERT INTO patient_notes (tenant_id, patient_id, body, author_id)
          VALUES ($1,$2,$3,$4)
          RETURNING id, body, created_at`,
-        [tenantId, patientId, body, userId],
+        [tenantId, patientId, body, actor.userId],
       );
-      return rows[0];
+      const note = rows[0]!;
+      await this.audit.record(client, actor, {
+        action: 'clinical.note_added',
+        entityType: 'patient_note',
+        entityId: note.id,
+        summary: `Added a note for ${patient[0].name}`,
+        metadata: { patientId },
+      });
+      return note;
     });
   }
 
-  async deleteNote(noteId: string) {
+  /** Withdraw a note as entered in error. Notes are never edited or deleted. */
+  async withdrawNote(noteId: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      const res = await client.query('DELETE FROM patient_notes WHERE id = $1', [
-        noteId,
-      ]);
-      if (!res.rowCount) throw new NotFoundException('Note not found');
-      return { deleted: true };
+      await withdrawEntry<{ patient_id: string; entered_in_error_at: unknown }>(
+        client,
+        this.audit,
+        actor,
+        {
+          table: 'patient_notes',
+          id: noteId,
+          reason,
+          action: 'clinical.note_withdrawn',
+          describe: () => 'a note',
+        },
+      );
+      return { withdrawn: true as const };
     });
   }
 }

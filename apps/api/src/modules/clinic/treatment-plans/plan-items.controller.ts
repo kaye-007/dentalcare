@@ -19,13 +19,13 @@ export class PlanItemsController {
   constructor(private readonly plans: TreatmentPlansService) {}
 
   @Patch(':id')
-  @RequirePermissions('clinical:write')
+  @RequirePermissions('plans:write')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePlanItemDto) {
     return this.plans.updateItem(id, dto);
   }
 
   @Delete(':id')
-  @RequirePermissions('clinical:write')
+  @RequirePermissions('plans:write')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.plans.removeItem(id);
   }

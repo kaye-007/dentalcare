@@ -1,344 +1,370 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Building2, Rocket, Copy, Check } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Building2, ChevronRight, Download, Rocket, Search } from 'lucide-react';
 import {
   api,
-  ApiError,
-  generatePassword,
+  clinicHost,
+  formatBytes,
+  formatEuro,
   trialState,
+  type Plan,
+  type PlatformOverview,
   type TenantRow,
   type TenantStatus,
-  type Plan,
 } from '../lib/api';
+import { downloadCsv, fmtDate, fmtNumber, stamp } from '../lib/format';
+import {
+  ClinicMark,
+  Empty,
+  SkeletonRows,
+  SortHeader,
+  STATUS_LABEL,
+  StatusPill,
+  TrialPill,
+  useSort,
+} from '../components/ui';
+import { useShell } from '../components/shell';
 
-const STATUS_LABEL: Record<TenantStatus, string> = {
-  active: 'Active',
-  suspended: 'Suspended',
-  archived: 'Archived',
+type Filter = 'live' | 'trial' | TenantStatus;
+type SortKey = 'name' | 'plan' | 'users' | 'patients' | 'appts' | 'storage' | 'created';
+
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'live', label: 'All live' },
+  { key: 'active', label: 'Active' },
+  { key: 'trial', label: 'On trial' },
+  { key: 'suspended', label: 'Suspended' },
+  { key: 'archived', label: 'Archived' },
+  { key: 'deleted', label: 'Deleted' },
+];
+
+function onTrial(t: TenantRow) {
+  return trialState(t.trial_ends_at).kind === 'running';
+}
+
+function matches(t: TenantRow, f: Filter) {
+  if (f === 'live') return t.status !== 'deleted';
+  if (f === 'trial') return t.status === 'active' && onTrial(t);
+  return t.status === f;
+}
+
+const SORTERS: Record<SortKey, (a: TenantRow, b: TenantRow) => number> = {
+  name: (a, b) => a.name.localeCompare(b.name),
+  plan: (a, b) => (a.price_monthly ?? -1) - (b.price_monthly ?? -1),
+  users: (a, b) => a.active_user_count - b.active_user_count,
+  patients: (a, b) => a.patient_count - b.patient_count,
+  appts: (a, b) => a.appointments_this_month - b.appointments_this_month,
+  storage: (a, b) => a.storage_bytes - b.storage_bytes,
+  created: (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
 };
 
-function StatusPill({ status }: { status: TenantStatus }) {
-  return <span className={`pill pill--${status}`}>{STATUS_LABEL[status]}</span>;
-}
-
-/** The countdown, in the words the person reading it would use. */
-function TrialCell({ trialEndsAt }: { trialEndsAt: string | null }) {
-  const t = trialState(trialEndsAt);
-  if (t.kind === 'paid') return <span className="muted">Paid</span>;
-  if (t.kind === 'expired') {
-    return (
-      <span className="pill pill--suspended">
-        {t.daysAgo === 0 ? 'Expired today' : `Expired ${t.daysAgo}d ago`}
-      </span>
-    );
-  }
-  return (
-    <span className={`pill ${t.daysLeft <= 2 ? 'pill--warn' : 'pill--trial'}`}>
-      {t.daysLeft === 1 ? '1 day left' : `${t.daysLeft} days left`}
-    </span>
-  );
-}
-
-function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
+/** Every clinic on the platform, with what it uses and where it stands. */
 export default function TenantsPage() {
   const navigate = useNavigate();
-  const [tenants, setTenants] = useState<TenantRow[]>([]);
+  const { version, openCreate } = useShell();
+  const [tenants, setTenants] = useState<TenantRow[] | null>(null);
+  const [overview, setOverview] = useState<PlatformOverview | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState<'clinic' | 'demo' | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('live');
+  const [plan, setPlan] = useState<string>('any');
+  const [q, setQ] = useState('');
+  const { sort, onSort } = useSort<SortKey>('created', 'desc', ['name']);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const [t, p] = await Promise.all([api.tenants(), api.plans()]);
-      setTenants(t);
-      setPlans(p);
-    } finally {
-      setLoading(false);
-    }
-  }
   useEffect(() => {
-    void load();
-  }, []);
-
-  async function changeStatus(id: string, status: TenantStatus) {
-    setBusyId(id);
-    try {
-      await api.setStatus(id, status);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  }
+    Promise.all([api.tenants(), api.plans(), api.overview()])
+      .then(([t, p, o]) => {
+        setTenants(t);
+        setPlans(p);
+        setOverview(o);
+      })
+      .catch(() => setTenants([]));
+  }, [version]);
 
   const counts = useMemo(() => {
-    const c = { active: 0, suspended: 0, archived: 0 };
-    tenants.forEach((t) => (c[t.status] += 1));
+    const c = {} as Record<Filter, number>;
+    for (const f of FILTERS)
+      c[f.key] = (tenants ?? []).filter((t) => matches(t, f.key)).length;
     return c;
   }, [tenants]);
+
+  const visible = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const rows = (tenants ?? []).filter(
+      (t) =>
+        matches(t, filter) &&
+        (plan === 'any' || (plan === 'none' ? !t.plan_id : t.plan_id === plan)) &&
+        (!term ||
+          t.name.toLowerCase().includes(term) ||
+          t.subdomain.includes(term) ||
+          (t.owner_email ?? '').toLowerCase().includes(term)),
+    );
+    const cmp = SORTERS[sort.key];
+    return rows.sort((a, b) => (sort.dir === 'asc' ? cmp(a, b) : cmp(b, a)));
+  }, [tenants, filter, plan, q, sort]);
+
+  function exportCsv() {
+    downloadCsv(
+      `clinics-${stamp()}.csv`,
+      [
+        'Clinic',
+        'Address',
+        'Owner',
+        'Status',
+        'Plan',
+        'Price / month (EUR)',
+        'Trial ends',
+        'Active users',
+        'Users',
+        'Patients',
+        'Appointments this month',
+        'Storage (bytes)',
+        'Created',
+      ],
+      visible.map((t) => [
+        t.name,
+        clinicHost(t.subdomain),
+        t.owner_email,
+        STATUS_LABEL[t.status],
+        t.plan_name,
+        t.price_monthly !== null ? t.price_monthly / 100 : null,
+        t.trial_ends_at?.slice(0, 10) ?? null,
+        t.active_user_count,
+        t.user_count,
+        t.patient_count,
+        t.appointments_this_month,
+        t.storage_bytes,
+        t.created_at.slice(0, 10),
+      ]),
+    );
+  }
 
   return (
     <div className="page">
       <div className="page__head">
-        <div>
-          <h1>Clinics</h1>
-          <p className="muted">
-            {tenants.length} total · {counts.active} active · {counts.suspended} suspended ·{' '}
-            {counts.archived} archived
+        <div className="page__head-main">
+          <h1 className="page__title">Clinics</h1>
+          <p className="page__meta">
+            {overview
+              ? `${overview.clinics.active} active · ${overview.trials} on trial · ${fmtNumber(overview.patients)} patients across the fleet`
+              : 'Every clinic on the platform, with what it uses.'}
           </p>
         </div>
-        <div className="actions">
-          <button className="btn btn--ghost" onClick={() => setShowCreate('demo')}>
-            <Rocket size={16} /> New demo (7 days)
+        <div className="page__actions">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={exportCsv}
+            disabled={!visible.length}
+          >
+            <Download size={15} aria-hidden /> Export CSV
           </button>
-          <button className="btn btn--primary" onClick={() => setShowCreate('clinic')}>
-            <Plus size={16} /> New clinic
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => openCreate(true)}
+          >
+            <Rocket size={15} aria-hidden /> New demo
           </button>
         </div>
       </div>
 
       <div className="card">
-        {loading ? (
-          <div className="pad muted">Loading…</div>
-        ) : tenants.length === 0 ? (
-          <div className="empty">
-            <Building2 size={22} />
-            <p>No clinics yet. Create your first one.</p>
-          </div>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Clinic</th>
-                <th>Owner</th>
-                <th>Plan</th>
-                <th>Trial</th>
-                <th>Users</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th className="ta-r">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tenants.map((t) => (
-                <tr key={t.id} className="trow" onClick={() => navigate(`/tenants/${t.id}`)}>
-                  <td>
-                    <div className="cell-main">{t.name}</div>
-                    <div className="cell-sub">{t.subdomain}.dentalcare.app</div>
-                  </td>
-                  <td className="muted">{t.owner_email ?? '—'}</td>
-                  <td>{t.plan_name ?? '—'}</td>
-                  <td><TrialCell trialEndsAt={t.trial_ends_at} /></td>
-                  <td>{t.user_count}</td>
-                  <td><StatusPill status={t.status} /></td>
-                  <td className="muted">{fmtDate(t.created_at)}</td>
-                  <td className="ta-r" onClick={(e) => e.stopPropagation()}>
-                    <div className="actions">
-                      {t.status !== 'active' && (
-                        <button className="tbtn" disabled={busyId === t.id}
-                          onClick={() => changeStatus(t.id, 'active')}>Reactivate</button>
-                      )}
-                      {t.status === 'active' && (
-                        <button className="tbtn tbtn--warn" disabled={busyId === t.id}
-                          onClick={() => changeStatus(t.id, 'suspended')}>Suspend</button>
-                      )}
-                      {t.status !== 'archived' && (
-                        <button className="tbtn" disabled={busyId === t.id}
-                          onClick={() => changeStatus(t.id, 'archived')}>Archive</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {showCreate && (
-        <CreateModal
-          plans={plans}
-          demo={showCreate === 'demo'}
-          onClose={() => setShowCreate(null)}
-          onCreated={async () => {
-            await load();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function CreateModal({
-  plans,
-  demo,
-  onClose,
-  onCreated,
-}: {
-  plans: Plan[];
-  demo: boolean;
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [form, setForm] = useState({
-    clinicName: '',
-    subdomain: '',
-    ownerFullName: '',
-    ownerEmail: '',
-    // A demo gets a generated password: it has to be handed over on a call,
-    // and a human choosing one on the spot picks the same weak one every time.
-    ownerPassword: demo ? generatePassword() : '',
-    planId: plans[0]?.id ?? '',
-    trialDays: demo ? 7 : 14,
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  /** Set once the clinic exists, so the credentials can be read out. */
-  const [created, setCreated] = useState<{ subdomain: string } | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const set = (k: keyof typeof form, v: string | number) =>
-    setForm((f) => ({ ...f, [k]: v }));
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setBusy(true);
-    try {
-      const res = await api.createTenant({
-        clinicName: form.clinicName.trim(),
-        subdomain: form.subdomain.trim().toLowerCase(),
-        ownerFullName: form.ownerFullName.trim(),
-        ownerEmail: form.ownerEmail.trim(),
-        ownerPassword: form.ownerPassword,
-        planId: form.planId || undefined,
-        trialDays: Number(form.trialDays),
-      });
-      // The password is not stored anywhere readable and cannot be shown
-      // again, so the modal stays open on the hand-over screen rather than
-      // closing over the one moment it exists in plain text.
-      setCreated({ subdomain: res.subdomain });
-      onCreated();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not create clinic.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (created) {
-    const handover = [
-      `${created.subdomain}.dentalcare.app`,
-      `Email:    ${form.ownerEmail.trim()}`,
-      `Password: ${form.ownerPassword}`,
-    ].join('\n');
-    return (
-      <div className="modal__overlay" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <div className="modal__head">
-            <h2>{form.clinicName} is live</h2>
-            <p className="muted">
-              {demo ? 'Seven days from now it locks to read-only. ' : ''}
-              This password is not stored in readable form — copy it now.
-            </p>
-          </div>
-          <div className="modal__body">
-            <pre className="handover">{handover}</pre>
-            <div className="modal__foot">
+        <div className="card__toolbar">
+          <div className="tabs" role="tablist" aria-label="Filter by status">
+            {FILTERS.map((f) => (
               <button
+                key={f.key}
                 type="button"
-                className="btn btn--ghost"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(handover);
-                  setCopied(true);
-                }}
+                role="tab"
+                aria-selected={filter === f.key}
+                className={`tab${filter === f.key ? ' tab--active' : ''}`}
+                onClick={() => setFilter(f.key)}
               >
-                {copied ? <Check size={15} /> : <Copy size={15} />}
-                {copied ? 'Copied' : 'Copy details'}
+                {f.label}
+                {tenants && <span className="tab__count">{counts[f.key]}</span>}
               </button>
-              <button className="btn btn--primary" onClick={onClose}>Done</button>
-            </div>
+            ))}
+          </div>
+          <div className="toolbar__group">
+            <select
+              className="select"
+              value={plan}
+              onChange={(e) => setPlan(e.target.value)}
+              aria-label="Filter by plan"
+            >
+              <option value="any">All plans</option>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+              <option value="none">No plan</option>
+            </select>
+            <label className="searchbox">
+              <Search size={15} aria-hidden />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Name, subdomain or owner"
+                aria-label="Search clinics"
+              />
+            </label>
           </div>
         </div>
-      </div>
-    );
-  }
 
-  return (
-    <div className="modal__overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__head">
-          <h2>{demo ? 'New demo clinic' : 'New clinic'}</h2>
-          <p className="muted">
-            {demo
-              ? 'A real clinic with a 7-day trial. It locks to read-only when the trial ends — their data stays visible.'
-              : 'Creates the tenant and its first doctor account.'}
-          </p>
-        </div>
-        <form className="modal__body" onSubmit={submit}>
-          <div className="grid2">
-            <label className="field">
-              <span>Clinic name</span>
-              <input value={form.clinicName} onChange={(e) => set('clinicName', e.target.value)}
-                placeholder="Avicena Clinic" required />
-            </label>
-            <label className="field">
-              <span>Subdomain</span>
-              <div className="suffixed">
-                <input value={form.subdomain} onChange={(e) => set('subdomain', e.target.value)}
-                  placeholder="northgate" required />
-                <span>.dentalcare.app</span>
-              </div>
-            </label>
-          </div>
-          <label className="field">
-            <span>Doctor's name</span>
-            <input value={form.ownerFullName} onChange={(e) => set('ownerFullName', e.target.value)}
-              placeholder="Dr. Adam H." required />
-          </label>
-          <div className="grid2">
-            <label className="field">
-              <span>Doctor's email</span>
-              <input type="email" value={form.ownerEmail} onChange={(e) => set('ownerEmail', e.target.value)}
-                placeholder="owner@northgate-dental.eu" required />
-            </label>
-            <label className="field">
-              <span>Temporary password</span>
-              <input value={form.ownerPassword} onChange={(e) => set('ownerPassword', e.target.value)}
-                placeholder="min 8 characters" required />
-            </label>
-          </div>
-          <div className="grid2">
-            <label className="field">
-              <span>Plan</span>
-              <select value={form.planId} onChange={(e) => set('planId', e.target.value)}>
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+        {tenants === null ? (
+          <SkeletonRows rows={6} />
+        ) : visible.length === 0 ? (
+          tenants.length === 0 ? (
+            <Empty
+              icon={Building2}
+              title="No clinics yet"
+              body="Create the first clinic, or a seven-day demo for a sales call."
+              action={
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => openCreate(true)}
+                  >
+                    New demo
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={() => openCreate(false)}
+                  >
+                    New clinic
+                  </button>
+                </>
+              }
+            />
+          ) : (
+            <Empty
+              icon={Search}
+              title="No clinics match"
+              body="Try another name, or clear the filters."
+            />
+          )
+        ) : (
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <SortHeader label="Clinic" k="name" sort={sort} onSort={onSort} />
+                  <SortHeader label="Plan" k="plan" sort={sort} onSort={onSort} />
+                  <th>Status</th>
+                  <SortHeader
+                    label="Users"
+                    k="users"
+                    sort={sort}
+                    onSort={onSort}
+                    numeric
+                  />
+                  <SortHeader
+                    label="Patients"
+                    k="patients"
+                    sort={sort}
+                    onSort={onSort}
+                    numeric
+                  />
+                  <SortHeader
+                    label="Appts / mo"
+                    k="appts"
+                    sort={sort}
+                    onSort={onSort}
+                    numeric
+                  />
+                  <SortHeader
+                    label="Storage"
+                    k="storage"
+                    sort={sort}
+                    onSort={onSort}
+                    numeric
+                  />
+                  <SortHeader label="Created" k="created" sort={sort} onSort={onSort} />
+                  <th aria-label="Open" />
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((t) => (
+                  <tr
+                    key={t.id}
+                    className="trow"
+                    onClick={() => navigate(`/tenants/${t.id}`)}
+                  >
+                    <td>
+                      <div className="namecell">
+                        <ClinicMark name={t.name} />
+                        <div className="namecell__text">
+                          <Link
+                            to={`/tenants/${t.id}`}
+                            className="namecell__title"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {t.name}
+                          </Link>
+                          <span className="namecell__sub">
+                            {clinicHost(t.subdomain)} · {t.owner_email ?? 'no owner'}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {t.plan_name ?? <span className="muted">—</span>}
+                      {t.price_monthly ? (
+                        <span className="cell-sub">{formatEuro(t.price_monthly)}/mo</span>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          gap: 4,
+                        }}
+                      >
+                        <StatusPill status={t.status} />
+                        {t.status === 'active' && (
+                          <TrialPill trialEndsAt={t.trial_ends_at} paidLabel={null} />
+                        )}
+                      </div>
+                    </td>
+                    <td className="num">
+                      {t.active_user_count}
+                      <span className="muted"> / {t.user_count}</span>
+                    </td>
+                    <td className="num">{fmtNumber(t.patient_count)}</td>
+                    <td className="num">{fmtNumber(t.appointments_this_month)}</td>
+                    <td className="num">{formatBytes(t.storage_bytes)}</td>
+                    <td className="muted" style={{ whiteSpace: 'nowrap' }}>
+                      {fmtDate(t.created_at)}
+                    </td>
+                    <td className="table__chevron">
+                      <ChevronRight size={16} aria-hidden />
+                    </td>
+                  </tr>
                 ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Trial (days)</span>
-              <input type="number" min={0} max={365} value={form.trialDays}
-                onChange={(e) => set('trialDays', e.target.value)} />
-            </label>
+              </tbody>
+            </table>
           </div>
-          {error && <p className="auth__error">{error}</p>}
-          <div className="modal__foot">
-            <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
-            <button className="btn btn--primary" disabled={busy}>
-              {busy ? 'Creating…' : 'Create clinic'}
-            </button>
+        )}
+        {tenants && visible.length > 0 && (
+          <div className="card__foot">
+            <span>
+              Showing {visible.length} of {tenants.length} clinic
+              {tenants.length === 1 ? '' : 's'}
+            </span>
+            <span>
+              {formatEuro(
+                visible
+                  .filter((t) => t.status === 'active' && !onTrial(t))
+                  .reduce((s, t) => s + (t.price_monthly ?? 0), 0),
+              )}{' '}
+              a month from these
+            </span>
           </div>
-        </form>
+        )}
       </div>
     </div>
   );

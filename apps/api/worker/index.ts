@@ -128,8 +128,15 @@ export default {
   ): Promise<void> {
     const run = (async () => {
       const app = await boot();
-      const { ReminderSchedulerService } = await import('dentalcare-app-bundle');
-      await app.get(ReminderSchedulerService).tick();
+      const { ReminderSchedulerService, FiscalSchedulerService } = await import(
+        'dentalcare-app-bundle'
+      );
+      // Independent passes: one clinic's reminder trouble must not delay a
+      // fiscal invoice the law wants delivered within 48 hours, or the reverse.
+      await Promise.allSettled([
+        app.get(ReminderSchedulerService).tick(),
+        app.get(FiscalSchedulerService).tick(),
+      ]);
     })();
     ctx.waitUntil(run);
     await run;

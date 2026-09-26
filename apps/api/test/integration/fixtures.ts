@@ -109,18 +109,31 @@ export async function createScenario(): Promise<Scenario> {
  * fixture is allowed to be deliberate; application code is not, and cannot —
  * app_user has no rights over the trigger.
  */
+const APPEND_ONLY: readonly [string, string][] = [
+  ['clinic_audit_log', 'clinic_audit_log_no_rewrite'],
+  ['patient_access_log', 'patient_access_log_no_rewrite'],
+  // The cash drawer's evidence (0014), and the session rows that name it.
+  ['drawer_events', 'drawer_events_no_rewrite'],
+  ['drawer_counts', 'drawer_counts_no_rewrite'],
+  ['drawer_session_reviews', 'drawer_session_reviews_no_rewrite'],
+  ['manager_approvals', 'manager_approvals_no_rewrite'],
+  ['drawer_sessions', 'drawer_sessions_no_delete'],
+];
+
 export async function destroyScenario(scenario: Scenario): Promise<void> {
   const ids = [scenario.a.id, scenario.b.id];
   const client = await owner().connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      'ALTER TABLE clinic_audit_log DISABLE TRIGGER clinic_audit_log_no_rewrite',
-    );
+    // patient_access_log (0004) is append-only the same way, and a clinic
+    // whose records were opened once has rows in it.
+    for (const [table, trigger] of APPEND_ONLY) {
+      await client.query(`ALTER TABLE ${table} DISABLE TRIGGER ${trigger}`);
+    }
     await client.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [ids]);
-    await client.query(
-      'ALTER TABLE clinic_audit_log ENABLE TRIGGER clinic_audit_log_no_rewrite',
-    );
+    for (const [table, trigger] of APPEND_ONLY) {
+      await client.query(`ALTER TABLE ${table} ENABLE TRIGGER ${trigger}`);
+    }
     await client.query('COMMIT');
   } catch (e) {
     await client.query('ROLLBACK').catch(() => undefined);

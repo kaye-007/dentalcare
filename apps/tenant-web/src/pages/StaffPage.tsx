@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Plus, UserCog, Pencil, Lock, Wallet } from 'lucide-react';
+import { Plus, UserCog, Pencil, Lock, Wallet, KeyRound } from 'lucide-react';
 import {
   staffApi,
   settingsApi,
@@ -9,12 +9,17 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Avatar, PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
-import { formatMoney, plural } from '../lib/format';
+import { currencySymbol, formatMoney, plural, toDate } from '../lib/format';
+import MoneyInput from '../components/MoneyInput';
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, type Role } from '../lib/permissions';
-import { dateLocale } from '../lib/i18n';
+import { dateLocale } from '../lib/strings';
 
 function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
+  return toDate(s).toLocaleDateString(dateLocale(), {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export default function StaffPage() {
@@ -36,7 +41,10 @@ export default function StaffPage() {
   useEffect(() => {
     void load();
     if (canManage) {
-      settingsApi.get().then((s) => setPayrollEnabled(s.payrollLoggingEnabled)).catch(() => undefined);
+      settingsApi
+        .get()
+        .then((s) => setPayrollEnabled(s.payrollLoggingEnabled))
+        .catch(() => undefined);
     }
   }, [canManage]);
 
@@ -53,10 +61,39 @@ export default function StaffPage() {
     );
   }
 
+  /**
+   * For a colleague who has lost their phone AND their recovery codes. Signs
+   * them out everywhere; they set two-step sign-in up again next time.
+   */
+  async function resetMfa(s: StaffFull) {
+    if (
+      !window.confirm(
+        `Reset two-step sign-in for ${s.fullName}? They will be signed out on every device and asked to set it up again at their next sign-in.`,
+      )
+    ) {
+      return;
+    }
+    setBusyId(s.id);
+    try {
+      const res = await staffApi.resetMfa(s.id);
+      alert(
+        res.hadFactor
+          ? `Two-step sign-in reset for ${s.fullName}.`
+          : `${s.fullName} had not set up two-step sign-in. They have been signed out everywhere.`,
+      );
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Could not reset two-step sign-in.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function toggleStatus(s: StaffFull) {
     setBusyId(s.id);
     try {
-      await staffApi.update(s.id, { status: s.status === 'active' ? 'disabled' : 'active' });
+      await staffApi.update(s.id, {
+        status: s.status === 'active' ? 'disabled' : 'active',
+      });
       await load();
     } catch (err) {
       alert(err instanceof ApiError ? err.message : 'Could not update staff member.');
@@ -69,7 +106,11 @@ export default function StaffPage() {
     <div className="page">
       <PageHeader
         title="Staff"
-        meta={items ? `${plural(items.length, 'team member')} · ${items.filter((s) => s.status === 'active').length} active · access roles: Doctor / Reception` : '…'}
+        meta={
+          items
+            ? `${plural(items.length, 'team member')} · ${items.filter((s) => s.status === 'active').length} active`
+            : '…'
+        }
         actions={
           <button className="btn btn--primary" onClick={() => setCreating(true)}>
             <Plus size={16} /> Add staff
@@ -79,9 +120,17 @@ export default function StaffPage() {
 
       <div className="toolbar">
         <div className="tabs">
-          <button className={`tab${tab === 'team' ? ' tab--active' : ''}`} onClick={() => setTab('team')}>Team</button>
+          <button
+            className={`tab${tab === 'team' ? ' tab--active' : ''}`}
+            onClick={() => setTab('team')}
+          >
+            Team
+          </button>
           {payrollEnabled && (
-            <button className={`tab${tab === 'salary' ? ' tab--active' : ''}`} onClick={() => setTab('salary')}>
+            <button
+              className={`tab${tab === 'salary' ? ' tab--active' : ''}`}
+              onClick={() => setTab('salary')}
+            >
               Salary log
             </button>
           )}
@@ -95,7 +144,11 @@ export default function StaffPage() {
           {items === null ? (
             <div className="pad muted">Loading…</div>
           ) : items.length === 0 ? (
-            <EmptyState icon={<UserCog size={22} />} title="No staff yet" body="Add your first team member." />
+            <EmptyState
+              icon={<UserCog size={22} />}
+              title="No staff yet"
+              body="Add your first team member."
+            />
           ) : (
             <table className="table">
               <thead>
@@ -117,8 +170,21 @@ export default function StaffPage() {
                         <div className="namecell">
                           <Avatar name={s.fullName} size={32} />
                           <span>
-                            <span>{s.fullName}{isSelf && <span className="muted" style={{ fontWeight: 400 }}> (you)</span>}</span>
-                            <span className="cell-sub" style={{ display: 'block', fontWeight: 400 }}>{s.email}</span>
+                            <span>
+                              {s.fullName}
+                              {isSelf && (
+                                <span className="muted" style={{ fontWeight: 400 }}>
+                                  {' '}
+                                  (you)
+                                </span>
+                              )}
+                            </span>
+                            <span
+                              className="cell-sub"
+                              style={{ display: 'block', fontWeight: 400 }}
+                            >
+                              {s.email}
+                            </span>
                           </span>
                         </div>
                       </td>
@@ -133,28 +199,52 @@ export default function StaffPage() {
                         {s.salaryAmount ? (
                           <span style={{ fontWeight: 600 }}>
                             {formatMoney(s.salaryAmount)}
-                            <span className="muted" style={{ fontWeight: 400 }}> /mo</span>
+                            <span className="muted" style={{ fontWeight: 400 }}>
+                              {' '}
+                              /mo
+                            </span>
                           </span>
                         ) : (
                           <span className="muted">—</span>
                         )}
                       </td>
                       <td>
-                        <StatusPill status={s.status === 'active' ? 'active' : 'inactive'}
-                          label={s.status === 'active' ? 'Active' : 'Disabled'} />
+                        <StatusPill
+                          status={s.status === 'active' ? 'active' : 'inactive'}
+                          label={s.status === 'active' ? 'Active' : 'Disabled'}
+                        />
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', gap: 6 }}>
                           {payrollEnabled && s.status === 'active' && (
-                            <button className="btn btn--ghost btn--sm" onClick={() => setPaying(s)}
-                              title="Record salary payment">
+                            <button
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => setPaying(s)}
+                              title="Record salary payment"
+                            >
                               <Wallet size={14} /> Record payment
                             </button>
                           )}
-                          <button className="iconbtn" style={{ width: 30, height: 30 }}
-                            onClick={() => setEditing(s)} title="Edit">
+                          <button
+                            className="iconbtn"
+                            style={{ width: 30, height: 30 }}
+                            onClick={() => setEditing(s)}
+                            title="Edit"
+                          >
                             <Pencil size={14} />
                           </button>
+                          {!isSelf && (
+                            <button
+                              className="iconbtn"
+                              style={{ width: 30, height: 30 }}
+                              disabled={busyId === s.id}
+                              onClick={() => resetMfa(s)}
+                              title="Reset two-step sign-in (lost phone)"
+                              aria-label={`Reset two-step sign-in for ${s.fullName}`}
+                            >
+                              <KeyRound size={14} />
+                            </button>
+                          )}
                           {!isSelf && (
                             <button
                               className={`btn btn--sm ${s.status === 'active' ? 'btn--danger-ghost' : 'btn--ghost'}`}
@@ -179,15 +269,26 @@ export default function StaffPage() {
         <StaffModal
           member={editing ?? undefined}
           selfId={user?.id ?? ''}
-          onClose={() => { setCreating(false); setEditing(null); }}
-          onSaved={async () => { setCreating(false); setEditing(null); await load(); }}
+          onClose={() => {
+            setCreating(false);
+            setEditing(null);
+          }}
+          onSaved={async () => {
+            setCreating(false);
+            setEditing(null);
+            await load();
+          }}
         />
       )}
       {paying && (
         <SalaryPaymentModal
           member={paying}
           onClose={() => setPaying(null)}
-          onSaved={() => { setPaying(null); setLogVersion((v) => v + 1); setTab('salary'); }}
+          onSaved={() => {
+            setPaying(null);
+            setLogVersion((v) => v + 1);
+            setTab('salary');
+          }}
         />
       )}
     </div>
@@ -198,7 +299,10 @@ export default function StaffPage() {
 function SalaryLog() {
   const [items, setItems] = useState<SalaryPayment[] | null>(null);
   useEffect(() => {
-    staffApi.salaryPayments().then(setItems).catch(() => setItems([]));
+    staffApi
+      .salaryPayments()
+      .then(setItems)
+      .catch(() => setItems([]));
   }, []);
   const total = (items ?? []).reduce((s, p) => s + p.amount, 0);
   return (
@@ -207,8 +311,10 @@ function SalaryLog() {
         <div>
           <h2>Salary payment log</h2>
           <p className="card__sub">
-            {items === null ? '…' : `${plural(items.length, 'payment')} · ${formatMoney(total)} recorded`}
-            {' '}· lightweight log for payments made outside the system
+            {items === null
+              ? '…'
+              : `${plural(items.length, 'payment')} · ${formatMoney(total)} recorded`}{' '}
+            · lightweight log for payments made outside the system
           </p>
         </div>
       </div>
@@ -216,12 +322,19 @@ function SalaryLog() {
         <div className="pad muted">Loading…</div>
       ) : items.length === 0 ? (
         <p className="pad muted" style={{ fontSize: 13 }}>
-          No salary payments recorded yet. Use “Record payment” on a staff member after paying them.
+          No salary payments recorded yet. Use “Record payment” on a staff member after
+          paying them.
         </p>
       ) : (
         <table className="table">
           <thead>
-            <tr><th>Date</th><th>Staff</th><th>Position</th><th style={{ textAlign: 'right' }}>Amount</th><th>Note</th></tr>
+            <tr>
+              <th>Date</th>
+              <th>Staff</th>
+              <th>Position</th>
+              <th style={{ textAlign: 'right' }}>Amount</th>
+              <th>Note</th>
+            </tr>
           </thead>
           <tbody>
             {items.map((p) => (
@@ -229,7 +342,9 @@ function SalaryLog() {
                 <td className="muted">{fmtDate(p.paidOn)}</td>
                 <td style={{ fontWeight: 600 }}>{p.staffName}</td>
                 <td className="muted">{p.position ?? '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(p.amount)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                  {formatMoney(p.amount)}
+                </td>
                 <td className="muted">{p.note ?? '—'}</td>
               </tr>
             ))}
@@ -251,7 +366,7 @@ function SalaryPaymentModal({
   onSaved: () => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [amount, setAmount] = useState(member.salaryAmount ?? 0);
+  const [amount, setAmount] = useState<number | null>(member.salaryAmount ?? null);
   const [date, setDate] = useState(today);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -261,6 +376,11 @@ function SalaryPaymentModal({
     e.preventDefault();
     setError(null);
     setBusy(true);
+    if (!amount) {
+      setError('Enter the amount paid.');
+      setBusy(false);
+      return;
+    }
     try {
       await staffApi.recordSalaryPayment(member.id, {
         amount,
@@ -284,24 +404,34 @@ function SalaryPaymentModal({
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           <label className="field">
-            <span>Amount (€)</span>
-            <input type="number" min={1} value={amount || ''}
-              onChange={(e) => setAmount(Number(e.target.value))} required />
+            <span>Amount ({currencySymbol()})</span>
+            <MoneyInput value={amount} onChange={setAmount} placeholder="0.00" required />
           </label>
           <label className="field">
             <span>Date paid</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+            />
           </label>
         </div>
         <label className="field">
           <span>Note</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)}
-            placeholder="Optional — e.g. June salary" maxLength={300} />
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Optional — e.g. June salary"
+            maxLength={300}
+          />
         </label>
         {error && <p className="formerror">{error}</p>}
         <div className="modal__foot">
           <div className="modal__foot-right">
-            <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn btn--ghost" onClick={onClose}>
+              Cancel
+            </button>
             <button className="btn btn--primary" disabled={busy}>
               {busy ? 'Recording…' : `Yes, record ${formatMoney(amount || 0)}`}
             </button>
@@ -331,9 +461,7 @@ function StaffModal({
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>(member?.role ?? 'receptionist');
   const [position, setPosition] = useState(member?.position ?? '');
-  const [salaryAmount, setSalaryAmount] = useState<string>(
-    member?.salaryAmount ? String(member.salaryAmount) : '',
-  );
+  const [salaryAmount, setSalaryAmount] = useState<number | null>(member?.salaryAmount ?? null);
   const [salaryNote, setSalaryNote] = useState(member?.salaryNote ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -348,14 +476,17 @@ function StaffModal({
           fullName,
           ...(isSelf ? {} : { role }),
           position: position.trim() || null,
-          salaryAmount: salaryAmount ? Number(salaryAmount) : null,
+          salaryAmount: salaryAmount || null,
           salaryNote: salaryNote.trim() || null,
         });
       } else {
         await staffApi.create({
-          fullName, email, password, role,
+          fullName,
+          email,
+          password,
+          role,
           position: position.trim() || undefined,
-          salaryAmount: salaryAmount ? Number(salaryAmount) : undefined,
+          salaryAmount: salaryAmount || undefined,
           salaryNote: salaryNote.trim() || undefined,
         });
       }
@@ -371,65 +502,94 @@ function StaffModal({
     <Modal
       wide
       title={editing ? 'Edit staff member' : 'Add staff member'}
-      subtitle={editing ? member!.email : 'They sign in with the temporary password you set here.'}
+      subtitle={
+        editing ? member!.email : 'They sign in with the temporary password you set here.'
+      }
       onClose={onClose}
     >
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           <label className="field">
             <span>Full name</span>
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} required minLength={2} />
+            <input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              minLength={2}
+            />
           </label>
           <label className="field">
             <span>Position / job title</span>
-            <input value={position} onChange={(e) => setPosition(e.target.value)}
-              placeholder="e.g. Dentist, Assistant, Manager" maxLength={80} />
+            <input
+              value={position}
+              onChange={(e) => setPosition(e.target.value)}
+              placeholder="e.g. Dentist, Assistant, Manager"
+              maxLength={80}
+            />
           </label>
         </div>
         {!editing && (
           <div className="grid2">
             <label className="field">
               <span>Email</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@clinic.com" required />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@clinic.com"
+                required
+              />
             </label>
             <label className="field">
               <span>Temporary password</span>
-              <input value={password} onChange={(e) => setPassword(e.target.value)}
-                placeholder="min 8 characters" required minLength={8} />
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="min 8 characters"
+                required
+                minLength={8}
+              />
             </label>
           </div>
         )}
         <label className="field">
           <span>Access role</span>
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)}
-            disabled={isSelf}>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+            disabled={isSelf}
+          >
             {ROLES.map((r) => (
-              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+              <option key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </option>
             ))}
           </select>
           <span className="muted" style={{ fontSize: 12 }}>
-            {isSelf
-              ? 'You cannot change your own access role.'
-              : ROLE_DESCRIPTIONS[role]}
+            {isSelf ? 'You cannot change your own access role.' : ROLE_DESCRIPTIONS[role]}
           </span>
         </label>
         <div className="grid2">
           <label className="field">
-            <span>Salary (€ / month)</span>
-            <input type="number" min={1} value={salaryAmount}
-              onChange={(e) => setSalaryAmount(e.target.value)} placeholder="Optional" />
+            <span>Salary ({currencySymbol()} / month)</span>
+            <MoneyInput value={salaryAmount} onChange={setSalaryAmount} placeholder="Optional" />
           </label>
           <label className="field">
             <span>Salary note</span>
-            <input value={salaryNote} onChange={(e) => setSalaryNote(e.target.value)}
-              placeholder="Optional — e.g. net, paid on the 5th" maxLength={300} />
+            <input
+              value={salaryNote}
+              onChange={(e) => setSalaryNote(e.target.value)}
+              placeholder="Optional — e.g. net, paid on the 5th"
+              maxLength={300}
+            />
           </label>
         </div>
         {error && <p className="formerror">{error}</p>}
         <div className="modal__foot">
           <div className="modal__foot-right">
-            <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn btn--ghost" onClick={onClose}>
+              Cancel
+            </button>
             <button className="btn btn--primary" disabled={busy}>
               {busy ? 'Saving…' : editing ? 'Save changes' : 'Add staff member'}
             </button>

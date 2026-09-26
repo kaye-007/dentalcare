@@ -31,25 +31,25 @@ export class TreatmentPlansController {
   }
 
   @Patch(':id')
-  @RequirePermissions('clinical:write')
+  @RequirePermissions('plans:write')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePlanDto) {
     return this.plans.update(id, dto);
   }
 
   @Post(':id/status')
-  @RequirePermissions('clinical:write')
+  @RequirePermissions('plans:write')
   transition(@Param('id', ParseUUIDPipe) id: string, @Body() dto: TransitionPlanDto) {
     return this.plans.transition(id, dto);
   }
 
   @Delete(':id')
-  @RequirePermissions('clinical:write')
+  @RequirePermissions('plans:write')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.plans.remove(id);
   }
 
   @Post(':id/items')
-  @RequirePermissions('clinical:write')
+  @RequirePermissions('plans:write')
   addItem(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreatePlanItemDto) {
     return this.plans.addItem(id, dto);
   }

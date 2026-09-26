@@ -25,15 +25,18 @@ export class DocumentsController {
   /** Inline signed URL — used to render an X-ray in the browser. */
   @Get(':id/view')
   @RequirePermissions('documents:read')
-  view(@Param('id', ParseUUIDPipe) id: string) {
-    return this.documents.link(id, 'inline');
+  view(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: AccessTokenPayload) {
+    return this.documents.link(id, 'inline', auditActor(user));
   }
 
   /** Attachment signed URL — used by the download button. */
   @Get(':id/download')
   @RequirePermissions('documents:read')
-  download(@Param('id', ParseUUIDPipe) id: string) {
-    return this.documents.link(id, 'attachment');
+  download(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.documents.link(id, 'attachment', auditActor(user));
   }
 
   @Patch(':id')

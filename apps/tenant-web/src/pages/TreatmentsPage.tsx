@@ -8,7 +8,10 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
-import { formatMoney } from '../lib/format';
+import { currencySymbol, formatMoney } from '../lib/format';
+import MoneyInput from '../components/MoneyInput';
+import { VAT_CATEGORIES, vatCategoryLabel, type VatCategory } from '@dentalcare/shared';
+import { useClinicVatRate } from '../lib/vat';
 
 const TABS = [
   { key: 'active', label: 'Active' },
@@ -26,6 +29,7 @@ export default function TreatmentsPage() {
   const [items, setItems] = useState<Treatment[] | null>(null);
   const [editing, setEditing] = useState<Treatment | null>(null);
   const [creating, setCreating] = useState(false);
+  const vatRate = useClinicVatRate();
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 250);
@@ -55,21 +59,32 @@ export default function TreatmentsPage() {
         }
       />
 
-      <div className="toolbar">
-        <div className="tabs">
-          {TABS.map((t) => (
-            <button key={t.key} className={`tab${status === t.key ? ' tab--active' : ''}`} onClick={() => setStatus(t.key)}>
-              {t.label}
-            </button>
-          ))}
+      <section className="card">
+        <div className="card__toolbar">
+          <div className="tabs" role="group" aria-label="Filter treatments by status">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={`tab${status === t.key ? ' tab--active' : ''}`}
+                aria-pressed={status === t.key}
+                onClick={() => setStatus(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <label className="searchbox">
+            <Search size={16} aria-hidden />
+            <span className="sr-only">Search treatments</span>
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search treatments…"
+            />
+          </label>
         </div>
-        <div className="searchbox">
-          <Search size={15} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search treatments…" />
-        </div>
-      </div>
-
-      <div className="card">
         {items === null ? (
           <div className="pad muted">Loading…</div>
         ) : items.length === 0 ? (
@@ -86,6 +101,7 @@ export default function TreatmentsPage() {
                 <th>Price</th>
                 <th>Duration</th>
                 <th>Visit type</th>
+                <th>TVSH</th>
                 <th>Status</th>
                 {canAccess && <th />}
               </tr>
@@ -106,12 +122,26 @@ export default function TreatmentsPage() {
                       <span className="muted">Not specified</span>
                     )}
                   </td>
+                  <td>
+                    <StatusPill
+                      status={t.vatCategory === 'cosmetic' ? 'warn' : 'neutral'}
+                      label={t.vatCategory === 'cosmetic' ? `Cosmetic${vatRate ? ` · ${vatRate / 100}%` : ''}` : 'Medical · exempt'}
+                    />
+                  </td>
                   <td><StatusPill status={t.status} /></td>
                   {canAccess && (
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="iconbtn" style={{ width: 30, height: 30 }} onClick={() => setEditing(t)} title="Edit">
-                        <Pencil size={14} />
-                      </button>
+                    <td>
+                      <div className="rowactions">
+                        <button
+                          type="button"
+                          className="iconbtn"
+                          onClick={() => setEditing(t)}
+                          title="Edit"
+                          aria-label={`Edit ${t.name}`}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -119,11 +149,12 @@ export default function TreatmentsPage() {
             </tbody>
           </table>
         )}
-      </div>
+      </section>
 
       {(creating || editing) && (
         <TreatmentModal
           treatment={editing ?? undefined}
+          vatRate={vatRate ?? 0}
           onClose={() => { setCreating(false); setEditing(null); }}
           onSaved={async () => { setCreating(false); setEditing(null); await load(); }}
         />
@@ -134,10 +165,12 @@ export default function TreatmentsPage() {
 
 function TreatmentModal({
   treatment,
+  vatRate,
   onClose,
   onSaved,
 }: {
   treatment?: Treatment;
+  vatRate: number;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -148,6 +181,7 @@ function TreatmentModal({
     durationMinutes: treatment?.durationMinutes ?? 60,
     visitType: treatment?.visitType ?? null,
     status: treatment?.status ?? 'active',
+    vatCategory: treatment?.vatCategory ?? 'medical',
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -177,9 +211,9 @@ function TreatmentModal({
         </label>
         <div className="grid2">
           <label className="field">
-            <span>Price (€)</span>
-            <input type="number" min={0} value={form.price}
-              onChange={(e) => setForm((f) => ({ ...f, price: Number(e.target.value) }))} required />
+            <span>Price ({currencySymbol()})</span>
+            <MoneyInput value={form.price} placeholder="0.00"
+              onChange={(v) => setForm((f) => ({ ...f, price: v ?? 0 }))} />
           </label>
           <label className="field">
             <span>Duration (minutes)</span>
@@ -209,6 +243,21 @@ function TreatmentModal({
             </select>
           </label>
         </div>
+        <label className="field">
+          <span>TVSH category</span>
+          <select
+            value={form.vatCategory}
+            onChange={(e) => setForm((f) => ({ ...f, vatCategory: e.target.value as VatCategory }))}
+          >
+            {VAT_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{vatCategoryLabel(c, vatRate)}</option>
+            ))}
+          </select>
+          <span className="field-hint">
+            Medical treatment is exempt from TVSH. Work done for appearance only — whitening, cosmetic
+            veneers — carries the standard rate. Confirm the category with the clinic's accountant.
+          </span>
+        </label>
         {error && <p className="formerror">{error}</p>}
         <div className="modal__foot">
           <div className="modal__foot-right">

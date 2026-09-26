@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
@@ -23,5 +34,22 @@ export class SettingsController {
   @RequirePermissions('settings:manage')
   update(@Body() dto: UpdateSettingsDto, @CurrentUser() user?: AccessTokenPayload) {
     return this.settings.update(dto, auditActor(user));
+  }
+
+  /** Multer's own limit is the hard stop; the service refuses anything over 1 MB. */
+  @Post('logo')
+  @RequirePermissions('settings:manage')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 1024 * 1024 + 1, files: 1 } }))
+  uploadLogo(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.settings.uploadLogo(file, auditActor(user));
+  }
+
+  @Delete('logo')
+  @RequirePermissions('settings:manage')
+  removeLogo(@CurrentUser() user?: AccessTokenPayload) {
+    return this.settings.removeLogo(auditActor(user));
   }
 }

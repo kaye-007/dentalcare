@@ -117,6 +117,55 @@ Email uniqueness is enforced case-insensitively by
 `platform_admins_email_lower_unique`. To rotate the password later, `UPDATE`
 the `password_hash` column with a freshly generated hash.
 
+### Upgrading an existing database (migrations 0003–0008)
+
+Run migrations **before** deploying the code that needs them, and read these
+first — three of them change data or contracts, not only schema:
+
+- **0005 drops the plaintext `totp_*` columns** and refuses to run if any of
+  them hold data. Refresh tokens become server-side sessions, so every signed-in
+  user signs in again after the deploy.
+- **0006 multiplies every stored amount by 100** (whole units → cents) and
+  refuses to run if any clinic holds money in more than one currency. The API
+  contract changes with it: every amount in a request or response is minor
+  units. Deploy the API and both SPAs together. Its down migration refuses once
+  any amount has cents.
+- **0008 revokes DELETE on `reminders`** and sets every existing clinic's
+  reminder time zone to `Europe/Tirane` — change it in Settings for a clinic
+  elsewhere.
+
+All six were run down and up again against a development database on
+2026-09-14.
+
+### Upgrading an existing database (migrations 0009–0012)
+
+**Run on 2026-09-17 against a fresh PostgreSQL 16**: 0001–0012 up, 0012 down
+and up, the 0012 backfill on existing reminder rows, and the full integration
+suite. Not yet run against a copy of production data — do that, with
+`migrate:down` and `migrate:up` again, before this branch is merged.
+
+- **0012 turns reminders into patient messages.** Existing rows get their
+  patient from the appointment. It adds `id_document`, the `messages`
+  access-log resource, the estimate quote currency (EUR for every clinic in
+  lek) and the `fx_rates` cache. Its down migration refuses while any
+  follow-up or balance notice exists.
+
+- **0009 narrows reminder timing to 12 or 24 hours.** Existing values of 18
+  hours or less become 12, the rest 24. Adds `schedule_closures` and
+  `patient_imports` (both RLS-forced), the clinic profile, finance and channel
+  columns, patients' national ID (unique per clinic), preferred channel and
+  profile photo, document photo tags, payment method labels and reminder
+  template values.
+- **0010 adds fiscalization** — settings, counters, registrations, cash
+  declarations — and two triggers: an invoice registered with the tax
+  authority cannot be cancelled, and a payment on one cannot be voided. Its
+  down migration refuses once any production registration exists.
+- **0011 adds the `deleted` tenant status** with its restore window. Its down
+  migration refuses while any clinic is deleted.
+
+The API change that goes with 0009 withdraws `clinical:write` from
+reception; tell clinics before deploying.
+
 ## 2. Two Hyperdrive configs
 
 The tenant plane and the platform plane connect as **different database
@@ -155,6 +204,9 @@ sensitive is a Worker secret:
 ```bash
 cd apps/api
 wrangler secret put JWT_SECRET            # >= 32 chars, not the example value
+wrangler secret put PLATFORM_JWT_SECRET   # >= 32 chars, different from JWT_SECRET
+wrangler secret put MFA_ENCRYPTION_KEYS   # "k1:<base64 of 32 bytes>" — seals TOTP secrets
+wrangler secret put TWILIO_AUTH_TOKEN     # only with SMS_PROVIDER=twilio
 wrangler secret put GOOGLE_CLIENT_ID      # optional — all three or none
 wrangler secret put GOOGLE_CLIENT_SECRET
 wrangler secret put GOOGLE_CALLBACK_URL
@@ -174,6 +226,17 @@ config rather than running unsafely:
 | `DATABASE_URL` (from `HYPERDRIVE_ADMIN`)   | Missing → boot refused.                                                                                                                                                   |
 | `NODE_ENV`                                 | Must be `production`. It disables the client-supplied tenant header and switches logging to JSON.                                                                         |
 | `RUNTIME`                                  | `workers` on Cloudflare, `node` in the container. Chooses the connection strategy and silences the in-process scheduler.                                                  |
+
+Added with migrations 0005–0008:
+
+| Variable | Failure if wrong |
+| --- | --- |
+| `MFA_ENFORCEMENT` | Anything but `required` in production → boot refused. |
+| `MFA_ENCRYPTION_KEYS` | Missing or malformed in production → boot refused. Lost entirely → every enrolled user needs a two-step reset by an administrator. |
+| `PLATFORM_JWT_SECRET` | Missing, under 32 chars, or equal to `JWT_SECRET` in production → boot refused. |
+| `SMS_PROVIDER` | `log` (default) sends nothing. `twilio` without `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and a sender (`TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`) → boot refused. |
+| `PUBLIC_API_URL` | Required in production with `twilio`. Must be the exact origin Twilio calls, with no path: receipt signatures are checked against it, so a wrong value makes every receipt a 403. |
+| `REMINDER_SCAN_BUDGET_MS` | How long one reminder pass may run (default 45s). Keep it under the cron interval. |
 
 ## 4. Deploy
 
@@ -227,16 +290,142 @@ redirect URI, so `GOOGLE_CALLBACK_URL` needs a stable public host.
 
 ### Reminders
 
-`"triggers": { "crons": ["0 * * * *"] }` runs the reminder sweep hourly. Run it
-by hand to test:
+`"triggers": { "crons": ["*/15 * * * *"] }` runs the reminder pass every 15
+minutes. Each pass stops after `REMINDER_SCAN_BUDGET_MS` and visits clinics in
+the order they were last scanned, so a slow clinic cannot starve the others.
+Run it by hand to test:
 
 ```bash
-curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=0+*+*+*+*"
+curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*%2F15+*+*+*+*"
 ```
 
-Clinics choose their own lead time (`clinic_settings.reminder_hours_before`),
-so a coarser cron means reminders land within the hour rather than the minute.
-Tighten the schedule if that matters more than invocation count.
+**Sending SMS.** Off by default. To turn it on:
+
+1. In Twilio, buy a number (or create a Messaging Service) that can send to
+   the clinics' countries.
+2. Set `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, and `TWILIO_FROM` or
+   `TWILIO_MESSAGING_SERVICE_SID` in `vars`, and `TWILIO_AUTH_TOKEN` as a
+   secret.
+3. Set `PUBLIC_API_URL` to the API's public origin. Each message asks Twilio to
+   report delivery to `/api/reminders/delivery/twilio` on it; the request is
+   refused unless its `X-Twilio-Signature` matches.
+
+Each clinic sets its time zone, message language, own wording and the country
+code for numbers written the local way in Settings → Appointment reminders.
+The built-in message names the patient's first name, the clinic and the time —
+never the treatment.
+
+**How delivery behaves**, so the reminder log reads correctly:
+
+| Status | Meaning |
+| --- | --- |
+| `sent` | Twilio accepted it. Not proof it arrived. |
+| `delivered` | The carrier confirmed it (needs `PUBLIC_API_URL`). |
+| `pending` with a retry time | Twilio answered 429 or 503. Tried again after 5, then 30 minutes; three attempts in all. |
+| `failed` | Refused, out of attempts, or no clear answer. Timeouts and other 5xx are **not** retried — the message may have gone, and a patient texted twice is worse than a failure staff can see. |
+| `skipped` | Not sent on purpose: opted out, no usable mobile number, or the appointment stopped being upcoming. |
+| `sending` | An attempt was interrupted between the provider call and recording it. Never retried automatically. Check Twilio's message log for that number and time. |
+
+A patient who replies STOP is marked as opted out when the receipt (or the next
+send) reports Twilio error 21610; staff can also untick them on the patient
+form.
+
+**WhatsApp and Viber.** Each clinic picks a default channel in Settings →
+Reminders, and a patient can pick their own on the patient form. A channel
+this deployment cannot send on falls back to SMS, then to the log; the reminder
+row records the channel actually used.
+
+- *WhatsApp (Twilio).* WhatsApp only lets a business open a conversation with
+  wording Meta has approved, so the clinic's own text is not used. Register a
+  WhatsApp sender in Twilio, create one Content template per language with five
+  variables in this order — first name, date, time, dentist, clinic — and get
+  them approved. Then set `WHATSAPP_PROVIDER=twilio`, `TWILIO_WHATSAPP_FROM`
+  and `TWILIO_WHATSAPP_CONTENT_SIDS="en:HX…,sq:HX…"`. Receipts arrive at the
+  same signed Twilio endpoint as SMS.
+- *Viber (Vonage).* Create a Viber Service Message sender with Vonage and set
+  `VIBER_PROVIDER=vonage`, `VONAGE_API_KEY`, `VONAGE_VIBER_SENDER`, and
+  `VONAGE_API_SECRET` as a secret. The clinic's own wording is sent. Delivery
+  status is not received yet, so the log shows Viber reminders as sent only.
+
+Neither has been exercised against a live account.
+
+### Fiscalization (Albania)
+
+Built to the DPT CIS schema and checked against an independent XML-DSig
+implementation. **Not yet exercised against the authority's test service.** Do
+that, end to end, before any clinic turns on the production environment.
+
+1. **The software code.** Every fiscal invoice carries the code the authority
+   issued to the maker of the software. Set `FISCAL_SOFTWARE_CODE`; without it
+   the settings screen reports fiscalization as unavailable.
+2. **Endpoints.** `FISCAL_CIS_URL_TEST`, `FISCAL_CIS_URL_PRODUCTION` and the two
+   verification-portal URLs default to the published addresses. Confirm them,
+   and the `SOAPAction` values in `fiscal.service.ts`, against DPT's current
+   service description.
+3. **Per clinic, in Settings.** The clinic's NIPT, address and city on the
+   profile; lek as the currency; the business unit and cash register (TCR)
+   codes it registered; its signing certificate — the .p12/.pfx file as issued,
+   with its password, which opens it on the server and is not kept (a PEM is
+   still accepted); an operator code for each person who issues invoices. The
+   certificate's private key is sealed with `MFA_ENCRYPTION_KEYS` on arrival
+   and never returned.
+4. **Test first.** Leave the clinic on the test environment, issue a cash and a
+   non-cash invoice, declare opening cash, and confirm on the test verification
+   portal that the QR code resolves. Test invoices print a TEST banner.
+5. **Daily.** Reception declares the opening cash before the first cash
+   invoice (Settings → Fiscalization → Cash in the register).
+
+How a registration behaves:
+
+| Status | Meaning |
+| --- | --- |
+| `pending` | Signed and numbered. The NSLF and QR are valid and print now. The Cron Trigger resends it as a subsequent delivery (1, 2, 4 … 60 minutes apart) until CIS answers. The law allows 48 hours. |
+| `fiscalized` | CIS returned the NIVF. |
+| `rejected` | CIS answered with a fault. The request and response XML are kept on the row for support. |
+
+Receipts print from the invoice screen (**Fiscal receipt**), sized for an
+80 mm printer. Set the printer's paper to 80 mm roll; the page declares it.
+
+Not built yet: corrective invoices, e-invoices (B2B through EIC), invoices in
+currencies other than lek, and TCR registration from the app.
+
+### Messages and estimates
+
+- **WhatsApp templates per kind of message.** `TWILIO_WHATSAPP_CONTENT_SIDS`
+  takes `sq:HX…` (appointment reminder), `followup.sq:HX…` and
+  `balance.sq:HX…`, each approved by Meta with the variables listed in
+  `channels/whatsapp.ts`. A kind without a template is not offered over
+  WhatsApp; SMS, Viber and the hand-off still carry it.
+- **Exchange rates** for EUR on estimates come from `FX_RATES_URL` (default:
+  ExchangeRate-API's open endpoint, daily, attribution printed) and are cached
+  in `fx_rates`; an outage prints the last rate with its date. Clinics can
+  use a fixed rate of their own instead. These are indicative quotes, never
+  used for booking or fiscalization.
+
+### Backups and restore
+
+The platform backup is the database provider's point-in-time recovery — enable
+it and rehearse a restore to a new database before the first paying customer.
+The console deliberately has **no** button that restores a database: a restore
+into the live shared schema rolls back every clinic at once, and restoring one
+clinic's rows means crossing append-only tables and locking triggers, which is
+a supervised operation, not a click.
+
+What the console does have:
+
+- **Delete and restore a clinic.** Deletion is a status: access stops, nothing
+  is removed, and the console can restore it (as suspended) for at least 30
+  days. Nothing purges automatically.
+- **Export clinic data.** An audited JSON snapshot of every row carrying the
+  clinic's `tenant_id`, with passwords, second factors, sessions and signing
+  keys left out, stamped with the last migration and a SHA-256 of its tables.
+  Capped at 200,000 rows; export anything larger from a backup. Document files
+  stay in the bucket under `tenants/<id>/` and are not in the JSON.
+
+To recover one clinic's data from a backup: restore the backup to a separate
+database, export the clinic from there with the same query the console uses,
+and re-enter the missing records through the API with the clinic's
+administrator present. Record what was restored in the clinic's activity trail.
 
 ## Local development
 
@@ -254,7 +443,7 @@ it talks to the same local Postgres without touching Supabase. Put secrets in
 Fire the cron by hand:
 
 ```bash
-curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=0+*+*+*+*"
+curl "http://127.0.0.1:8787/cdn-cgi/handler/scheduled?cron=*%2F15+*+*+*+*"
 ```
 
 One caveat worth knowing before you chase a phantom bug: `wrangler dev`
@@ -351,7 +540,11 @@ every one of them looks like something else from the outside.
       repository can assert it. Hyperdrive's result cache is keyed on the
       query, not on the transaction that set `app.current_tenant_id` — a
       cached row from one clinic can be served to another. Confirm with
-      `wrangler hyperdrive list` and check `caching.disabled` on each.
+      `npm run cf:check-caching -w @dentalcare/api`, which asks the account
+      about each id in `wrangler.jsonc` and fails unless caching is disabled
+      on both — or by hand with `wrangler hyperdrive get <id>`. The script
+      needs a logged-in wrangler and has not yet been run against a real
+      account; if its output cannot be read it says UNVERIFIED and fails.
       _This is the single highest-consequence item on the page._
 
 - [ ] **`HYPERDRIVE_APP` points at `app_user`, not the owner role.**
@@ -382,6 +575,17 @@ every one of them looks like something else from the outside.
       in-process `setInterval` to a Cron Trigger. Observe one invocation in
       the dashboard.
 
+- [ ] **One real SMS, and its receipt.** The Twilio channel has only ever
+      talked to a local stand-in and been checked against Twilio's published
+      signature example. Send a reminder to a staff phone from the appointment
+      screen, then confirm the log moves from Sent to Delivered. A 403 in the
+      Worker log on `/api/reminders/delivery/twilio` means `PUBLIC_API_URL` is
+      not the origin Twilio called.
+
+- [ ] **Two-step sign-in on the deployed Worker.** Enrol an administrator with
+      an authenticator app, sign out, sign in with a code, then with a
+      recovery code. Confirm `MFA_ENCRYPTION_KEYS` is the secret you backed up.
+
 - [ ] **A backup restored.** Not "backups are enabled" — a restore actually
       performed into a scratch database and the schema diffed against
       `npm run migrate:baseline -- --verify`.
@@ -400,3 +604,11 @@ it as production ready, and do not put a real clinic's records on it.
 - [ ] Cron Trigger observed firing once in production
 - [ ] Google sign-in exercised end to end on the deployed Worker
 - [ ] Uptime and error alerting on `/api/health`
+- [ ] `MFA_ENCRYPTION_KEYS` stored somewhere other than Cloudflare
+- [ ] Every clinic's reminder time zone checked after migration 0008
+- [ ] SMS sent and delivered once on production, if `SMS_PROVIDER=twilio`
+- [ ] Migrations 0009–0011 run down and up on a copy of production data
+- [ ] WhatsApp / Viber reminder received on a real phone, if enabled
+- [ ] A fiscal invoice registered on DPT's test service and verified by QR
+- [ ] Clinic export downloaded and its SHA-256 checked for one clinic
+- [ ] Reception accounts told that charting and treatment plans moved to clinical staff

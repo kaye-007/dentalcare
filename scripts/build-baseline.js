@@ -23,7 +23,7 @@
  * byte-identical after normalising the parts of a dump that are noise
  * (its header comments and the psql \restrict key, which is random per run).
  *
- * ── The three mechanical edits ────────────────────────────────────────────
+ * ── The four mechanical edits ─────────────────────────────────────────────
  *
  *  1. the psql preamble is dropped. `\restrict`, the SET lines and the
  *     `search_path = ''` are instructions to psql and to a restore session;
@@ -38,6 +38,24 @@
  *  3. the app_user role is prepended. pg_dump never emits it: a ROLE is
  *     cluster-scoped and a database dump does not carry one. It is the same
  *     converge-don't-create block 0003 used, for the same reason.
+ *
+ *  4. every DEFAULT ACL block is dropped. `--no-owner` strips ownership from
+ *     tables but not the role name out of
+ *
+ *         ALTER DEFAULT PRIVILEGES FOR ROLE <owner> IN SCHEMA public ...
+ *
+ *     so the dump hardcodes whichever role happened to build it. A baseline
+ *     carrying that fails on every database whose owner is named anything
+ *     else — which is every managed Postgres — with `role "..." does not
+ *     exist`, and rolls back to an empty database. It is also the wrong
+ *     grant to keep: a default ACL hands app_user full DML on every table
+ *     the owner creates in `public` from then on, which is the blanket grant
+ *     the explicit per-table list exists to replace, aimed at tables nobody
+ *     has written yet. Both problems are removed by removing the line.
+ *
+ *     This is the one edit that makes db_new differ from db_old in substance
+ *     rather than in noise, so `normalise()` drops DEFAULT ACL from BOTH
+ *     sides of the comparison. Deliberate, and the only such exception.
  */
 const { spawnSync } = require('child_process');
 const fs = require('fs');
@@ -222,6 +240,22 @@ function isMigrationBookkeeping(block) {
 }
 
 /**
+ * True for a DEFAULT ACL block — `ALTER DEFAULT PRIVILEGES FOR ROLE <owner>`.
+ *
+ * Edit 4 in the header. The role name is the whole problem: pg_dump writes
+ * the building role's own name here even under `--no-owner`, so the statement
+ * only runs on a database owned by a role of that exact name. Keeping it is
+ * also a standing grant to app_user on tables that do not exist yet.
+ */
+function isDefaultAcl(block) {
+  if (!block.header) return false;
+  return /Type: DEFAULT ACL/.test(block.header);
+}
+
+/** The same statement, matched as a bare line for normalise(). */
+const DEFAULT_ACL_LINE = /^ALTER DEFAULT PRIVILEGES\b/;
+
+/**
  * The two settings that must not survive into a migration, and only those.
  *
  *   search_path = ''     node-pg-migrate runs this inside its own transaction
@@ -240,7 +274,7 @@ const PREAMBLE = /^(SELECT pg_catalog\.set_config\('search_path'|SET row_securit
 const META = /^\\(restrict|unrestrict)\b/;
 
 function transform(dump) {
-  const kept = blocks(dump).filter((b) => !isMigrationBookkeeping(b));
+  const kept = blocks(dump).filter((b) => !isMigrationBookkeeping(b) && !isDefaultAcl(b));
 
   const body = kept
     .map((b) => {
@@ -260,12 +294,23 @@ function transform(dump) {
   );
 }
 
-/** Normalise the parts of a dump that differ run to run but mean nothing. */
+/**
+ * Normalise the parts of a dump that differ run to run but mean nothing —
+ * plus the one part that differs on purpose.
+ *
+ * `ALTER DEFAULT PRIVILEGES` is stripped from BOTH dumps because edit 4
+ * removes it from the baseline deliberately: db_old (the real history) still
+ * emits it, db_new does not, and comparing them without this would report a
+ * difference that is the fix rather than a fault. Every other line still has
+ * to match byte for byte — that is what makes the diff worth running.
+ */
 function normalise(dump) {
   return dump
     .split('\n')
     .filter((l) => !META.test(l))
     .filter((l) => !/^-- Dumped (from|by)/.test(l))
+    .filter((l) => !DEFAULT_ACL_LINE.test(l))
+    .filter((l) => !/^-- Name: DEFAULT PRIVILEGES /.test(l))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

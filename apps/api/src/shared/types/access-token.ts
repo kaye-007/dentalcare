@@ -13,4 +13,10 @@ export interface AccessTokenPayload {
   tenantId: string;
   role: Role;
   email: string;
+  /**
+   * The session row this token was minted for (migration 0005). Lets a
+   * password change end every OTHER session while keeping the one it was made
+   * from. Absent on a token issued before sessions existed.
+   */
+  sid?: string;
 }

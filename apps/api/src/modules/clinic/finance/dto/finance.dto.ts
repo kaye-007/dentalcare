@@ -7,14 +7,18 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 import { Type as TT } from 'class-transformer';
+import { VAT_CATEGORIES, type VatCategory } from '@dentalcare/shared';
 
-/* ════════ DTOs ════════ */
+/* ════════ DTOs ════════
+ * Every amount here is an integer of MINOR units — cents — in the clinic's
+ * currency (migration 0006). 3750 is €37.50. */
 export class LineItemDto {
   @IsOptional() @IsUUID()
   treatmentId?: string;
@@ -27,6 +31,13 @@ export class LineItemDto {
 
   @IsInt() @Min(0)
   unitPrice!: number;
+
+  /**
+   * TVSH for this line. Omitted: the treatment's own category, or medical
+   * (exempt) for a line that names no treatment.
+   */
+  @IsOptional() @IsIn([...VAT_CATEGORIES])
+  vatCategory?: VatCategory;
 }
 
 export class CreateInvoiceDto {
@@ -45,11 +56,28 @@ export class RecordPaymentDto {
   @IsInt() @Min(1, { message: 'Amount must be positive' })
   amount!: number;
 
-  @IsIn(['cash', 'card', 'bank'])
-  method!: 'cash' | 'card' | 'bank';
+  /** The kind. Optional when `methodId` names one of the clinic's own methods. */
+  @IsOptional() @IsIn(['cash', 'card', 'bank'])
+  method?: 'cash' | 'card' | 'bank';
+
+  /** One of the clinic's payment methods (Settings); its kind wins over `method`. */
+  @IsOptional() @Matches(/^[a-z0-9-]{1,40}$/)
+  methodId?: string;
 
   @IsOptional() @IsString() @MaxLength(300)
   note?: string;
+
+  /**
+   * Which document this payment issues (0015):
+   *
+   *   fiscal    faturë e fiskalizuar — registered with the tax authority
+   *             straight after the payment, which returns the NIVF
+   *   internal  faturë fiktive — the clinic's own receipt, never sent to DPT
+   *
+   * Omitted: the clinic's default, or its last choice for this invoice.
+   */
+  @IsOptional() @IsIn(['internal', 'fiscal'])
+  document?: 'internal' | 'fiscal';
 }
 
 export class CreateExpenseDto {

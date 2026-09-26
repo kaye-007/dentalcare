@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigModule } from '@/core/config/config.module';
 import { AuthzModule } from '@/core/authz/authz.module';
 import { ClinicAuditModule } from '@/core/audit/clinic-audit.module';
+import { MfaModule } from '@/core/mfa/mfa.module';
 import { ReadOnlyGuard } from '@/core/tenancy/read-only.guard';
 import { OAuthModule } from '@/core/oauth/oauth.module';
 import { OAuthRoutesModule } from '@/core/oauth/oauth-routes.module';
@@ -15,6 +16,11 @@ import { HealthModule } from '@/core/health/health.module';
 import { TenancyModule } from '@/core/tenancy/tenancy.module';
 import { TenantMiddleware } from '@/core/tenancy/tenant.middleware';
 import { tenantMiddlewareExclusions } from '@/core/tenancy/tenant-routes';
+import { RequestContextMiddleware, RequestContextModule } from '@/core/request-context/request-context';
+import { EntitlementsModule } from '@/core/entitlements/entitlements.service';
+import { IdempotencyInterceptor } from '@/core/idempotency/idempotency.interceptor';
+import { FeaturesModule } from '@/modules/clinic/features';
+import { CashDrawerModule } from '@/modules/clinic/cash-drawer';
 import { AuthModule } from '@/modules/clinic/auth';
 import { PatientsModule } from '@/modules/clinic/patients';
 import { PatientHistoryModule } from '@/modules/clinic/patient-history';
@@ -33,9 +39,14 @@ import { BillingModule } from '@/modules/clinic/billing';
 import { AnalyticsModule } from '@/modules/clinic/analytics';
 import { RemindersModule } from '@/modules/clinic/reminders';
 import { AuditModule } from '@/modules/clinic/audit';
+import { InventoryModule } from '@/modules/clinic/inventory';
+import { FiscalizationModule } from '@/modules/clinic/fiscalization/fiscalization.module';
 import { PlatformAuthModule } from '@/modules/platform/auth';
 import { TenantsModule } from '@/modules/platform/tenants';
 import { PlansModule } from '@/modules/platform/plans';
+import { PlatformBillingModule } from '@/modules/platform/billing';
+import { PlatformUsageModule } from '@/modules/platform/usage';
+import { PlatformActivityModule } from '@/modules/platform/activity';
 
 /**
  * Cloudflare Workers changes what the process can do, not what the app does.
@@ -79,6 +90,10 @@ function prettyTransport() {
       ? []
       : [
           LoggerModule.forRoot({
+            // nestjs-pino's default is '*', which Nest 11 prefixes to '/api/*'
+            // and then warns about ("Unsupported route path") on every boot —
+            // path-to-regexp v8 needs a named splat. Same coverage, no warning.
+            forRoutes: ['{*path}'],
             pinoHttp: {
               level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
               transport: prettyTransport(),
@@ -98,8 +113,11 @@ function prettyTransport() {
     // their own @Throttle — see AuthController / PlatformAuthController.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     DatabaseModule,
+    RequestContextModule,
+    EntitlementsModule,
     AuthzModule,
     ClinicAuditModule,
+    MfaModule,
     OAuthModule,
     OAuthRoutesModule,
     StorageModule,
@@ -123,15 +141,25 @@ function prettyTransport() {
     AnalyticsModule,
     RemindersModule,
     AuditModule,
+    InventoryModule,
+    FiscalizationModule,
+    FeaturesModule,
+    CashDrawerModule,
     PlatformAuthModule,
     TenantsModule,
     PlansModule,
+    PlatformBillingModule,
+    PlatformUsageModule,
+    PlatformActivityModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     // Global, so a controller written next month is covered without anyone
     // remembering to opt in. Outside the clinic plane it is a no-op.
     { provide: APP_GUARD, useClass: ReadOnlyGuard },
+    // Global and inert unless a route is marked @Idempotent() and the request
+    // carries an Idempotency-Key (0013).
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
 })
 export class AppModule implements NestModule {
@@ -145,9 +173,17 @@ export class AppModule implements NestModule {
    * the exclusions and why each one is there.
    */
   configure(consumer: MiddlewareConsumer): void {
+    // Request id, client IP and user agent for the evidence tables. First, and
+    // on every route: platform and health requests are requests too.
+    consumer.apply(RequestContextMiddleware).forRoutes('{*path}');
+
     consumer
       .apply(TenantMiddleware)
       .exclude(...tenantMiddlewareExclusions())
-      .forRoutes('*');
+      // Every route, spelled as a named optional splat. Nest 11 joins a bare
+      // '*' to the global prefix as '/api/*', which path-to-regexp v8 cannot
+      // parse; it auto-converted that to this same pattern but logged an
+      // "Unsupported route path" warning three times on every boot doing so.
+      .forRoutes('{*path}');
   }
 }

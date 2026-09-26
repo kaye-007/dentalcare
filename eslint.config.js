@@ -98,6 +98,9 @@ module.exports = tseslint.config(
       'eslint.config.js',
       '*.config.js',
       '**/jest*.config.js',
+      // Jest setupFiles. They run before the module registry is set up for
+      // the suite, so they are CommonJS by requirement, not by preference.
+      'apps/api/test/**/*.setup.js',
     ],
     languageOptions: {
       sourceType: 'commonjs',

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { useT } from '../lib/i18n';
+import { t } from '../lib/strings';
 
 /**
  * Where Google sends the browser back.
@@ -15,7 +15,6 @@ import { useT } from '../lib/i18n';
 export default function AuthCallbackPage() {
   const { adoptSession } = useAuth();
   const navigate = useNavigate();
-  const t = useT();
   const [error, setError] = useState<string | null>(null);
   // React 18 mounts effects twice in development; the hash is consumed once.
   const consumed = useRef(false);
@@ -28,10 +27,19 @@ export default function AuthCallbackPage() {
     const access = params.get('access');
     const refresh = params.get('refresh') ?? undefined;
     const next = params.get('next') || '/';
+    const challenge = params.get('mfa');
+    const stage = params.get('stage');
 
     // Clear it immediately, before any await: a token sitting in the address
     // bar ends up in screenshots, shoulder-surfing and browser history.
     window.history.replaceState(null, '', window.location.pathname);
+
+    // Google proved the first factor; the account needs a second. Continue at
+    // the sign-in page's MFA step, carrying the challenge in router state.
+    if (challenge && (stage === 'verify' || stage === 'enroll')) {
+      navigate('/login', { replace: true, state: { challenge: { token: challenge, stage }, next } });
+      return;
+    }
 
     if (!access) {
       setError(t('login.error'));
@@ -41,7 +49,7 @@ export default function AuthCallbackPage() {
     adoptSession(access, refresh)
       .then(() => navigate(next, { replace: true }))
       .catch(() => setError(t('login.error')));
-  }, [adoptSession, navigate, t]);
+  }, [adoptSession, navigate]);
 
   return (
     <div className="auth">

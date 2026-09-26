@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
-import { api, ApiError, type PatientPayload } from '../lib/api';
+import { REMINDER_CHANNELS, REMINDER_CHANNEL_NAMES } from '@dentalcare/shared';
+import { api, ApiError, type Patient, type PatientPayload } from '../lib/api';
 
 const EMPTY: PatientPayload = {
   firstName: '',
@@ -17,6 +18,9 @@ const EMPTY: PatientPayload = {
   emergencyContactName: '',
   emergencyContactRelationship: '',
   emergencyContactPhone: '',
+  remindersOptOut: false,
+  nationalId: '',
+  preferredChannel: '',
 };
 
 export default function PatientFormPage() {
@@ -27,12 +31,14 @@ export default function PatientFormPage() {
   const [loading, setLoading] = useState(editing);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [optOutSource, setOptOutSource] = useState<Patient['remindersOptOutSource']>(null);
 
   useEffect(() => {
     if (!id) return;
     api
       .getPatient(id)
-      .then((p) =>
+      .then((p) => {
+        setOptOutSource(p.remindersOptOutSource);
         setForm({
           firstName: p.firstName,
           lastName: p.lastName,
@@ -49,19 +55,34 @@ export default function PatientFormPage() {
           emergencyContactName: p.emergencyContact?.name ?? '',
           emergencyContactRelationship: p.emergencyContact?.relationship ?? '',
           emergencyContactPhone: p.emergencyContact?.phone ?? '',
-        }),
-      )
+          remindersOptOut: p.remindersOptOut,
+          nationalId: p.nationalId ?? '',
+          preferredChannel: p.preferredChannel ?? '',
+        });
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
-  const set = (k: keyof PatientPayload, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: Exclude<keyof PatientPayload, 'remindersOptOut'>, v: string) =>
+    setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      const saved = editing ? await api.updatePatient(id!, form) : await api.createPatient(form);
+      // A new patient has not refused anything; the create endpoint does not
+      // accept the field at all.
+      const { remindersOptOut: _optOut, ...newPatient } = form;
+      // On edit, an emptied ID or channel is sent as null so it is cleared;
+      // `clean` would otherwise drop the blank and leave the old value.
+      const saved = editing
+        ? await api.updatePatient(id!, {
+            ...form,
+            nationalId: (form.nationalId?.trim() || null) as unknown as string,
+            preferredChannel: (form.preferredChannel || null) as unknown as '',
+          })
+        : await api.createPatient(newPatient);
       navigate(`/patients/${saved.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save patient.');
@@ -77,7 +98,7 @@ export default function PatientFormPage() {
       <Link to={editing ? `/patients/${id}` : '/patients'} className="back">
         <ChevronLeft size={16} /> {editing ? 'Back to profile' : 'All patients'}
       </Link>
-      <h2 className="section-title">{editing ? 'Edit patient' : 'New patient'}</h2>
+      <h1 className="section-title">{editing ? 'Edit patient' : 'New patient'}</h1>
       <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
         Only first and last name are required — everything else is optional.
       </p>
@@ -105,6 +126,22 @@ export default function PatientFormPage() {
             </select></label>
           <label className="field"><span>Date of birth</span>
             <input type="date" value={form.birthDate} onChange={(e) => set('birthDate', e.target.value)} /></label>
+        </div>
+        <div className="grid2">
+          <label className="field"><span>National ID (personal number)</span>
+            <input
+              value={form.nationalId}
+              onChange={(e) => set('nationalId', e.target.value.toUpperCase())}
+              placeholder="J12345678A"
+              maxLength={24}
+            /></label>
+          <label className="field"><span>Reminders by</span>
+            <select value={form.preferredChannel} onChange={(e) => set('preferredChannel', e.target.value)}>
+              <option value="">The clinic’s usual channel</option>
+              {REMINDER_CHANNELS.map((c) => (
+                <option key={c} value={c}>{REMINDER_CHANNEL_NAMES[c]}</option>
+              ))}
+            </select></label>
         </div>
         <label className="field"><span>Address</span>
           <input value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Street and number" /></label>
@@ -142,6 +179,24 @@ export default function PatientFormPage() {
               required={Boolean(form.emergencyContactName)}
             /></label>
         </fieldset>
+
+        {editing && (
+          <label className="hours-row__closed" style={{ width: 'auto' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(form.remindersOptOut)}
+              onChange={(e) => setForm((f) => ({ ...f, remindersOptOut: e.target.checked }))}
+            />
+            <span>
+              Does not want appointment reminders
+              {form.remindersOptOut && optOutSource === 'patient'
+                ? ' — replied STOP to a reminder'
+                : form.remindersOptOut && optOutSource === 'provider'
+                  ? ' — the SMS provider reports the number unsubscribed'
+                  : ''}
+            </span>
+          </label>
+        )}
 
         <label className="field"><span>Status</span>
           <select value={form.status} onChange={(e) => set('status', e.target.value)}>

@@ -49,15 +49,31 @@ function read(app: string, relative: string): string {
   return fs.readFileSync(path.join(app, relative), 'utf8').replace(/\r\n/g, '\n');
 }
 
+/**
+ * The one recorded difference (0012): the clinic app may use the device
+ * camera — patient photos, ID documents and clinical photos are taken at the
+ * desk — so its Permissions-Policy allows `camera=(self)`. The console takes
+ * no pictures and keeps `camera=()`. Nothing else in the file may differ.
+ */
+const CLINIC_CAMERA = 'Permissions-Policy: camera=(self),';
+const NO_CAMERA = 'Permissions-Policy: camera=(),';
+
 describe('the two SPAs stay in step', () => {
   it.each([
     ['worker/index.ts'],
     ['tsconfig.json'],
     ['tsconfig.node.json'],
     ['tsconfig.worker.json'],
-    ['public/_headers'],
   ])('%s is identical in both apps', (relative) => {
     expect(read(TENANT, relative)).toBe(read(ADMIN, relative));
+  });
+
+  it('public/_headers is identical in both apps but for the clinic app camera', () => {
+    const tenant = read(TENANT, 'public/_headers');
+    const admin = read(ADMIN, 'public/_headers');
+    expect(tenant).toContain(CLINIC_CAMERA);
+    expect(admin).toContain(NO_CAMERA);
+    expect(tenant.replace(CLINIC_CAMERA, NO_CAMERA)).toBe(admin);
   });
 });
 

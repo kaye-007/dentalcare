@@ -72,6 +72,33 @@
  *                           index at write time, so two people booking the
  *                           same slot in the same second cannot both win
  *
+ * ── What is deliberately NOT here: ALTER DEFAULT PRIVILEGES ───────────────
+ *
+ * pg_dump emitted one more line than this file carries:
+ *
+ *     ALTER DEFAULT PRIVILEGES FOR ROLE <owner> IN SCHEMA public
+ *       GRANT SELECT,INSERT,DELETE,UPDATE ON TABLES TO app_user;
+ *
+ * It is removed, for two independent reasons, and build-baseline.js strips it
+ * on every regeneration so it cannot come back.
+ *
+ *   1. It does not run anywhere but here. `--no-owner` strips ownership from
+ *      tables but NOT the role name from a DEFAULT ACL, so the dump carried
+ *      the developer's own role into the file. On any database whose owner is
+ *      not called that — every managed Postgres there is — `migrate:up` fails
+ *      with `role "..." does not exist` and rolls back to an empty database.
+ *      CI could not see it either, because CI names its role the same way.
+ *
+ *   2. It is the fail-open direction. A default ACL grants app_user full DML
+ *      on every table the owner creates in `public` FROM NOW ON — the blanket
+ *      grant the per-table list above exists to replace, reinstated for
+ *      tables that do not exist yet. A clinical table added next year would
+ *      arrive writable before anyone decided it should be.
+ *
+ * Every table therefore states its own grants, and a new table is unreachable
+ * by app_user until its migration says otherwise. That is the direction to
+ * fail in.
+ *
  * ── Rolling back ──────────────────────────────────────────────────────────
  *
  * There is no down migration. A baseline's inverse is an empty database, and
@@ -3051,12 +3078,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.treatments TO app_user;
 --
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.users TO app_user;
-
---
--- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: -
---
-
-ALTER DEFAULT PRIVILEGES FOR ROLE dentalcare IN SCHEMA public GRANT SELECT,INSERT,DELETE,UPDATE ON TABLES TO app_user;
 
 --
 -- PostgreSQL database dump complete

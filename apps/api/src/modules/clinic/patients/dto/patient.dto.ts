@@ -1,5 +1,8 @@
+import { REMINDER_CHANNELS, type ReminderChannelId } from '@dentalcare/shared';
 import {
   ValidateIf,
+  Matches,
+  IsBoolean,
   IsEmail,
   IsIn,
   IsISO8601,
@@ -46,6 +49,18 @@ export class CreatePatientDto {
   @IsOptional() @IsIn(['active', 'inactive'])
   status?: 'active' | 'inactive' | 'archived';
 
+  /** Personal number or other national identifier. Unique per clinic. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== '' && v !== null)
+  @Matches(/^[A-Za-z0-9 -]{4,24}$/, { message: 'Enter the national ID as printed, e.g. J12345678A' })
+  nationalId?: string | null;
+
+  /** How this patient wants reminders; empty follows the clinic's default. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== '' && v !== null)
+  @IsIn([...REMINDER_CHANNELS])
+  preferredChannel?: ReminderChannelId | '' | null;
+
   /* ── emergency contact ──
      A name without a phone number is unusable in an emergency, and the
      database enforces the same rule via patients_emergency_contact_usable. */
@@ -65,6 +80,10 @@ export class UpdatePatientDto extends CreatePatientDto {
 
   @IsOptional() @IsString() @MinLength(1)
   declare lastName: string;
+
+  /** The patient does not want appointment reminders. */
+  @IsOptional() @IsBoolean()
+  remindersOptOut?: boolean;
 }
 
 export class ArchivePatientDto {

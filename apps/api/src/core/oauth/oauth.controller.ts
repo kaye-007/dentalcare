@@ -42,6 +42,12 @@ import { PlatformGoogleGuard } from './platform-google.guard';
 type SignInOutcome =
   { ok: true; tokens: Record<string, unknown> } | { ok: false; reason: string };
 
+/** Kept on the session the sign-in creates. */
+interface SignInMeta {
+  userAgent: string | null;
+  ip: string | null;
+}
+
 @Controller()
 export class OAuthController {
   constructor(
@@ -92,11 +98,13 @@ export class OAuthController {
       return;
     }
 
+    const meta = { userAgent: req.headers['user-agent'] ?? null, ip: req.ip ?? null };
+
     try {
       const result =
         state.plane === 'platform'
-          ? await this.platformSignIn(identity)
-          : await this.clinicSignIn(state, identity);
+          ? await this.platformSignIn(identity, meta)
+          : await this.clinicSignIn(state, identity, meta);
 
       if (!result.ok) {
         this.fail(res, state, result.reason);
@@ -114,6 +122,7 @@ export class OAuthController {
   private async clinicSignIn(
     state: OAuthState,
     identity: GoogleIdentity,
+    meta: SignInMeta,
   ): Promise<SignInOutcome> {
     const { rows } = await this.db.query<{ id: string; status: string }>(
       'SELECT id, status FROM resolve_tenant($1)',
@@ -140,8 +149,10 @@ export class OAuthController {
       await this.recordClinicLink(tenant.id, state.tenant!, decision.userId, identity);
     }
 
-    const tokens = await this.auth.issueSessionForUser(tenant.id, decision.userId);
-    return { ok: true, tokens };
+    // Google proves the first factor only. The same second-factor decision as
+    // a password sign-in applies, so this may come back as a challenge.
+    const tokens = await this.auth.issueSessionForUser(tenant.id, decision.userId, meta);
+    return { ok: true, tokens: { ...tokens } };
   }
 
   /**
@@ -192,7 +203,10 @@ export class OAuthController {
 
   /* ───────────────────────── platform ───────────────────────── */
 
-  private async platformSignIn(identity: GoogleIdentity): Promise<SignInOutcome> {
+  private async platformSignIn(
+    identity: GoogleIdentity,
+    meta: SignInMeta,
+  ): Promise<SignInOutcome> {
     const admin = await this.platformAuth.findForOAuth(identity.email);
     const decision = decideGoogleLink(
       admin && {
@@ -205,7 +219,10 @@ export class OAuthController {
     if (!decision.allow) return { ok: false, reason: decision.reason };
 
     if (decision.link) await this.platformAuth.linkGoogle(decision.userId, identity.sub);
-    return { ok: true, tokens: await this.platformAuth.issueForAdmin(decision.userId) };
+    return {
+      ok: true,
+      tokens: { ...(await this.platformAuth.issueForAdmin(decision.userId, meta)) },
+    };
   }
 
   /* ───────────────────────── redirects ──────────────────────── */
@@ -216,6 +233,10 @@ export class OAuthController {
    * A fragment is not sent to the server, so the token stays out of access
    * logs, out of the Referer header on the next navigation, and out of any
    * proxy in between. The SPA reads it and clears it immediately.
+   *
+   * When the account needs a second factor there is no session yet: the
+   * fragment carries the challenge token instead, and the SPA continues the
+   * sign-in at its MFA step exactly as it would after a password.
    */
   private succeed(
     res: Response,
@@ -229,11 +250,18 @@ export class OAuthController {
       res.json(tokens);
       return;
     }
-    const params = new URLSearchParams({
-      access: String(tokens.accessToken ?? ''),
-      next: state.next ?? '/',
-    });
-    if (tokens.refreshToken) params.set('refresh', String(tokens.refreshToken));
+    const next = state.next ?? '/';
+    const params =
+      tokens.status === 'mfa_required' || tokens.status === 'mfa_enrollment_required'
+        ? new URLSearchParams({
+            mfa: String(tokens.challengeToken ?? ''),
+            stage: tokens.status === 'mfa_required' ? 'verify' : 'enroll',
+            next,
+          })
+        : new URLSearchParams({ access: String(tokens.accessToken ?? ''), next });
+    if (tokens.status === 'authenticated' && tokens.refreshToken) {
+      params.set('refresh', String(tokens.refreshToken));
+    }
     res.redirect(`${origin}/auth/callback#${params.toString()}`);
   }
 

@@ -164,7 +164,9 @@ describe('the token', () => {
   /**
    * A refresh token is not an access token. Without this the longer-lived
    * credential — seven days rather than fifteen minutes — would be usable
-   * directly against every protected route.
+   * directly against every protected route. Since 0005 it is not even a JWT,
+   * so it fails verification outright; api-mfa.itest.ts covers the typed JWT
+   * that could otherwise be confused for one, the MFA challenge.
    */
   it('refuses a refresh token used as an access token', async () => {
     expect(session.refreshToken).toEqual(expect.any(String));
@@ -175,17 +177,23 @@ describe('the token', () => {
     });
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toBe('Wrong token type');
   });
 
-  it('exchanges a refresh token for a new access token', async () => {
-    const res = await call<{ accessToken: string }>(api, 'POST', '/api/auth/refresh', {
-      subdomain: s.a.subdomain,
-      body: { refreshToken: session.refreshToken },
-    });
+  it('exchanges a refresh token for a new access token AND a new refresh token', async () => {
+    const res = await call<{ accessToken: string; refreshToken: string }>(
+      api,
+      'POST',
+      '/api/auth/refresh',
+      {
+        subdomain: s.a.subdomain,
+        body: { refreshToken: session.refreshToken },
+      },
+    );
 
     expect(res.status).toBe(201);
     expect(res.body.accessToken).toEqual(expect.any(String));
+    expect(res.body.refreshToken).toEqual(expect.any(String));
+    expect(res.body.refreshToken).not.toBe(session.refreshToken);
   });
 });
 

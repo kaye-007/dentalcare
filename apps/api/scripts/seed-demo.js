@@ -7,7 +7,9 @@
  * Idempotent — safe to re-run. For a clean slate use `npm run reset-demo`
  * first. Guarded against production by scripts/lib/guard.js.
  *
- * All money is integers in whole euros, matching apps/tenant-web/src/lib/format.ts.
+ * Money is stored as integer MINOR units — cents — since migration 0006. The
+ * figures below are written in euros, the way a clinic quotes them, and are
+ * multiplied by 100 at the point they are inserted.
  */
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
@@ -22,13 +24,13 @@ const BCRYPT_ROUNDS = 10;
 const DEMO_PASSWORD = 'Demo@2026!';
 
 const CLINIC = {
-  name: 'Demo Dental Clinic',
+  name: 'Klinika Dentare Vita',
   subdomain: 'demo',
-  address: 'Mariahilfer Straße 88',
-  city: 'Vienna',
-  postalCode: '1070',
-  phone: '+43 1 522 4180',
-  email: 'praxis@dentx.app',
+  address: 'Rruga e Kavajës 132',
+  city: 'Tiranë',
+  postalCode: '1001',
+  phone: '+355 4 45 20 118',
+  email: 'info@dentx.app',
 };
 
 const PLATFORM_ADMIN = {
@@ -38,107 +40,123 @@ const PLATFORM_ADMIN = {
 };
 
 /**
- * The clinic team. Access roles are 'admin' and 'receptionist' — migration
- * 0017 collapsed the model to two, the doctor (who is also the administrator)
- * and the front desk; the check constraint rejects every older word outright.
+ * The clinic team. Access roles are admin, dentist, hygienist, assistant and
+ * receptionist (0003_clinical-roles). The director is the administrator; the
+ * associates are dentists, who can treat and sign but cannot see salaries or
+ * the clinic's aggregate finances.
  *
- * `position` is a descriptive job title that grants no permissions, which is
- * why the clinicians below are seeded as `admin` while still reading as
- * dentists everywhere it matters clinically — and why `dentistIds` filters on
- * position rather than role. Both roles are seeded so permission-gated UI has
- * something to be tested against. Salaries are monthly, in euros.
+ * `position` is a descriptive job title that grants no permissions — which is
+ * why `dentistIds` below still filters on position rather than role. Every
+ * role with a distinct UI is seeded so permission-gated screens have something
+ * to be tested against. Salaries are monthly, in euros.
  */
 const STAFF = [
   {
     email: 'demo@dentx.app',
-    fullName: 'Demo Administrator',
+    fullName: 'Dr. Arben Hoxha',
     role: 'admin',
     position: 'Clinic Director',
-    salary: 6200,
+    salary: 2200,
     isPrimaryOwner: true,
   },
   {
-    email: 'l.brandt@dentx.app',
-    fullName: 'Dr. Lukas Brandt',
-    role: 'admin',
+    email: 'e.shehu@dentx.app',
+    fullName: 'Dr. Elira Shehu',
+    role: 'dentist',
     position: 'Dentist',
-    salary: 5400,
+    salary: 1750,
   },
   {
-    email: 's.ricci@dentx.app',
-    fullName: 'Dr. Sofia Ricci',
-    role: 'admin',
+    email: 'e.krasniqi@dentx.app',
+    fullName: 'Dr. Endrit Krasniqi',
+    role: 'dentist',
     position: 'Dentist',
-    salary: 4800,
+    salary: 1600,
   },
   {
-    email: 'j.moreau@dentx.app',
-    fullName: 'Dr. Julien Moreau',
-    role: 'admin',
+    email: 'a.prifti@dentx.app',
+    fullName: 'Dr. Anisa Prifti',
+    role: 'dentist',
     position: 'Orthodontist',
-    salary: 5100,
+    salary: 1900,
   },
   {
-    email: 'm.novak@dentx.app',
-    fullName: 'Marta Novák',
+    email: 'm.dervishi@dentx.app',
+    fullName: 'Migena Dervishi',
     role: 'receptionist',
     position: 'Receptionist',
-    salary: 2600,
+    salary: 650,
   },
   {
-    email: 'a.silva@dentx.app',
-    fullName: 'Ana Silva',
-    role: 'receptionist',
+    email: 'b.leka@dentx.app',
+    fullName: 'Blerta Leka',
+    role: 'assistant',
     position: 'Dental Assistant',
-    salary: 2400,
+    salary: 520,
   },
 ];
 
-/** name, price (EUR), duration (min), visit type */
+/**
+ * name, price (EUR), duration (min), visit type
+ *
+ * Priced for Tirana, not for Vienna. The figures a demo shows are the first
+ * thing a dentist checks against their own price list, and a check-up at €45
+ * says this software was built for somebody else's market.
+ */
 const TREATMENTS = [
-  ['Consultation & Check-up', 45, 30, 'single'],
-  ['Professional Cleaning', 75, 45, 'single'],
-  ['Composite Filling', 120, 45, 'single'],
-  ['Root Canal Treatment', 450, 90, 'multiple'],
-  ['Tooth Extraction', 95, 30, 'single'],
-  ['Surgical Extraction', 220, 60, 'single'],
-  ['Porcelain Crown', 650, 60, 'multiple'],
-  ['Dental Implant', 1450, 90, 'multiple'],
-  ['Teeth Whitening', 280, 60, 'single'],
-  ['Orthodontic Consultation', 60, 30, 'single'],
-  ['Periodontal Treatment', 180, 60, 'multiple'],
-  ['Dental Bridge', 1200, 90, 'multiple'],
-  ['Paediatric Check-up', 40, 30, 'single'],
-  ['Night Guard Fitting', 210, 45, 'single'],
+  ['Consultation & Check-up', 10, 30, 'single'],
+  ['Professional Cleaning', 25, 45, 'single'],
+  ['Composite Filling', 30, 45, 'single'],
+  ['Root Canal Treatment', 80, 90, 'multiple'],
+  ['Tooth Extraction', 20, 30, 'single'],
+  ['Surgical Extraction', 50, 60, 'single'],
+  ['Porcelain Crown', 150, 60, 'multiple'],
+  ['Dental Implant', 450, 90, 'multiple'],
+  ['Teeth Whitening', 90, 60, 'single'],
+  ['Orthodontic Consultation', 15, 30, 'single'],
+  ['Periodontal Treatment', 45, 60, 'multiple'],
+  ['Dental Bridge', 380, 90, 'multiple'],
+  ['Paediatric Check-up', 10, 30, 'single'],
+  ['Night Guard Fitting', 70, 45, 'single'],
 ];
 
-/** first, last, gender, city, postal */
+/**
+ * first, last, gender, city, postal
+ *
+ * Albanian names and real Albanian postal codes. A demo whose patient list
+ * reads Bauer, Dubois and Lindqvist is a demo of somebody else's clinic, and
+ * a dentist in Tirana scrolling that list learns the product was not written
+ * with them in mind before they have clicked anything.
+ *
+ * Mostly Tiranë, with the coastal and southern cities a Tirana clinic
+ * genuinely draws from — Durrës, Vlorë, Elbasan, Shkodër.
+ */
 const PATIENTS = [
-  ['Anna', 'Bauer', 'female', 'Vienna', '1010'],
-  ['Matteo', 'Ricci', 'male', 'Vienna', '1020'],
-  ['Sophie', 'Dubois', 'female', 'Vienna', '1030'],
-  ['Lukas', 'Weber', 'male', 'Vienna', '1040'],
-  ['Elena', 'Fernández', 'female', 'Vienna', '1050'],
-  ['Jonas', 'Lindqvist', 'male', 'Graz', '8010'],
-  ['Marta', 'Kowalska', 'female', 'Vienna', '1060'],
-  ['Pieter', 'van Dijk', 'male', 'Vienna', '1070'],
-  ['Chiara', 'Bianchi', 'female', 'Vienna', '1080'],
-  ['Tomáš', 'Novák', 'male', 'Vienna', '1090'],
-  ['Isabelle', 'Laurent', 'female', 'Linz', '4020'],
-  ['Andreas', 'Schmidt', 'male', 'Vienna', '1100'],
-  ['Núria', 'Serra', 'female', 'Vienna', '1110'],
-  ['Felix', 'Hoffmann', 'male', 'Vienna', '1120'],
-  ['Katarzyna', 'Nowak', 'female', 'Vienna', '1130'],
-  ['Rui', 'Almeida', 'male', 'Salzburg', '5020'],
-  ['Ingrid', 'Larsen', 'female', 'Vienna', '1140'],
-  ['Stefan', 'Müller', 'male', 'Vienna', '1150'],
-  ['Camille', 'Rousseau', 'female', 'Vienna', '1160'],
-  ['Davide', 'Costa', 'male', 'Vienna', '1170'],
-  ['Hanna', 'Virtanen', 'female', 'Vienna', '1180'],
-  ['Sebastian', 'Wagner', 'male', 'Graz', '8020'],
-  ['Léa', 'Girard', 'female', 'Vienna', '1190'],
-  ['Milan', 'Horvat', 'male', 'Vienna', '1200'],
-  ['Greta', 'Andersson', 'female', 'Vienna', '1210'],
+  ['Anisa', 'Hoxha', 'female', 'Tiranë', '1001'],
+  ['Endrit', 'Krasniqi', 'male', 'Tiranë', '1016'],
+  ['Elira', 'Shehu', 'female', 'Tiranë', '1023'],
+  ['Arben', 'Berisha', 'male', 'Tiranë', '1004'],
+  ['Migena', 'Prifti', 'female', 'Durrës', '2001'],
+  ['Ilir', 'Dervishi', 'male', 'Tiranë', '1031'],
+  ['Blerta', 'Leka', 'female', 'Tiranë', '1019'],
+  ['Genti', 'Gjoni', 'male', 'Vlorë', '9401'],
+  ['Suela', 'Bardhi', 'female', 'Tiranë', '1007'],
+  ['Besnik', 'Kola', 'male', 'Tiranë', '1042'],
+  ['Ardita', 'Rama', 'female', 'Elbasan', '3001'],
+  ['Dritan', 'Dushku', 'male', 'Tiranë', '1025'],
+  ['Xhensila', 'Meta', 'female', 'Tiranë', '1012'],
+  ['Ermal', 'Çela', 'male', 'Shkodër', '4001'],
+  ['Vjollca', 'Hasani', 'female', 'Tiranë', '1038'],
+  ['Redi', 'Mema', 'male', 'Tiranë', '1009'],
+  ['Erjona', 'Zeqiri', 'female', 'Durrës', '2004'],
+  ['Altin', 'Balliu', 'male', 'Tiranë', '1027'],
+  ['Kleda', 'Sula', 'female', 'Tiranë', '1014'],
+  ['Fatos', 'Tafa', 'male', 'Tiranë', '1033'],
+  ['Rezarta', 'Nikolla', 'female', 'Fier', '9301'],
+  ['Gentian', 'Frashëri', 'male', 'Tiranë', '1021'],
+  ['Enkeleda', 'Bushati', 'female', 'Tiranë', '1005'],
+  ['Klaudio', 'Malaj', 'male', 'Durrës', '2007'],
+  ['Jonida', 'Progni', 'female', 'Tiranë', '1029'],
 ];
 
 const REASONS = [
@@ -181,7 +199,9 @@ const isoDate = (d) => d.toISOString().slice(0, 10);
 function phone() {
   // Fully random digits. An arithmetic pattern across 25 rows is obvious the
   // moment anyone scans the patient list.
-  return `+43 6${int(60, 99)} ${int(100, 999)} ${int(1000, 9999)}`;
+  // Albanian mobile: +355 6x xxx xxxx. The WhatsApp hand-off strips this
+  // back to digits, so it has to be a number that would really dial.
+  return `+355 6${int(6, 9)} ${int(200, 999)} ${int(1000, 9999)}`;
 }
 
 function birthDate(i) {
@@ -229,7 +249,7 @@ async function main() {
         `INSERT INTO plans (code, name, price_monthly) VALUES ($1,$2,$3)
          ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, price_monthly = EXCLUDED.price_monthly
          RETURNING id`,
-        [code, name, price],
+        [code, name, price * 100],
       );
       if (code === 'professional') planId = r.rows[0].id;
     }
@@ -274,7 +294,7 @@ async function main() {
            full_name = EXCLUDED.full_name, role = EXCLUDED.role,
            position = EXCLUDED.position, salary_amount = EXCLUDED.salary_amount
          RETURNING id`,
-        [tenantId, s.email, hash, s.fullName, s.role, s.position, s.salary],
+        [tenantId, s.email, hash, s.fullName, s.role, s.position, s.salary * 100],
       );
       staffIds[s.email] = r.rows[0].id;
     }
@@ -292,7 +312,7 @@ async function main() {
          ON CONFLICT (tenant_id, lower(name)) DO UPDATE SET
            price = EXCLUDED.price, duration_minutes = EXCLUDED.duration_minutes
          RETURNING id`,
-        [tenantId, name, price, dur, visit],
+        [tenantId, name, price * 100, dur, visit],
       );
       treatmentIds[name] = r.rows[0].id;
     }
@@ -328,10 +348,12 @@ async function main() {
           first,
           last,
           phone(),
-          `${email}@example.at`,
+          // example.com is reserved (RFC 2606): these addresses must never
+          // reach a real inbox, because the reminder hand-off opens a mail app.
+          `${email}@example.com`,
           gender,
           birthDate(i),
-          `${pick(['Lange Gasse', 'Neubaugasse', 'Josefstädter Straße', 'Praterstraße', 'Wiedner Hauptstraße'])} ${int(2, 148)}`,
+          `${pick(['Rruga e Durrësit', 'Rruga e Elbasanit', 'Rruga Myslym Shyri', 'Bulevardi Zogu I', 'Rruga e Dibrës', 'Rruga Ali Demi'])} ${int(2, 148)}`,
           city,
           postal,
           ownerId,
@@ -561,7 +583,7 @@ async function main() {
         for (let l = 0; l < lineCount; l++) {
           const [name, price] = pick(TREATMENTS);
           const qty = rnd() < 0.9 ? 1 : 2;
-          lines.push({ name, price, qty });
+          lines.push({ name, price: price * 100, qty });
         }
         const total = lines.reduce((s, l) => s + l.price * l.qty, 0);
 
@@ -616,7 +638,8 @@ async function main() {
           const amount =
             status === 'paid'
               ? total
-              : Math.max(1, Math.round(total * (0.3 + rnd() * 0.4)));
+              : // A part payment at reception is a round sum of euros, not 3,107 cents.
+                Math.max(100, Math.round((total * (0.3 + rnd() * 0.4)) / 100) * 100);
           // Clamp to now: settlement offsets were pushing recent invoices'
           // payments into the future, so the payments list showed dates that
           // had not happened yet.
@@ -673,7 +696,7 @@ async function main() {
             [
               tenantId,
               category,
-              amount,
+              amount * 100,
               isoDate(dayAt(base - int(0, 20), 12, 0)),
               note,
               ownerId,
@@ -699,7 +722,7 @@ async function main() {
               tenantId,
               staffIds[s.email],
               s.position,
-              s.salary,
+              s.salary * 100,
               isoDate(dayAt(-m * 30, 12, 0)),
               'Monthly salary',
               ownerId,
@@ -721,7 +744,7 @@ async function main() {
         'Prefers morning appointments. Works shifts.',
         'Anxious patient — allow extra chair time and explain each step.',
         'Recall due in six months for periodontal review.',
-        'Referred by Dr. Brandt for orthodontic assessment.',
+        'Referred by Dr. Elira Shehu to Dr. Anisa Prifti for orthodontic assessment.',
       ];
       for (let i = 0; i < NOTES.length; i++) {
         await client.query(
@@ -743,7 +766,8 @@ async function main() {
         .slice(0, 12);
       for (const a of recent) {
         const appt = await client.query(
-          `SELECT a.starts_at, a.reason, (p.first_name || ' ' || p.last_name) AS patient
+          `SELECT a.starts_at, a.reason, a.patient_id,
+                  (p.first_name || ' ' || p.last_name) AS patient
              FROM appointments a JOIN patients p ON p.id = a.patient_id WHERE a.id=$1`,
           [a.id],
         );
@@ -754,11 +778,16 @@ async function main() {
           `${CLINIC.name} on ${when.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} ` +
           `at ${when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}. ` +
           `Reply to the clinic if you need to reschedule.`;
+        // patient_id is NOT NULL since 0012, and a trigger requires it to be
+        // the appointment's own patient. `purpose` defaults to
+        // 'appointment_reminder', which is the only purpose an automatic
+        // reminder is allowed to carry.
         await client.query(
           `INSERT INTO reminders
-             (tenant_id, appointment_id, type, channel, status, message, sent_at, created_by)
-           VALUES ($1,$2,'automatic','log','sent',$3,$4,NULL)`,
-          [tenantId, a.id, message, new Date(when.getTime() - 24 * 3600 * 1000)],
+             (tenant_id, appointment_id, patient_id, type, channel, status, message,
+              sent_at, created_by)
+           VALUES ($1,$2,$3,'automatic','log','sent',$4,$5,NULL)`,
+          [tenantId, a.id, row.patient_id, message, new Date(when.getTime() - 24 * 3600 * 1000)],
         );
       }
     }

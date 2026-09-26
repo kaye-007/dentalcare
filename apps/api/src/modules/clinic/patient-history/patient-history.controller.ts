@@ -2,6 +2,7 @@ import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
+import { LogPatientAccess } from '@/core/audit/patient-access';
 import { PatientHistoryService } from './patient-history.service';
 
 /* ═══════════════════════ controllers ═══════════════════════ */
@@ -14,6 +15,7 @@ export class PatientHistoryController {
   /** One call for the whole background: allergies, conditions, medications. */
   @Get()
   @RequirePermissions('clinical:read')
+  @LogPatientAccess('history')
   summary(@Param('patientId', ParseUUIDPipe) patientId: string) {
     return this.history.summary(patientId);
   }

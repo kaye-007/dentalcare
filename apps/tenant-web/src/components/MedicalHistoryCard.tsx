@@ -10,6 +10,7 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { EmptyState, StatusPill } from './ui';
+import { WithdrawModal } from './VoidModal';
 
 /**
  * Allergies, conditions and current medications for one patient.
@@ -17,6 +18,10 @@ import { EmptyState, StatusPill } from './ui';
  * The severe-allergy banner is the reason this component exists. It is
  * rendered before anything else and is not collapsible: a dentist about to
  * administer anaesthetic must not be able to miss it.
+ *
+ * Nothing here is deleted. A condition that got better is resolved and a
+ * medication that stopped is ended — both facts about the patient. An entry
+ * that was simply wrong is withdrawn as entered in error, with a reason.
  */
 
 const SEVERITY_ORDER: Record<AllergySeverity, number> = {
@@ -33,7 +38,9 @@ const SEVERITY_LABEL: Record<AllergySeverity, string> = {
 
 export default function MedicalHistoryCard({ patientId }: { patientId: string }) {
   const { can } = useAuth();
-  const canEdit = can('clinical:write');
+  // Intake history is its own grant: reception takes it without being able to
+  // touch the chart.
+  const canEdit = can('history:write');
 
   const [data, setData] = useState<MedicalHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,14 +60,14 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
 
   if (error) {
     return (
-      <section className="card">
+      <section className="card card--record">
         <p className="formerror">Could not load medical history: {error}</p>
       </section>
     );
   }
   if (!data) {
     return (
-      <section className="card">
+      <section className="card card--record">
         <p className="muted">Loading medical history…</p>
       </section>
     );
@@ -99,7 +106,7 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
       )}
 
       {/* ── allergies ── */}
-      <section className="card">
+      <section className="card card--record">
         <header className="card__head">
           <h3><AlertTriangle size={16} aria-hidden /> Allergies</h3>
           {canEdit && adding !== 'allergy' && (
@@ -139,7 +146,7 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
       </section>
 
       {/* ── conditions ── */}
-      <section className="card">
+      <section className="card card--record">
         <header className="card__head">
           <h3><Activity size={16} aria-hidden /> Medical conditions</h3>
           {canEdit && adding !== 'condition' && (
@@ -179,7 +186,7 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
       </section>
 
       {/* ── medications ── */}
-      <section className="card">
+      <section className="card card--record">
         <header className="card__head">
           <h3><Pill size={16} aria-hidden /> Medications</h3>
           {canEdit && adding !== 'medication' && (
@@ -228,19 +235,7 @@ function AllergyRow({
 }: {
   allergy: Allergy; patientId: string; canEdit: boolean; onChange: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const remove = async () => {
-    setBusy(true);
-    try {
-      await historyApi.deleteAllergy(patientId, allergy.id);
-      onChange();
-    } catch (e) {
-      setErr((e as Error).message);
-      setBusy(false);
-    }
-  };
+  const [withdrawing, setWithdrawing] = useState(false);
 
   return (
     <li className="recordrow">
@@ -249,17 +244,27 @@ function AllergyRow({
         <StatusPill status={allergy.severity} label={SEVERITY_LABEL[allergy.severity]} />
         {allergy.reaction && <span className="cell-sub">{allergy.reaction}</span>}
         {allergy.notes && <p className="muted recordrow__note">{allergy.notes}</p>}
-        {err && <p className="formerror">{err}</p>}
       </div>
       {canEdit && (
         <button
           className="iconbtn"
-          onClick={remove}
-          disabled={busy}
-          aria-label={`Remove allergy to ${allergy.substance}`}
+          onClick={() => setWithdrawing(true)}
+          title="Withdraw as entered in error"
+          aria-label={`Withdraw allergy to ${allergy.substance} as entered in error`}
         >
           <X size={15} />
         </button>
+      )}
+      {withdrawing && (
+        <WithdrawModal
+          what={`the allergy to ${allergy.substance}`}
+          onClose={() => setWithdrawing(false)}
+          onConfirm={async (reason) => {
+            await historyApi.withdrawAllergy(patientId, allergy.id, reason);
+            setWithdrawing(false);
+            onChange();
+          }}
+        />
       )}
     </li>
   );
@@ -272,6 +277,7 @@ function ConditionRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -316,12 +322,24 @@ function ConditionRow({
           <button
             className="iconbtn"
             disabled={busy}
-            aria-label={`Remove ${condition.name}`}
-            onClick={() => act(() => historyApi.deleteCondition(patientId, condition.id))}
+            title="Withdraw as entered in error"
+            aria-label={`Withdraw ${condition.name} as entered in error`}
+            onClick={() => setWithdrawing(true)}
           >
             <X size={15} />
           </button>
         </div>
+      )}
+      {withdrawing && (
+        <WithdrawModal
+          what={`the condition “${condition.name}”`}
+          onClose={() => setWithdrawing(false)}
+          onConfirm={async (reason) => {
+            await historyApi.withdrawCondition(patientId, condition.id, reason);
+            setWithdrawing(false);
+            onChange();
+          }}
+        />
       )}
     </li>
   );
@@ -334,6 +352,7 @@ function MedicationRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -385,12 +404,24 @@ function MedicationRow({
           <button
             className="iconbtn"
             disabled={busy}
-            aria-label={`Remove ${medication.name}`}
-            onClick={() => act(() => historyApi.deleteMedication(patientId, medication.id))}
+            title="Withdraw as entered in error"
+            aria-label={`Withdraw ${medication.name} as entered in error`}
+            onClick={() => setWithdrawing(true)}
           >
             <X size={15} />
           </button>
         </div>
+      )}
+      {withdrawing && (
+        <WithdrawModal
+          what={`the medication ${medication.name}`}
+          onClose={() => setWithdrawing(false)}
+          onConfirm={async (reason) => {
+            await historyApi.withdrawMedication(patientId, medication.id, reason);
+            setWithdrawing(false);
+            onChange();
+          }}
+        />
       )}
     </li>
   );

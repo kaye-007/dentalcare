@@ -7,6 +7,11 @@ import { TenantContextService } from '@/core/tenancy/tenant-context';
  * M9 — owner-only analytics. Everything is computed inside the tenant
  * transaction (RLS-scoped). Range is inclusive, date-based (YYYY-MM-DD).
  *
+ * Money is minor units (0006). Sums are cast to bigint, never int: a year of
+ * a busy clinic's takings in cents passes 2^31, and an ::int cast would turn
+ * that into an error on the report page. node-postgres returns bigint as a
+ * string, which is why every figure below goes through Number().
+ *
  * Notes on attribution:
  *  - Revenue by treatment comes from invoice line items (issued, not cancelled).
  *  - Dentist breakdown is appointment-based (appointments carry the practitioner;
@@ -32,6 +37,99 @@ export class ReportsService {
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
     return this.db.withTenant(this.tenant.getRequiredTenantId(), fn);
+  }
+
+  /**
+   * TVSH for a period, as the accountant needs it: what was charged at each
+   * rate, and how much of it went to the tax authority.
+   *
+   * Grouped by the rate stored on the line, not by today's clinic rate — a
+   * line billed at 20 % stays in the 20 % band after the clinic's rate
+   * changes. Cancelled invoices are left out; an invoice whose registration
+   * was refused is not, because it was still issued.
+   *
+   * The fiscal/internal split is the number an accountant asks for first:
+   * takings the authority has seen, and takings it has not (0015).
+   */
+  async vat(fromRaw?: string, toRaw?: string) {
+    const def = defaultRange();
+    const from = fromRaw && DATE_RE.test(fromRaw) ? fromRaw : def.from;
+    const to = toRaw && DATE_RE.test(toRaw) ? toRaw : def.to;
+    if (from > to) throw new BadRequestException('"from" must be before "to"');
+
+    return this.tx(async (client) => {
+      const { rows: bands } = await client.query<{
+        tax_rate_bp: number;
+        net: string;
+        vat: string;
+        gross: string;
+        invoices: string;
+      }>(
+        `SELECT li.tax_rate_bp,
+                sum(li.amount - li.tax_amount)::bigint AS net,
+                sum(li.tax_amount)::bigint            AS vat,
+                sum(li.amount)::bigint                AS gross,
+                count(DISTINCT li.invoice_id)::bigint AS invoices
+           FROM invoice_line_items li
+           JOIN invoices i ON i.id = li.invoice_id
+          WHERE i.status <> 'cancelled' AND i.issued_at BETWEEN $1::date AND $2::date
+          GROUP BY li.tax_rate_bp
+          ORDER BY li.tax_rate_bp`,
+        [from, to],
+      );
+
+      const { rows: split } = await client.query<{
+        document_kind: string;
+        registered: boolean;
+        net: string;
+        vat: string;
+        gross: string;
+        invoices: string;
+      }>(
+        `SELECT i.document_kind,
+                EXISTS (SELECT 1 FROM fiscal_invoices f
+                         WHERE f.invoice_id = i.id AND f.status = 'fiscalized') AS registered,
+                sum(i.total - i.tax_amount)::bigint AS net,
+                sum(i.tax_amount)::bigint           AS vat,
+                sum(i.total)::bigint                AS gross,
+                count(*)::bigint                    AS invoices
+           FROM invoices i
+          WHERE i.status <> 'cancelled' AND i.issued_at BETWEEN $1::date AND $2::date
+          GROUP BY i.document_kind, registered`,
+        [from, to],
+      );
+
+      const band = (r: (typeof bands)[number]) => ({
+        rateBp: r.tax_rate_bp,
+        net: Number(r.net),
+        vat: Number(r.vat),
+        gross: Number(r.gross),
+        invoices: Number(r.invoices),
+      });
+      const totals = bands.reduce(
+        (acc, r) => ({
+          net: acc.net + Number(r.net),
+          vat: acc.vat + Number(r.vat),
+          gross: acc.gross + Number(r.gross),
+        }),
+        { net: 0, vat: 0, gross: 0 },
+      );
+
+      return {
+        from,
+        to,
+        bands: bands.map(band),
+        totals,
+        documents: split.map((r) => ({
+          documentKind: r.document_kind as 'internal' | 'fiscal',
+          registered: r.registered,
+          net: Number(r.net),
+          vat: Number(r.vat),
+          gross: Number(r.gross),
+          invoices: Number(r.invoices),
+        })),
+      };
+    });
   }
 
   async overview(fromRaw?: string, toRaw?: string) {
@@ -95,17 +193,17 @@ export class ReportsService {
                 coalesce((SELECT sum(amount) FROM payments
                            WHERE voided_at IS NULL
                              AND date_trunc('month', paid_at) = m
-                             AND paid_at::date BETWEEN $1 AND $2), 0)::int AS collected,
+                             AND paid_at::date BETWEEN $1 AND $2), 0)::bigint AS collected,
                 coalesce((SELECT sum(amount) FROM expenses
                            WHERE voided_at IS NULL
                              AND date_trunc('month', expense_date) = m
-                             AND expense_date BETWEEN $1 AND $2), 0)::int AS expenses
+                             AND expense_date BETWEEN $1 AND $2), 0)::bigint AS expenses
            FROM months ORDER BY m`,
         [from, to],
       );
 
       const byTreatment = await client.query(
-        `SELECT coalesce(t.name, 'Custom items') AS label, sum(li.amount)::int AS value
+        `SELECT coalesce(t.name, 'Custom items') AS label, sum(li.amount)::bigint AS value
            FROM invoice_line_items li
            JOIN invoices i ON i.id = li.invoice_id
            LEFT JOIN treatments t ON t.id = li.treatment_id
@@ -116,7 +214,7 @@ export class ReportsService {
       );
 
       const byCategory = await client.query(
-        `SELECT category AS label, sum(amount)::int AS value
+        `SELECT category AS label, sum(amount)::bigint AS value
            FROM expenses
           WHERE voided_at IS NULL AND expense_date BETWEEN $1 AND $2
           GROUP BY category ORDER BY value DESC`,
@@ -124,7 +222,7 @@ export class ReportsService {
       );
 
       const byMethod = await client.query(
-        `SELECT method AS label, sum(amount)::int AS value
+        `SELECT method AS label, sum(amount)::bigint AS value
            FROM payments
           WHERE voided_at IS NULL AND paid_at::date BETWEEN $1 AND $2
           GROUP BY method ORDER BY value DESC`,

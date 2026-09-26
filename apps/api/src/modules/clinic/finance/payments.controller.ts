@@ -10,6 +10,7 @@ import {
 import { JwtAuthGuard } from '@/modules/clinic/auth';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
+import { Idempotent } from '@/core/idempotency/idempotency.interceptor';
 import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
 import { auditActor } from '@/core/audit/clinic-audit.service';
@@ -32,6 +33,7 @@ export class PaymentsController {
    * away from the database role, so this is the only way to undo a payment.
    */
   @Post(':id/void')
+  @Idempotent()
   @RequirePermissions('payments:void')
   voidPayment(
     @Param('id', ParseUUIDPipe) id: string,

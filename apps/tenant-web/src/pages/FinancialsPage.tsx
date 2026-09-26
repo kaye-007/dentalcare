@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  TrendingUp, Wallet, AlertCircle, Users, Stethoscope, DoorOpen, ClipboardList,
+  TrendingUp,
+  Wallet,
+  AlertCircle,
+  Users,
+  Stethoscope,
+  DoorOpen,
+  ClipboardList,
 } from 'lucide-react';
 import {
   analyticsApi,
@@ -11,11 +17,11 @@ import {
   type ReceivablesReport,
   type RevenueReport,
 } from '../lib/api';
-import { formatMoney } from '../lib/format';
+import { formatMoney, toDate } from '../lib/format';
 import { PageHeader, EmptyState, StatusPill } from '../components/ui';
 import RevenueChart from '../components/RevenueChart';
 import BarBreakdown, { type BarRow } from '../components/BarBreakdown';
-import { dateLocale } from '../lib/i18n';
+import { dateLocale } from '../lib/strings';
 
 /**
  * The clinic's financial dashboard.
@@ -32,11 +38,18 @@ function rangeFor(r: Range): { from: string; to: string; granularity: 'day' | 'm
   const to = today.toISOString().slice(0, 10);
   const d = new Date(today);
   switch (r) {
-    case '30d': d.setDate(d.getDate() - 30); return { from: d.toISOString().slice(0, 10), to, granularity: 'day' };
-    case '90d': d.setDate(d.getDate() - 90); return { from: d.toISOString().slice(0, 10), to, granularity: 'day' };
-    case 'ytd': return { from: `${today.getFullYear()}-01-01`, to, granularity: 'month' };
+    case '30d':
+      d.setDate(d.getDate() - 30);
+      return { from: d.toISOString().slice(0, 10), to, granularity: 'day' };
+    case '90d':
+      d.setDate(d.getDate() - 90);
+      return { from: d.toISOString().slice(0, 10), to, granularity: 'day' };
+    case 'ytd':
+      return { from: `${today.getFullYear()}-01-01`, to, granularity: 'month' };
     case '12m':
-    default: d.setFullYear(d.getFullYear() - 1); return { from: d.toISOString().slice(0, 10), to, granularity: 'month' };
+    default:
+      d.setFullYear(d.getFullYear() - 1);
+      return { from: d.toISOString().slice(0, 10), to, granularity: 'month' };
   }
 }
 
@@ -91,7 +104,9 @@ export default function FinancialsPage() {
     }
   }, [range]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const { granularity } = rangeFor(range);
 
@@ -178,7 +193,9 @@ export default function FinancialsPage() {
 
         <section className="card span-6">
           <header className="card__head">
-            <h3><AlertCircle size={16} aria-hidden /> Accounts receivable</h3>
+            <h3>
+              <AlertCircle size={16} aria-hidden /> Accounts receivable
+            </h3>
           </header>
           {receivables === null ? (
             <p className="muted">Loading…</p>
@@ -193,7 +210,8 @@ export default function FinancialsPage() {
               <p className="statbig">
                 {formatMoney(receivables.totalOutstanding)}
                 <span className="cell-sub">
-                  {' '}across {receivables.invoiceCount} invoice
+                  {' '}
+                  across {receivables.invoiceCount} invoice
                   {receivables.invoiceCount === 1 ? '' : 's'}
                 </span>
               </p>
@@ -212,11 +230,13 @@ export default function FinancialsPage() {
 
         <section className="card span-6">
           <header className="card__head">
-            <h3><Stethoscope size={16} aria-hidden /> Production by clinician</h3>
+            <h3>
+              <Stethoscope size={16} aria-hidden /> Production by clinician
+            </h3>
           </header>
           <p className="card__sub">
-            From the procedure log, so each person is credited with the work they
-            actually performed.
+            From the procedure log, so each person is credited with the work they actually
+            performed.
           </p>
           <BarBreakdown
             rows={byDentist.map((r): BarRow => ({
@@ -229,7 +249,9 @@ export default function FinancialsPage() {
 
         <section className="card span-6">
           <header className="card__head">
-            <h3><DoorOpen size={16} aria-hidden /> Production by room</h3>
+            <h3>
+              <DoorOpen size={16} aria-hidden /> Production by room
+            </h3>
           </header>
           <BarBreakdown
             rows={byOperatory.map((r): BarRow => ({
@@ -242,7 +264,9 @@ export default function FinancialsPage() {
 
         <section className="card span-6">
           <header className="card__head">
-            <h3><ClipboardList size={16} aria-hidden /> Production by procedure</h3>
+            <h3>
+              <ClipboardList size={16} aria-hidden /> Production by procedure
+            </h3>
           </header>
           <BarBreakdown
             rows={byProcedure.slice(0, 10).map((r): BarRow => ({
@@ -261,9 +285,13 @@ export default function FinancialsPage() {
             <table className="table table--compact">
               <thead>
                 <tr>
-                  <th>Invoice</th><th>Patient</th><th>Issued</th>
-                  <th className="num">Total</th><th className="num">Paid</th>
-                  <th className="num">Balance</th><th>Age</th>
+                  <th>Invoice</th>
+                  <th>Patient</th>
+                  <th>Issued</th>
+                  <th className="num">Total</th>
+                  <th className="num">Paid</th>
+                  <th className="num">Balance</th>
+                  <th>Age</th>
                 </tr>
               </thead>
               <tbody>
@@ -272,16 +300,21 @@ export default function FinancialsPage() {
                     <td style={{ fontWeight: 600 }}>{i.invoiceNumber}</td>
                     <td>{i.patientName}</td>
                     <td className="muted">
-                      {new Date(i.issuedAt).toLocaleDateString(dateLocale())}
+                      {toDate(i.issuedAt).toLocaleDateString(dateLocale())}
                     </td>
                     <td className="num">{formatMoney(i.total)}</td>
                     <td className="num">{formatMoney(i.paid)}</td>
-                    <td className="num" style={{ fontWeight: 600 }}>{formatMoney(i.balance)}</td>
+                    <td className="num" style={{ fontWeight: 600 }}>
+                      {formatMoney(i.balance)}
+                    </td>
                     <td>
                       <StatusPill
                         status={
-                          i.bucket === 'over_90' ? 'severe'
-                            : i.bucket === 'd61_90' ? 'moderate' : 'scheduled'
+                          i.bucket === 'over_90'
+                            ? 'severe'
+                            : i.bucket === 'd61_90'
+                              ? 'moderate'
+                              : 'scheduled'
                         }
                         label={`${i.daysOutstanding}d`}
                       />
@@ -298,7 +331,11 @@ export default function FinancialsPage() {
 }
 
 function Stat({
-  icon, label, value, sub, alert,
+  icon,
+  label,
+  value,
+  sub,
+  alert,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -308,7 +345,9 @@ function Stat({
 }) {
   return (
     <div className={`stat${alert ? ' stat--alert' : ''}`}>
-      <span className="stat__label">{icon} {label}</span>
+      <span className="stat__label">
+        {icon} {label}
+      </span>
       <span className="stat__value">{value}</span>
       {sub && <span className="stat__sub">{sub}</span>}
     </div>

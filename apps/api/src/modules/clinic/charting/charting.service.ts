@@ -7,6 +7,12 @@ import {
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
+import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
+import {
+  rethrowRecordLocked,
+  signEntry,
+  withdrawEntry,
+} from '@/core/audit/clinical-record';
 import {
   type Surface,
   type ToothCondition,
@@ -16,6 +22,7 @@ import {
   isWholeToothCondition,
   surfacesFor,
   toothLabel,
+  vatCategoryOf,
 } from '@dentalcare/shared';
 import {
   CreateProcedureCodeDto,
@@ -29,15 +36,24 @@ import {
 /**
  * The odontogram, the clinic's code catalogue, and the log of what was done.
  *
- * The database enforces anatomy (a molar has no incisal edge) and uniqueness
- * of active findings. This layer enforces the rules that need context the
- * schema cannot see — chiefly that you cannot chart a new finding on a tooth
- * already recorded as extracted.
+ * The database enforces anatomy (a molar has no incisal edge), uniqueness of
+ * active findings, and — since 0004 — the integrity of the record: nothing
+ * here is ever deleted, a wrong entry is withdrawn as entered in error, and a
+ * signed procedure cannot be edited at all. This layer enforces the rules
+ * that need context the schema cannot see — chiefly that you cannot chart a
+ * new finding on a tooth already recorded as extracted — and writes every
+ * change to the activity trail in the same transaction as the change.
+ *
+ * Every read excludes withdrawn rows. They remain in the database with who
+ * withdrew them and why; they are not part of the chart.
  */
 
 const UNIQUE_VIOLATION = '23505';
 
 const CHECK_VIOLATION = '23514';
+
+/** "root_canal" -> "root canal", for sentences in the activity trail. */
+const words = (s: string) => s.replace(/_/g, ' ');
 
 /* ═════════════════════════ service ═════════════════════════ */
 
@@ -51,6 +67,7 @@ export interface ConditionRow {
   dentist_id: string | null;
   dentist_name: string | null;
   resolved_by_procedure_id: string | null;
+  source: string;
   recorded_at: string;
   updated_at: string;
 }
@@ -58,7 +75,7 @@ export interface ConditionRow {
 const COND_SELECT = `
   SELECT c.id, c.tooth, c.surface, c.condition, c.status, c.note,
          c.dentist_id, u.full_name AS dentist_name,
-         c.resolved_by_procedure_id, c.recorded_at, c.updated_at
+         c.resolved_by_procedure_id, c.source, c.recorded_at, c.updated_at
     FROM tooth_conditions c
     LEFT JOIN users u ON u.id = c.dentist_id`;
 
@@ -72,8 +89,82 @@ const mapCondition = (r: ConditionRow) => ({
   dentistId: r.dentist_id,
   dentistName: r.dentist_name,
   resolvedByProcedureId: r.resolved_by_procedure_id,
+  source: r.source,
   recordedAt: r.recorded_at,
   updatedAt: r.updated_at,
+});
+
+/** A procedure row as `SELECT *` returns it — what withdraw and sign lock. */
+interface ProcedureLockRow {
+  id: string;
+  patient_id: string;
+  tooth: number | null;
+  description: string;
+  status: string;
+  plan_item_id: string | null;
+  signed_at: string | null;
+  entered_in_error_at: string | null;
+}
+
+const describeProcedure = (r: { description: string; tooth: number | null }) =>
+  `"${r.description}"${r.tooth ? ` on ${toothLabel(r.tooth)}` : ''}`;
+
+const PROC_SELECT = `
+  SELECT cp.id, cp.tooth, cp.surfaces, cp.description, cp.status, cp.fee,
+         cp.performed_on::text AS performed_on, cp.note,
+         cp.clinician_id, u.full_name AS clinician_name,
+         pc.code, pc.system AS code_system,
+         dc.code AS diagnosis_code, dc.system AS diagnosis_system,
+         cp.plan_item_id, cp.appointment_id, cp.source,
+         cp.signed_at, su.full_name AS signed_by_name
+    FROM clinical_procedures cp
+    LEFT JOIN users u ON u.id = cp.clinician_id
+    LEFT JOIN users su ON su.id = cp.signed_by
+    LEFT JOIN procedure_codes pc ON pc.id = cp.procedure_code_id
+    LEFT JOIN procedure_codes dc ON dc.id = cp.diagnosis_code_id`;
+
+interface ProcedureRow {
+  id: string;
+  tooth: number | null;
+  surfaces: string[];
+  description: string;
+  status: string;
+  fee: number;
+  performed_on: string;
+  note: string | null;
+  clinician_id: string | null;
+  clinician_name: string | null;
+  code: string | null;
+  code_system: string | null;
+  diagnosis_code: string | null;
+  diagnosis_system: string | null;
+  plan_item_id: string | null;
+  appointment_id: string | null;
+  source: string;
+  signed_at: string | null;
+  signed_by_name: string | null;
+}
+
+const mapProcedure = (r: ProcedureRow) => ({
+  id: r.id,
+  tooth: r.tooth,
+  surfaces: r.surfaces ?? [],
+  description: r.description,
+  status: r.status,
+  fee: r.fee,
+  performedOn: r.performed_on,
+  note: r.note,
+  clinicianId: r.clinician_id,
+  clinicianName: r.clinician_name,
+  code: r.code,
+  codeSystem: r.code_system,
+  diagnosisCode: r.diagnosis_code,
+  diagnosisSystem: r.diagnosis_system,
+  planItemId: r.plan_item_id,
+  appointmentId: r.appointment_id,
+  source: r.source,
+  signedAt: r.signed_at,
+  signedByName: r.signed_by_name,
 });
 
 @Injectable()
@@ -81,6 +172,7 @@ export class ChartingService {
   constructor(
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
+    private readonly audit: ClinicAuditService,
   ) {}
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
@@ -90,6 +182,16 @@ export class ChartingService {
   private async assertPatient(client: PoolClient, patientId: string) {
     const r = await client.query('SELECT 1 FROM patients WHERE id = $1', [patientId]);
     if (!r.rowCount) throw new NotFoundException('Patient not found');
+  }
+
+  /** The patient's name for an activity line; 404 if they do not exist. */
+  private async patientName(client: PoolClient, patientId: string): Promise<string> {
+    const { rows } = await client.query<{ name: string }>(
+      `SELECT first_name || ' ' || last_name AS name FROM patients WHERE id = $1`,
+      [patientId],
+    );
+    if (!rows[0]) throw new NotFoundException('Patient not found');
+    return rows[0].name;
   }
 
   /* ── odontogram ── */
@@ -103,7 +205,8 @@ export class ChartingService {
     return this.tx(async (client) => {
       await this.assertPatient(client, patientId);
       const { rows } = await client.query<ConditionRow>(
-        `${COND_SELECT} WHERE c.patient_id = $1
+        `${COND_SELECT}
+          WHERE c.patient_id = $1 AND c.entered_in_error_at IS NULL
           ORDER BY c.tooth, c.surface NULLS FIRST, c.recorded_at DESC`,
         [patientId],
       );
@@ -158,7 +261,11 @@ export class ChartingService {
     });
   }
 
-  async addCondition(patientId: string, dto: CreateToothConditionDto, userId: string) {
+  async addCondition(
+    patientId: string,
+    dto: CreateToothConditionDto,
+    actor: ClinicAuditActor,
+  ) {
     // Anatomy is enforced in the database too; checking here produces a message
     // that names the tooth rather than a constraint.
     if (dto.surface && !isValidSurface(dto.tooth, dto.surface)) {
@@ -174,7 +281,7 @@ export class ChartingService {
 
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      await this.assertPatient(client, patientId);
+      const patient = await this.patientName(client, patientId);
 
       // A tooth recorded as extracted or missing cannot acquire new findings.
       // The schema cannot see this; it is a fact about other rows.
@@ -183,6 +290,7 @@ export class ChartingService {
           `SELECT condition FROM tooth_conditions
             WHERE patient_id = $1 AND tooth = $2
               AND status = 'active' AND condition IN ('extracted','missing')
+              AND entered_in_error_at IS NULL
             LIMIT 1`,
           [patientId, dto.tooth],
         );
@@ -194,6 +302,7 @@ export class ChartingService {
         }
       }
 
+      let id: string;
       try {
         const { rows } = await client.query<{ id: string }>(
           `INSERT INTO tooth_conditions
@@ -209,14 +318,10 @@ export class ChartingService {
             dto.status ?? 'active',
             dto.note ?? null,
             dto.dentistId ?? null,
-            userId,
+            actor.userId,
           ],
         );
-        const { rows: full } = await client.query<ConditionRow>(
-          `${COND_SELECT} WHERE c.id = $1`,
-          [rows[0].id],
-        );
-        return mapCondition(full[0]);
+        id = rows[0]!.id;
       } catch (err) {
         const code = (err as { code?: string }).code;
         if (code === UNIQUE_VIOLATION) {
@@ -231,10 +336,31 @@ export class ChartingService {
         }
         throw err;
       }
+
+      await this.audit.record(client, actor, {
+        action: 'clinical.finding_recorded',
+        entityType: 'tooth_condition',
+        entityId: id,
+        summary: `Recorded ${words(dto.condition)} on ${toothLabel(dto.tooth)}${
+          dto.surface ? ` (${dto.surface})` : ''
+        } for ${patient}`,
+        metadata: {
+          patientId,
+          tooth: dto.tooth,
+          surface: dto.surface ?? null,
+          condition: dto.condition,
+        },
+      });
+
+      const { rows: full } = await client.query<ConditionRow>(
+        `${COND_SELECT} WHERE c.id = $1`,
+        [id],
+      );
+      return mapCondition(full[0]!);
     });
   }
 
-  async updateCondition(id: string, dto: UpdateToothConditionDto) {
+  async updateCondition(id: string, dto: UpdateToothConditionDto, actor: ClinicAuditActor) {
     const sets: string[] = [];
     const params: unknown[] = [id];
     const push = (col: string, v: unknown) => {
@@ -247,37 +373,76 @@ export class ChartingService {
     if (!sets.length) throw new BadRequestException('Nothing to update');
 
     return this.tx(async (client) => {
+      const { rows: before } = await client.query<{
+        patient_id: string;
+        tooth: number;
+        condition: string;
+        status: string;
+      }>(
+        `SELECT patient_id, tooth, condition, status FROM tooth_conditions
+          WHERE id = $1 AND entered_in_error_at IS NULL
+          FOR UPDATE`,
+        [id],
+      );
+      const prev = before[0];
+      if (!prev) throw new NotFoundException('Finding not found');
+
       try {
-        const { rows } = await client.query<{ id: string }>(
+        await client.query(
           `UPDATE tooth_conditions SET ${sets.join(', ')}, updated_at = now()
-            WHERE id = $1 RETURNING id`,
+            WHERE id = $1`,
           params,
         );
-        if (!rows[0]) throw new NotFoundException('Finding not found');
-        const { rows: full } = await client.query<ConditionRow>(
-          `${COND_SELECT} WHERE c.id = $1`,
-          [id],
-        );
-        return mapCondition(full[0]);
       } catch (err) {
         if ((err as { code?: string }).code === UNIQUE_VIOLATION) {
           throw new ConflictException(
             'Reactivating this would duplicate a finding already active on that surface.',
           );
         }
-        throw err;
+        rethrowRecordLocked(err);
       }
+
+      const statusMoved = dto.status !== undefined && dto.status !== prev.status;
+      await this.audit.record(client, actor, {
+        action: 'clinical.finding_updated',
+        entityType: 'tooth_condition',
+        entityId: id,
+        summary: statusMoved
+          ? `Marked ${words(prev.condition)} on ${toothLabel(prev.tooth)} as ${dto.status}`
+          : `Updated ${words(prev.condition)} on ${toothLabel(prev.tooth)}`,
+        metadata: {
+          patientId: prev.patient_id,
+          fields: Object.keys(dto).filter(
+            (k) => (dto as Record<string, unknown>)[k] !== undefined,
+          ),
+          ...(statusMoved ? { statusFrom: prev.status, statusTo: dto.status } : {}),
+        },
+      });
+
+      const { rows: full } = await client.query<ConditionRow>(
+        `${COND_SELECT} WHERE c.id = $1`,
+        [id],
+      );
+      return mapCondition(full[0]!);
     });
   }
 
-  async deleteCondition(id: string) {
+  /** Withdraw a finding as entered in error. It stays in the database. */
+  async withdrawCondition(id: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'DELETE FROM tooth_conditions WHERE id = $1',
-        [id],
-      );
-      if (!rowCount) throw new NotFoundException('Finding not found');
-      return { deleted: true as const };
+      await withdrawEntry<{
+        patient_id: string;
+        entered_in_error_at: unknown;
+        tooth: number;
+        condition: string;
+      }>(client, this.audit, actor, {
+        table: 'tooth_conditions',
+        id,
+        reason,
+        action: 'clinical.finding_withdrawn',
+        describe: (r) => `${words(r.condition)} on ${toothLabel(r.tooth)}`,
+      });
+      return { withdrawn: true as const };
     });
   }
 
@@ -306,9 +471,10 @@ export class ChartingService {
         default_fee: number;
         treatment_id: string | null;
         is_active: boolean;
+        is_taxable: boolean;
       }>(
         `SELECT p.id, p.system, p.code, p.description, p.default_fee,
-                p.treatment_id, p.is_active
+                p.treatment_id, p.is_active, p.is_taxable
            FROM procedure_codes p
           ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
           ORDER BY p.system, p.code
@@ -323,6 +489,7 @@ export class ChartingService {
         defaultFee: r.default_fee,
         treatmentId: r.treatment_id,
         isActive: r.is_active,
+        vatCategory: vatCategoryOf(r.is_taxable),
       }));
     });
   }
@@ -339,11 +506,12 @@ export class ChartingService {
           default_fee: number;
           treatment_id: string | null;
           is_active: boolean;
+          is_taxable: boolean;
         }>(
           `INSERT INTO procedure_codes
-             (tenant_id, system, code, description, default_fee, treatment_id)
-           VALUES ($1,$2,btrim($3),btrim($4),$5,$6)
-           RETURNING id, system, code, description, default_fee, treatment_id, is_active`,
+             (tenant_id, system, code, description, default_fee, treatment_id, is_taxable)
+           VALUES ($1,$2,btrim($3),btrim($4),$5,$6,$7)
+           RETURNING id, system, code, description, default_fee, treatment_id, is_active, is_taxable`,
           [
             tenantId,
             dto.system,
@@ -351,9 +519,10 @@ export class ChartingService {
             dto.description,
             dto.defaultFee ?? 0,
             dto.treatmentId ?? null,
+            dto.vatCategory === 'cosmetic',
           ],
         );
-        const r = rows[0];
+        const r = rows[0]!;
         return {
           id: r.id,
           system: r.system,
@@ -362,6 +531,7 @@ export class ChartingService {
           defaultFee: r.default_fee,
           treatmentId: r.treatment_id,
           isActive: r.is_active,
+          vatCategory: vatCategoryOf(r.is_taxable),
         };
       } catch (err) {
         if ((err as { code?: string }).code === UNIQUE_VIOLATION) {
@@ -386,6 +556,7 @@ export class ChartingService {
     if (dto.defaultFee !== undefined) push('default_fee = $$', dto.defaultFee);
     if (dto.treatmentId !== undefined) push('treatment_id = $$', dto.treatmentId ?? null);
     if (dto.isActive !== undefined) push('is_active = $$', dto.isActive);
+    if (dto.vatCategory !== undefined) push('is_taxable = $$', dto.vatCategory === 'cosmetic');
     if (!sets.length) throw new BadRequestException('Nothing to update');
 
     return this.tx(async (client) => {
@@ -398,10 +569,11 @@ export class ChartingService {
           default_fee: number;
           treatment_id: string | null;
           is_active: boolean;
+          is_taxable: boolean;
         }>(
           `UPDATE procedure_codes SET ${sets.join(', ')}, updated_at = now()
             WHERE id = $1
-            RETURNING id, system, code, description, default_fee, treatment_id, is_active`,
+            RETURNING id, system, code, description, default_fee, treatment_id, is_active, is_taxable`,
           params,
         );
         if (!rows[0]) throw new NotFoundException('Code not found');
@@ -414,6 +586,7 @@ export class ChartingService {
           defaultFee: r.default_fee,
           treatmentId: r.treatment_id,
           isActive: r.is_active,
+          vatCategory: vatCategoryOf(r.is_taxable),
         };
       } catch (err) {
         if ((err as { code?: string }).code === UNIQUE_VIOLATION) {
@@ -428,6 +601,8 @@ export class ChartingService {
 
   async deleteCode(id: string) {
     return this.tx(async (client) => {
+      // Withdrawn procedures still reference their code, so they count as use:
+      // deleting the code would orphan the record of what was withdrawn.
       const { rows: used } = await client.query<{ count: string }>(
         `SELECT (
            (SELECT count(*) FROM treatment_plan_items WHERE procedure_code_id = $1) +
@@ -445,7 +620,7 @@ export class ChartingService {
         return {
           deleted: false as const,
           deactivated: true as const,
-          usedBy: Number(used[0].count),
+          usedBy: Number(used[0]!.count),
         };
       }
       const { rowCount } = await client.query(
@@ -462,60 +637,17 @@ export class ChartingService {
   async listProcedures(patientId: string) {
     return this.tx(async (client) => {
       await this.assertPatient(client, patientId);
-      const { rows } = await client.query<{
-        id: string;
-        tooth: number | null;
-        surfaces: string[];
-        description: string;
-        status: string;
-        fee: number;
-        performed_on: string;
-        note: string | null;
-        clinician_id: string | null;
-        clinician_name: string | null;
-        code: string | null;
-        code_system: string | null;
-        diagnosis_code: string | null;
-        diagnosis_system: string | null;
-        plan_item_id: string | null;
-        appointment_id: string | null;
-      }>(
-        `SELECT cp.id, cp.tooth, cp.surfaces, cp.description, cp.status, cp.fee,
-                cp.performed_on::text AS performed_on, cp.note,
-                cp.clinician_id, u.full_name AS clinician_name,
-                pc.code, pc.system AS code_system,
-                dc.code AS diagnosis_code, dc.system AS diagnosis_system,
-                cp.plan_item_id, cp.appointment_id
-           FROM clinical_procedures cp
-           LEFT JOIN users u ON u.id = cp.clinician_id
-           LEFT JOIN procedure_codes pc ON pc.id = cp.procedure_code_id
-           LEFT JOIN procedure_codes dc ON dc.id = cp.diagnosis_code_id
-          WHERE cp.patient_id = $1
+      const { rows } = await client.query<ProcedureRow>(
+        `${PROC_SELECT}
+          WHERE cp.patient_id = $1 AND cp.entered_in_error_at IS NULL
           ORDER BY cp.performed_on DESC, cp.created_at DESC`,
         [patientId],
       );
-      return rows.map((r) => ({
-        id: r.id,
-        tooth: r.tooth,
-        surfaces: r.surfaces ?? [],
-        description: r.description,
-        status: r.status,
-        fee: r.fee,
-        performedOn: r.performed_on,
-        note: r.note,
-        clinicianId: r.clinician_id,
-        clinicianName: r.clinician_name,
-        code: r.code,
-        codeSystem: r.code_system,
-        diagnosisCode: r.diagnosis_code,
-        diagnosisSystem: r.diagnosis_system,
-        planItemId: r.plan_item_id,
-        appointmentId: r.appointment_id,
-      }));
+      return rows.map(mapProcedure);
     });
   }
 
-  async logProcedure(patientId: string, dto: CreateProcedureDto, userId: string) {
+  async logProcedure(patientId: string, dto: CreateProcedureDto, actor: ClinicAuditActor) {
     if (dto.tooth !== undefined && !isValidTooth(dto.tooth)) {
       throw new BadRequestException('Not a valid FDI tooth number');
     }
@@ -532,7 +664,8 @@ export class ChartingService {
 
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      await this.assertPatient(client, patientId);
+      const patient = await this.patientName(client, patientId);
+      const status = dto.status ?? 'completed';
 
       const { rows } = await client.query<{ id: string }>(
         `INSERT INTO clinical_procedures
@@ -553,15 +686,15 @@ export class ChartingService {
           dto.planItemId ?? null,
           dto.appointmentId ?? null,
           dto.description,
-          dto.clinicianId ?? userId,
-          dto.status ?? 'completed',
+          dto.clinicianId ?? actor.userId,
+          status,
           dto.fee ?? 0,
           dto.performedOn ?? null,
           dto.note ?? null,
-          userId,
+          actor.userId,
         ],
       );
-      const procedureId = rows[0].id;
+      const procedureId = rows[0]!.id;
 
       // Close out the findings this procedure treated, in the same transaction
       // so the chart can never show a completed filling beside live caries.
@@ -569,13 +702,14 @@ export class ChartingService {
         await client.query(
           `UPDATE tooth_conditions
               SET status = 'treated', resolved_by_procedure_id = $2, updated_at = now()
-            WHERE id = ANY($1::uuid[]) AND patient_id = $3`,
+            WHERE id = ANY($1::uuid[]) AND patient_id = $3
+              AND entered_in_error_at IS NULL`,
           [dto.resolvesConditionIds, procedureId, patientId],
         );
       }
 
       // Keep the plan line in step when the work came from a treatment plan.
-      if (dto.planItemId && (dto.status ?? 'completed') === 'completed') {
+      if (dto.planItemId && status === 'completed') {
         await client.query(
           `UPDATE treatment_plan_items SET status = 'completed', updated_at = now()
             WHERE id = $1`,
@@ -583,51 +717,30 @@ export class ChartingService {
         );
       }
 
-      const list = await this.listProceduresIn(client, patientId, procedureId);
-      return list;
+      await this.audit.record(client, actor, {
+        action: 'clinical.procedure_logged',
+        entityType: 'clinical_procedure',
+        entityId: procedureId,
+        summary: `Logged ${describeProcedure({
+          description: dto.description,
+          tooth: dto.tooth ?? null,
+        })} (${words(status)}) for ${patient}`,
+        metadata: { patientId, status, fee: dto.fee ?? 0, tooth: dto.tooth ?? null },
+      });
+
+      return this.procedureIn(client, patientId, procedureId);
     });
   }
 
-  private async listProceduresIn(client: PoolClient, patientId: string, id: string) {
-    const { rows } = await client.query<{
-      id: string;
-      tooth: number | null;
-      surfaces: string[];
-      description: string;
-      status: string;
-      fee: number;
-      performed_on: string;
-      note: string | null;
-      clinician_name: string | null;
-      code: string | null;
-      code_system: string | null;
-    }>(
-      `SELECT cp.id, cp.tooth, cp.surfaces, cp.description, cp.status, cp.fee,
-              cp.performed_on::text AS performed_on, cp.note,
-              u.full_name AS clinician_name, pc.code, pc.system AS code_system
-         FROM clinical_procedures cp
-         LEFT JOIN users u ON u.id = cp.clinician_id
-         LEFT JOIN procedure_codes pc ON pc.id = cp.procedure_code_id
-        WHERE cp.id = $1 AND cp.patient_id = $2`,
+  private async procedureIn(client: PoolClient, patientId: string, id: string) {
+    const { rows } = await client.query<ProcedureRow>(
+      `${PROC_SELECT} WHERE cp.id = $1 AND cp.patient_id = $2`,
       [id, patientId],
     );
-    const r = rows[0];
-    return {
-      id: r.id,
-      tooth: r.tooth,
-      surfaces: r.surfaces ?? [],
-      description: r.description,
-      status: r.status,
-      fee: r.fee,
-      performedOn: r.performed_on,
-      note: r.note,
-      clinicianName: r.clinician_name,
-      code: r.code,
-      codeSystem: r.code_system,
-    };
+    return mapProcedure(rows[0]!);
   }
 
-  async updateProcedure(id: string, dto: UpdateProcedureDto) {
+  async updateProcedure(id: string, dto: UpdateProcedureDto, actor: ClinicAuditActor) {
     const sets: string[] = [];
     const params: unknown[] = [id];
     const push = (frag: string, v: unknown) => {
@@ -643,24 +756,120 @@ export class ChartingService {
     if (!sets.length) throw new BadRequestException('Nothing to update');
 
     return this.tx(async (client) => {
-      const { rows } = await client.query<{ patient_id: string }>(
-        `UPDATE clinical_procedures SET ${sets.join(', ')}, updated_at = now()
-          WHERE id = $1 RETURNING patient_id`,
-        params,
+      const { rows: before } = await client.query<{
+        patient_id: string;
+        description: string;
+        tooth: number | null;
+        status: string;
+        fee: number;
+      }>(
+        `SELECT patient_id, description, tooth, status, fee FROM clinical_procedures
+          WHERE id = $1 AND entered_in_error_at IS NULL
+          FOR UPDATE`,
+        [id],
       );
-      if (!rows[0]) throw new NotFoundException('Procedure not found');
-      return this.listProceduresIn(client, rows[0].patient_id, id);
+      const prev = before[0];
+      if (!prev) throw new NotFoundException('Procedure not found');
+
+      try {
+        await client.query(
+          `UPDATE clinical_procedures SET ${sets.join(', ')}, updated_at = now()
+            WHERE id = $1`,
+          params,
+        );
+      } catch (err) {
+        rethrowRecordLocked(err);
+      }
+
+      const feeMoved = dto.fee !== undefined && dto.fee !== prev.fee;
+      const statusMoved = dto.status !== undefined && dto.status !== prev.status;
+      await this.audit.record(client, actor, {
+        action: 'clinical.procedure_updated',
+        entityType: 'clinical_procedure',
+        entityId: id,
+        summary: `Updated ${describeProcedure(prev)}`,
+        metadata: {
+          patientId: prev.patient_id,
+          fields: Object.keys(dto).filter(
+            (k) => (dto as Record<string, unknown>)[k] !== undefined,
+          ),
+          ...(feeMoved ? { feeFrom: prev.fee, feeTo: dto.fee } : {}),
+          ...(statusMoved ? { statusFrom: prev.status, statusTo: dto.status } : {}),
+        },
+      });
+
+      return this.procedureIn(client, prev.patient_id, id);
     });
   }
 
-  async deleteProcedure(id: string) {
+  /**
+   * Sign a completed or cancelled procedure. From here on the database refuses
+   * every edit; the only correction is to withdraw it and log it again.
+   */
+  async signProcedure(id: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'DELETE FROM clinical_procedures WHERE id = $1',
+      const row = await signEntry<ProcedureLockRow>(client, this.audit, actor, {
+        table: 'clinical_procedures',
+        id,
+        action: 'clinical.procedure_signed',
+        describe: describeProcedure,
+        assert: (r) => {
+          if (r.status !== 'completed' && r.status !== 'cancelled') {
+            throw new ConflictException(
+              'Only a completed or cancelled procedure can be signed. Finish it first.',
+            );
+          }
+        },
+      });
+      return this.procedureIn(client, row.patient_id, id);
+    });
+  }
+
+  /**
+   * Withdraw a procedure as entered in error.
+   *
+   * If it never happened, neither did its consequences: findings it marked as
+   * treated are open again, and a plan line it completed goes back to planned.
+   * A finding is only reopened when that would not duplicate one charted
+   * since. A procedure already on a live invoice is refused by the database —
+   * the invoice has to be dealt with first.
+   */
+  async withdrawProcedure(id: string, reason: string, actor: ClinicAuditActor) {
+    return this.tx(async (client) => {
+      const row = await withdrawEntry<ProcedureLockRow>(client, this.audit, actor, {
+        table: 'clinical_procedures',
+        id,
+        reason,
+        action: 'clinical.procedure_withdrawn',
+        describe: describeProcedure,
+      });
+
+      await client.query(
+        `UPDATE tooth_conditions c
+            SET status = 'active', resolved_by_procedure_id = NULL, updated_at = now()
+          WHERE c.resolved_by_procedure_id = $1
+            AND c.status = 'treated'
+            AND c.entered_in_error_at IS NULL
+            AND NOT EXISTS (
+                  SELECT 1 FROM tooth_conditions d
+                   WHERE d.patient_id = c.patient_id
+                     AND d.tooth = c.tooth
+                     AND COALESCE(d.surface, '*') = COALESCE(c.surface, '*')
+                     AND d.condition = c.condition
+                     AND d.status = 'active'
+                     AND d.entered_in_error_at IS NULL)`,
         [id],
       );
-      if (!rowCount) throw new NotFoundException('Procedure not found');
-      return { deleted: true as const };
+
+      if (row.plan_item_id) {
+        await client.query(
+          `UPDATE treatment_plan_items SET status = 'planned', updated_at = now()
+            WHERE id = $1 AND status = 'completed'`,
+          [row.plan_item_id],
+        );
+      }
+
+      return { withdrawn: true as const };
     });
   }
 }

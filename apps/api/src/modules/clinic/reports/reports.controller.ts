@@ -14,4 +14,10 @@ export class ReportsController {
   overview(@Query('from') from?: string, @Query('to') to?: string) {
     return this.reports.overview(from, to);
   }
+
+  /** TVSH by rate for a period, with the fiscal / internal split. */
+  @Get('vat')
+  vat(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.reports.vat(from, to);
+  }
 }

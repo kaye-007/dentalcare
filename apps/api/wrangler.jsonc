@@ -57,24 +57,44 @@
 
   // ── Background work ─────────────────────────────────────────────────────
   //
-  // Hourly automatic appointment reminders. This replaces the in-process
-  // setInterval in ReminderSchedulerService, which a Worker cannot run: there
-  // is no resident process between requests to hold a timer.
-  "triggers": { "crons": ["0 * * * *"] },
+  // Automatic appointment reminders, every 15 minutes. This replaces the
+  // in-process setInterval in ReminderSchedulerService, which a Worker cannot
+  // run: there is no resident process between requests to hold a timer.
+  //
+  // Hourly was too coarse once reminders actually send: a retry the provider
+  // asked for in 5 minutes waited up to an hour, and a "2 hours before"
+  // reminder could leave with an hour to go. Each pass stops after
+  // REMINDER_SCAN_BUDGET_MS (45s by default) and leaves the remaining clinics
+  // first in line for the next.
+  "triggers": { "crons": ["*/15 * * * *"] },
 
   // The SPAs reach the API through a service binding on their own origin, so
   // this public hostname exists for one thing: GOOGLE_CALLBACK_URL, which
   // Google requires to be a single fixed URI.
   "routes": [{ "pattern": "api.dentalcare.com", "custom_domain": true }],
 
-  // Non-secret configuration only. JWT_SECRET, GOOGLE_CLIENT_SECRET and the S3
-  // credentials are secrets:  wrangler secret put JWT_SECRET
+  // Non-secret configuration only. JWT_SECRET, PLATFORM_JWT_SECRET,
+  // MFA_ENCRYPTION_KEYS, GOOGLE_CLIENT_SECRET, the S3 credentials and
+  // TWILIO_AUTH_TOKEN are secrets:  wrangler secret put TWILIO_AUTH_TOKEN
+  //
+  // SMS stays off ("log") until an account is ready. To turn it on, set
+  // SMS_PROVIDER to "twilio", add TWILIO_ACCOUNT_SID and TWILIO_FROM (or
+  // TWILIO_MESSAGING_SERVICE_SID) here, and put the auth token as a secret.
+  // The API refuses to boot with a partial set.
   "vars": {
     "NODE_ENV": "production",
     "RUNTIME": "workers",
     "CORS_ORIGINS": "https://*.dentalcare.com,https://admin.dentalcare.com",
     "APP_BASE_URL": "https://dentalcare.com",
     "ADMIN_BASE_URL": "https://admin.dentalcare.com",
+    // Where SMS delivery receipts are sent; their signatures are checked
+    // against this origin, so it must be exactly what the provider calls.
+    "PUBLIC_API_URL": "https://api.dentalcare.com",
+    "SMS_PROVIDER": "log",
+    // WhatsApp and Viber stay off until their accounts and templates are
+    // approved. VONAGE_API_SECRET is a secret; the rest belong here.
+    "WHATSAPP_PROVIDER": "none",
+    "VIBER_PROVIDER": "none",
     "S3_REGION": "auto",
     "S3_FORCE_PATH_STYLE": "1",
   },

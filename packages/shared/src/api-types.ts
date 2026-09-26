@@ -40,6 +40,8 @@ export const DOCUMENT_KINDS = [
   'consent',
   'referral',
   'insurance',
+  /** A national ID card or passport, photographed at the front desk (0012). */
+  'id_document',
   'report',
   'other',
 ] as const;

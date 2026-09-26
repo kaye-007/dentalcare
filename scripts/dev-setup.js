@@ -381,7 +381,15 @@ async function main() {
   /* Tables the app role is meant to hold nothing on. Without this list the
      "no privileges at all" test below would read them as an out-of-band gap
      and grant exactly what 0004 and 0021 revoked. */
-  const DENIED_BY_DESIGN = new Set(['platform_admins', 'audit_log', 'pgmigrations']);
+  const DENIED_BY_DESIGN = new Set([
+    'platform_admins',
+    'audit_log',
+    'pgmigrations',
+    // 0005: console sessions and second factors belong to the platform plane.
+    'platform_sessions',
+    'platform_mfa_factors',
+    'platform_mfa_recovery_codes',
+  ]);
 
   const orphans = await admin.query(
     `SELECT t.tablename
@@ -435,7 +443,29 @@ async function main() {
                AND privilege_type = 'DELETE')
            OR (table_name IN ('payments','expenses','ledger_entries')
                AND privilege_type = 'UPDATE')
-           OR (table_name = 'clinic_audit_log' AND privilege_type IN ('UPDATE','DELETE','TRUNCATE')) )
+           OR (table_name = 'clinic_audit_log' AND privilege_type IN ('UPDATE','DELETE','TRUNCATE'))
+           -- 0004: nothing clinical is deleted, notes are written once, and
+           -- the record-access log is append-only.
+           OR (table_name IN ('patients','tooth_conditions','clinical_procedures',
+                              'perio_exams','perio_measurements','perio_tooth_findings',
+                              'patient_notes','patient_allergies','patient_conditions',
+                              'patient_medications')
+               AND privilege_type = 'DELETE')
+           OR (table_name = 'patient_notes' AND privilege_type = 'UPDATE')
+           OR (table_name = 'patient_access_log' AND privilege_type IN ('UPDATE','DELETE','TRUNCATE'))
+           -- 0005: nothing on the console's sessions or factors, and a clinic
+           -- factor's secret is never rewritten in place.
+           OR (table_name IN ('platform_sessions','platform_mfa_factors','platform_mfa_recovery_codes'))
+           OR (table_name IN ('user_mfa_factors','user_mfa_recovery_codes')
+               AND privilege_type IN ('UPDATE','DELETE'))
+           -- 0002 and 0007: stock history is append-only, nothing stocked is
+           -- deleted, and a lot keeps the identity it was received with (its
+           -- UPDATE grant is per column, so a table-wide one is a regression).
+           OR (table_name = 'stock_movements' AND privilege_type IN ('UPDATE','DELETE'))
+           OR (table_name IN ('inventory_items','inventory_lots') AND privilege_type = 'DELETE')
+           OR (table_name = 'inventory_lots' AND privilege_type = 'UPDATE')
+           -- 0008: a reminder row is the record that a patient was contacted.
+           OR (table_name = 'reminders' AND privilege_type = 'DELETE') )
       ORDER BY table_name, privilege_type`,
     [appUser],
   );
@@ -447,7 +477,7 @@ async function main() {
     }
     die('the app role is over-privileged — rebuild with: npm run dev:setup:reset');
   }
-  ok('money, audit and commercial-state privileges are still revoked');
+  ok('money, audit, clinical-record, stock and commercial-state privileges are still revoked');
   await admin.end();
 
   /* ── 6. demo data ───────────────────────────────────────────────────── */

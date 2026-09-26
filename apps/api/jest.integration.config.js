@@ -22,6 +22,10 @@ module.exports = {
   roots: ['<rootDir>/test'],
   testRegex: '\\.itest\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
+  // Reads the repository .env before any suite imports test/integration/db.ts.
+  // See that file: without it, the four suites that prove tenant isolation
+  // threw at import on any machine that had not exported the URLs by hand.
+  setupFiles: ['<rootDir>/test/integration/env.setup.js'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     // Source, not dist — same reasoning as the unit config. These tests are

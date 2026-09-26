@@ -8,14 +8,21 @@ import {
   type ReactNode,
 } from 'react';
 import { Navigate } from 'react-router-dom';
-import { api, token, type Admin } from './api';
+import { api, setSessionExpiredHandler, token, type Admin } from './api';
+
+/** Where a password sign-in lands: done, or at the second step. */
+export type SignInStep =
+  | { kind: 'done' }
+  | { kind: 'verify'; challengeToken: string }
+  | { kind: 'enroll'; challengeToken: string };
 
 interface AuthState {
   admin: Admin | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<SignInStep>;
+  completeSignIn: (tokens: { accessToken: string; refreshToken: string }) => Promise<void>;
   /** Adopt a session minted by the Google callback. */
-  adoptSession: (access: string) => Promise<void>;
+  adoptSession: (access: string, refresh?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -43,14 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await api.login(email, password);
-    token.set(res.accessToken);
-    setAdmin(res.admin);
-  }, []);
-
-  const adoptSession = useCallback(async (access: string) => {
-    token.set(access);
+  const adoptSession = useCallback(async (access: string, refresh?: string) => {
+    token.set(access, refresh);
     try {
       setAdmin(await api.me());
     } catch (err) {
@@ -59,14 +60,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const completeSignIn = useCallback(
+    (tokens: { accessToken: string; refreshToken: string }) =>
+      adoptSession(tokens.accessToken, tokens.refreshToken),
+    [adoptSession],
+  );
+
+  const login = useCallback(
+    async (email: string, password: string): Promise<SignInStep> => {
+      const res = await api.login(email, password);
+      if (res.status === 'authenticated') {
+        await completeSignIn(res);
+        return { kind: 'done' };
+      }
+      return res.status === 'mfa_required'
+        ? { kind: 'verify', challengeToken: res.challengeToken }
+        : { kind: 'enroll', challengeToken: res.challengeToken };
+    },
+    [completeSignIn],
+  );
+
+  /** Signed out here first, then on the server, so a slow network cannot keep the screen signed in. */
   const logout = useCallback(() => {
+    const refresh = token.refresh();
     token.clear();
     setAdmin(null);
+    if (refresh) void api.logout(refresh).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    setSessionExpiredHandler(() => setAdmin(null));
+    return () => setSessionExpiredHandler(null);
   }, []);
 
   const value = useMemo(
-    () => ({ admin, loading, login, adoptSession, logout }),
-    [admin, loading, login, adoptSession, logout],
+    () => ({ admin, loading, login, completeSignIn, adoptSession, logout }),
+    [admin, loading, login, completeSignIn, adoptSession, logout],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

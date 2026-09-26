@@ -149,6 +149,20 @@ describe('the excluded routes, and only those', () => {
   );
 
   /**
+   * The SMS provider's delivery receipts come from its servers, with no
+   * clinic. Excluded for POST only: the reminder log under the same prefix
+   * still needs a clinic.
+   */
+  it('the SMS delivery receipt gets past the tenant middleware to its own check', async () => {
+    const res = await call(api, 'POST', '/api/reminders/delivery/twilio', {
+      subdomain: ABSENT_CLINIC,
+      body: {},
+    });
+
+    expect(isTenantRefusal(res.status, res.body)).toBe(false);
+  });
+
+  /**
    * auth/google shares its prefix with auth/login, auth/refresh,
    * auth/password and auth/me — and those all need a clinic. Excluding the
    * whole `auth` prefix instead of the three Google paths would take tenant
@@ -173,13 +187,14 @@ describe('the exclusion list itself', () => {
    * adding one is a security decision and should read as a deliberate change
    * in review rather than a line in a larger diff.
    */
-  it('is exactly the five known exclusions', () => {
+  it('is exactly the six known exclusions', () => {
     expect(TENANT_MIDDLEWARE_EXCLUSIONS.map((e) => e.path).sort()).toEqual([
       'auth/google',
       'auth/google/callback',
       'auth/providers',
       'health',
-      'platform/(.*)',
+      'platform/{*path}',
+      'reminders/delivery/twilio',
     ]);
   });
 
@@ -192,7 +207,7 @@ describe('the exclusion list itself', () => {
 
   /**
    * A wildcard that swallowed more than intended is the way this list would
-   * fail quietly. `platform/(.*)` is the only pattern, and it is scoped to
+   * fail quietly. `platform/{*path}` is the only pattern, and it is scoped to
    * the other plane.
    */
   it('has no exclusion that could match a clinic route', () => {
@@ -206,9 +221,9 @@ describe('the exclusion list itself', () => {
 describe('no controller is left out by accident', () => {
   /**
    * The old configuration could drift because it named controllers. This one
-   * cannot — `forRoutes('*')` covers everything — but the source is checked
-   * anyway, so that a future change back to a named list fails here rather
-   * than in production.
+   * cannot — `forRoutes('{*path}')` covers everything — but the source is
+   * checked anyway, so that a future change back to a named list fails here
+   * rather than in production.
    */
   it('AppModule applies the middleware to every route', () => {
     const source = fs.readFileSync(
@@ -216,7 +231,7 @@ describe('no controller is left out by accident', () => {
       'utf8',
     );
 
-    expect(source).toMatch(/\.forRoutes\(\s*'\*'\s*\)/);
+    expect(source).toMatch(/\.forRoutes\(\s*'\{\*path\}'\s*\)/);
     expect(source).toContain('tenantMiddlewareExclusions()');
     // The old shape: a controller named in forRoutes.
     expect(source).not.toMatch(/forRoutes\(\s*\n?\s*[A-Z]\w*Controller/);

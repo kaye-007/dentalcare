@@ -39,6 +39,28 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
     'Returns the caller their own identity and permission list. Holding any valid token is the whole requirement.',
   'AuthController.changePassword':
     'Changes the caller OWN password, re-verifying the current one. Gating it on a permission would let an admin lock a user out of their own credentials.',
+  'AuthController.logout':
+    'Presents a refresh token, and ends only the session that token belongs to.',
+  'AuthController.verifyMfa':
+    'The second step of a sign-in. Presents a challenge token, not an access role.',
+  'AuthController.beginEnrollment':
+    'Enrollment during a sign-in that requires MFA. Presents a challenge token, not an access role.',
+  'AuthController.confirmEnrollment':
+    'Enrollment during a sign-in that requires MFA. Presents a challenge token, not an access role.',
+  'AuthController.mfaStatus': "The caller's OWN second-factor state.",
+  'AuthController.setupTotp':
+    "Enrolls the caller's OWN device. Every role must be able to protect its own account.",
+  'AuthController.confirmTotp':
+    "Enrolls the caller's OWN device. Every role must be able to protect its own account.",
+  'AuthController.regenerateRecoveryCodes':
+    "The caller's OWN recovery codes, proven with a current code.",
+  'AuthController.disableMfa':
+    "The caller's OWN factor, proven with password and code, and refused where MFA is required.",
+  'AuthController.sessions': "The caller's OWN signed-in devices.",
+  'AuthController.revokeOtherSessions': "Ends the caller's OWN other sessions.",
+  'AuthController.revokeSession': "Ends one of the caller's OWN sessions; ownership is checked.",
+  'ReminderDeliveryController.twilio':
+    'Called by the SMS provider, not a signed-in user. Authenticated by the provider signature over the full URL and body; it can only move the reminder that URL names, inside the clinic it names, under that clinic’s RLS.',
 };
 
 const CLINIC_DIR = join(__dirname, '..', '..', 'modules', 'clinic');

@@ -1,6 +1,31 @@
 # Project Structure
 
-npm workspaces: one API and two React SPAs.
+npm workspaces: one API, two React SPAs, and the package they share.
+
+```
+apps/api            NestJS modular monolith + migrations
+apps/tenant-web     the clinic's app
+apps/admin-web      the vendor console
+packages/shared     contracts both planes depend on (see below)
+infra/docker        Dockerfile + compose for local Postgres and the API
+scripts/            repo-level tooling: dev-setup, doctor, smoke, class audit
+docs/               this file and its neighbours
+```
+
+Anything else at the root is generated and gitignored — `node_modules/`,
+`dist/`, `.wrangler/`, `_to_delete/`. Nothing in the build reads from them.
+
+## packages/shared
+
+The rules that both sides must agree on, and that were duplicated until they
+drifted: `permissions` (the role matrix), `tooth-notation` (FDI, surfaces,
+Universal), `money`, `vat`, `features`, `cash-drawer`, `messages`,
+`reminders`, `csv`, `patient-import`, plus `api-types`.
+
+Each carries its own `*.spec.ts`. Those specs run inside the API's jest run
+rather than a second runner — `apps/api/jest.config.js` lists
+`packages/shared/src` among its roots — so a contract change fails in the
+suite that already tests the code depending on it.
 
 ## apps/api
 
@@ -14,8 +39,15 @@ src/
 │   ├── config/             env schema (zod) — the app refuses to boot on a bad one
 │   ├── database/           DatabaseService: the two planes, both runtimes
 │   ├── tenancy/            tenant resolution, request context, read-only guard
-│   ├── authz/              permission matrix, guard, decorator, route-coverage test
+│   ├── authz/              permission guard, decorator, route-coverage test
 │   ├── audit/              clinic audit trail (append-only)
+│   ├── sessions/           server-side session state, forward-only
+│   ├── mfa/                TOTP enrolment and recovery codes
+│   ├── idempotency/        Idempotency-Key claim/replay interceptor
+│   ├── request-context/    ALS: request id, IP, user agent
+│   ├── entitlements/       plan + override resolution behind feature flags
+│   ├── money/              minor-unit arithmetic at the edges
+│   ├── pdf/                invoice and receipt rendering
 │   ├── oauth/              Google sign-in: strategy, guards, callback controller
 │   ├── storage/            S3-compatible object storage over aws4fetch
 │   ├── security/           bcrypt wrapper
@@ -30,6 +62,7 @@ src/
     │   ├── auth/  users/  patients/  patient-history/  documents/
     │   ├── appointments/  scheduling/  staff/  treatments/  charting/
     │   ├── perio/  treatment-plans/  settings/  finance/  billing/
+    │   ├── cash-drawer/  fiscalization/  features/  inventory/
     │   └── reports/  analytics/  reminders/  audit/
     └── platform/           privileged — bypasses RLS by design
         └── auth/  tenants/  plans/  audit/
@@ -95,14 +128,19 @@ production build via `tsconfig.json`.
 src/
 ├── App.tsx                 routes; everything but /login sits behind RequireAuth
 ├── main.tsx
-├── styles.css              single stylesheet, no CSS framework
+├── styles.css              the bulk of it; no CSS framework
+├── messaging.css           screens too large to leave in styles.css:
+├── drawer.css                the message threads, the cash drawer,
+├── operations.css            the operational tables,
+├── print.css                 and what a printed document looks like
 ├── lib/
 │   ├── api.ts              typed API client, token store, silent refresh
 │   ├── auth.tsx            AuthProvider, useAuth, RequireAuth
-│   ├── format.ts           currency, initials, avatar tints
-│   ├── permissions.ts      client-side mirror of the server matrix
-│   ├── tooth-notation.ts   FDI / Universal mapping
-│   └── i18n/               en + sq dictionaries
+│   ├── features.tsx        entitlement lookup for the current clinic
+│   ├── format.ts           currency, dates, initials, avatar tints
+│   ├── permissions.ts      how this app TALKS about the shared matrix
+│   ├── tooth-notation.ts   how the odontogram DRAWS a finding
+│   └── strings.ts          user-facing copy
 ├── components/             AppLayout, ui.tsx primitives, and feature cards
 └── pages/                  route components
 ```
@@ -113,12 +151,17 @@ call.
 
 `admin-web` follows the same shape at a tenth of the size.
 
-**This tree has not been through the domain-feature reorganization the API just
-had.** `lib/api.ts` is a single 1,800-line client covering every domain, and
-`components/` mixes generic primitives with feature-specific cards. The target
-is `components/ui/`, `components/layout/`, and `features/<domain>/` with its own
-`components/`, `hooks/`, `api/` and `types/`. Note that neither SPA has tests, so
-that pass is guarded by `tsc` alone.
+**This tree has not been through the domain-feature reorganization the API
+had.** `lib/api.ts` is a single ~3,400-line client covering every domain, and
+`components/` mixes generic primitives with feature-specific cards — though the
+two largest groupings have since moved into `components/drawer/` and
+`components/settings/`. The target is `components/ui/`, `components/layout/`,
+and `features/<domain>/` with its own `components/`, `hooks/`, `api/` and
+`types/`.
+
+Neither SPA has a test runner, so that pass is guarded by `tsc` and by
+`npm run audit:classes`, which fails on a class used in JSX with no CSS rule
+and on a rule nothing uses. It is the only automated check on the stylesheets.
 
 ## Both SPAs call `/api/*` as a relative path
 
@@ -130,7 +173,8 @@ clinic from the `Host` subdomain — see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 ## Where to start reading
 
 1. `apps/api/src/core/tenancy/` — how a request becomes a tenant
-2. `apps/api/migrations/0003_tenant-isolation.js` — how isolation is enforced
+2. `apps/api/migrations/0001_baseline.js` — the schema and how isolation is
+   enforced; `0002`+ are the changes since
 3. `apps/api/src/core/database/database.service.ts` — the two planes
 4. `apps/api/src/modules/clinic/finance/` — one feature end to end
 5. `apps/tenant-web/src/lib/api.ts` — the client contract

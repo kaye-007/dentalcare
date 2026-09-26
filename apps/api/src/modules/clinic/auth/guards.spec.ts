@@ -138,13 +138,24 @@ describe('PermissionsGuard', () => {
     }
   });
 
-  it('lets reception read AND write the clinical chart', () => {
-    for (const perm of ['clinical:read', 'clinical:write']) {
+  /**
+   * 0009: reception reads the chart and the plans and takes the intake
+   * history, but writes neither the odontogram, a perio exam nor a plan.
+   */
+  it('lets reception read the chart and take a history, but not write the chart or a plan', () => {
+    for (const perm of ['clinical:read', 'history:write', 'invoices:fiscalize']) {
       expect(
         guardRequiring([perm]).canActivate(
           ctxWith({}, { user: { role: 'receptionist' } }),
         ),
       ).toBe(true);
+    }
+    for (const perm of ['clinical:write', 'clinical:sign', 'plans:write']) {
+      expect(() =>
+        guardRequiring([perm]).canActivate(
+          ctxWith({}, { user: { role: 'receptionist' } }),
+        ),
+      ).toThrow(ForbiddenException);
     }
   });
 
@@ -158,13 +169,26 @@ describe('PermissionsGuard', () => {
     }
   });
 
-  it('admits a still-valid dentist token as the doctor', () => {
-    // 0017 promoted those rows to admin. A token minted before the deploy has
-    // to resolve the same way, or a live session would outrank its own row.
-    for (const perm of ['clinical:write', 'payroll:read', 'reports:read']) {
+  it('treats a dentist as a dentist, never as the administrator', () => {
+    // 0003_clinical-roles made `dentist` a real, narrower role again. The
+    // pre-0017 mapping to admin would now promote every associate.
+    for (const perm of ['clinical:write', 'clinical:sign']) {
       expect(
         guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'dentist' } })),
       ).toBe(true);
+    }
+    for (const perm of ['payroll:read', 'reports:read', 'staff:manage']) {
+      expect(() =>
+        guardRequiring([perm]).canActivate(ctxWith({}, { user: { role: 'dentist' } })),
+      ).toThrow(ForbiddenException);
+    }
+  });
+
+  it('never lets reception or an assistant sign a clinical entry', () => {
+    for (const role of ['receptionist', 'assistant']) {
+      expect(() =>
+        guardRequiring(['clinical:sign']).canActivate(ctxWith({}, { user: { role } })),
+      ).toThrow(ForbiddenException);
     }
   });
 

@@ -7,6 +7,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { VAT_CATEGORIES, type VatCategory } from '@dentalcare/shared';
 
 /* ── DTOs ────────────────────────────────────────────────── */
 export class CreateTreatmentDto {
@@ -24,6 +25,10 @@ export class CreateTreatmentDto {
 
   @IsOptional() @IsIn(['active', 'inactive'])
   status?: 'active' | 'inactive';
+
+  /** medical: TVSH exempt. cosmetic: the clinic's VAT rate. Medical when omitted. */
+  @IsOptional() @IsIn([...VAT_CATEGORIES])
+  vatCategory?: VatCategory;
 }
 
 export class UpdateTreatmentDto {
@@ -41,4 +46,7 @@ export class UpdateTreatmentDto {
 
   @IsOptional() @IsIn(['active', 'inactive'])
   status?: 'active' | 'inactive';
+
+  @IsOptional() @IsIn([...VAT_CATEGORIES])
+  vatCategory?: VatCategory;
 }

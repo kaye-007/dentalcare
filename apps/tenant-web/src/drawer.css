@@ -1,0 +1,542 @@
+/* ── cash drawer (API 0014) ───────────────────────────────────
+   Built phone-first: steppers and switches are 48px targets, figures use
+   tabular numerals, and every difference is written in words beside its
+   colour. */
+
+.drawer-page {
+  display: grid;
+  gap: 18px;
+}
+
+.drawer-h3 {
+  margin: 8px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.small {
+  font-size: 12.5px;
+}
+
+.pad-x {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.drawer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.drawer-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.drawer-actions .btn {
+  min-height: 44px;
+}
+
+.checkrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.checkrow input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex: none;
+}
+
+.fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px 14px;
+  margin: 0;
+}
+
+.fieldset legend {
+  padding: 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* the count grid */
+.countgrid {
+  display: grid;
+  gap: 6px;
+}
+
+.countgrid__row {
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) auto minmax(84px, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.countgrid__label,
+.countgrid__sub,
+.countgrid__total strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.countgrid__sub {
+  text-align: right;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.countgrid__total {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 12px 2px 4px;
+  margin-top: 4px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.countgrid__total strong {
+  font-size: 20px;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.stepper__btn {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  background: var(--surface-2, var(--surface));
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.stepper__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stepper__btn:focus-visible,
+.stepper__input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.stepper__input {
+  width: 56px;
+  height: 48px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  text-align: center;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* A tab strip inside a scrolling panel body is a flex item with overflow, so
+   its automatic minimum height is zero: once the count grid below it grows,
+   the strip collapsed to a grey line with the currency tabs clipped away. */
+.panel__body > .tabs {
+  flex: none;
+  align-self: flex-start;
+}
+
+.stat__value--quiet {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* the close wizard */
+.wizard-steps {
+  display: flex;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.wizard-steps__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.wizard-steps__num {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.wizard-steps__item.is-current {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.wizard-steps__item.is-current .wizard-steps__num {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.wizard-steps__item.is-done .wizard-steps__num {
+  background: var(--ok-bg, var(--surface));
+  border-color: var(--ok-fg);
+  color: var(--ok-fg);
+}
+
+.variance {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+}
+
+.variance--exact {
+  border-left-color: var(--ok-fg);
+}
+
+.variance--note {
+  border-left-color: var(--warn-fg, #b45309);
+}
+
+.variance--approval {
+  border-left-color: var(--danger-fg);
+}
+
+.variance__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.variance__figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.variance__figures dt {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.variance__figures dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.float-row {
+  display: grid;
+  gap: 8px;
+}
+
+.chain {
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.chain--ok {
+  color: var(--ok-fg);
+}
+
+.chain--broken {
+  color: var(--danger-fg);
+}
+
+.table--compact td,
+.table--compact th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.row--click {
+  cursor: pointer;
+}
+
+.linkbtn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.result-chip + .result-chip {
+  margin-left: 4px;
+}
+
+/* the top-bar chip */
+.drawerchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.drawerchip--ok {
+  color: var(--ok-fg);
+}
+
+.drawerchip--warn {
+  color: var(--warn-fg, #b45309);
+}
+
+.drawerchip--danger {
+  color: var(--danger-fg);
+  border-color: var(--danger-fg);
+}
+
+.drawerchip--neutral {
+  color: var(--muted);
+}
+
+@media (max-width: 599px) {
+  .drawerchip__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .drawerchip {
+    padding: 0 9px;
+  }
+}
+
+/* ── which document a payment issues (API 0015) ───────────── */
+.docswitch {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.docswitch legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2, var(--muted));
+}
+
+.docswitch__opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.docswitch__opt.is-picked {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-tint);
+}
+
+.docswitch__opt.is-off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.docswitch__opt input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex: none;
+}
+
+.docswitch__text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* ── fiscal queue ─────────────────────────────────────────── */
+.queue-urgency {
+  font-variant-numeric: tabular-nums;
+}
+.queue-urgency--overdue,
+.queue-urgency--urgent {
+  color: var(--danger-fg);
+  font-weight: 600;
+}
+.queue-urgency--watch {
+  color: var(--warn-fg);
+}
+
+/* features */
+.feature-group + .feature-group {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.feature-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 20px 8px;
+}
+
+.feature-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.feature-row + .feature-row {
+  border-top: 1px solid var(--border);
+}
+
+.feature-row__text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.switch {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 52px;
+  height: 48px;
+  flex: none;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.switch__track {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+.switch__track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.switch input:checked + .switch__track {
+  background: var(--primary);
+}
+
+.switch input:checked + .switch__track::after {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + .switch__track {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.switch input:disabled + .switch__track {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch__track,
+  .switch__track::after {
+    transition: none;
+  }
+}

@@ -1,0 +1,329 @@
+/* ════════════════════════════════════════════════════════════
+   Printed documents: the fiscal receipt and the treatment estimate.
+   On screen they sit on the canvas with a toolbar; in print, only the
+   document remains. Uses the tokens in styles.css.
+   ════════════════════════════════════════════════════════════ */
+
+.printpage {
+  min-height: 100vh;
+  padding: 0 16px 48px;
+  background: var(--canvas);
+}
+.printbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 12px 0;
+  background: var(--canvas);
+}
+.printbar__right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.printbar__right .field {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.printpage__error {
+  max-width: 820px;
+  margin: 24px auto;
+}
+
+/* ── the fiscal receipt: 80 mm ─────────────────────────────── */
+.receipt {
+  width: 80mm;
+  max-width: 100%;
+  margin: 12px auto;
+  padding: 6mm 5mm;
+  background: #fff;
+  color: #000;
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.35;
+  box-shadow: var(--shadow-sm);
+}
+.receipt dl {
+  margin: 0;
+}
+.receipt__banner {
+  margin: 0 0 6px;
+  padding: 4px;
+  border: 1px dashed #000;
+  text-align: center;
+  font-weight: 700;
+  font-size: 10.5px;
+}
+.receipt__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed #000;
+}
+.receipt__seller {
+  font-size: 13.5px;
+  text-transform: uppercase;
+}
+.receipt__title {
+  margin: 8px 0 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+.receipt__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 8px;
+  padding: 4px 0 6px;
+  border-bottom: 1px dashed #000;
+}
+.receipt__meta dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.receipt__pair {
+  display: contents;
+}
+.receipt__code {
+  font-size: 10px;
+}
+.receipt__items,
+.receipt__vat table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.receipt__items th,
+.receipt__vat th {
+  padding: 4px 0 2px;
+  font-weight: 700;
+  text-align: left;
+  border-bottom: 1px solid #000;
+}
+.receipt__items th:last-child,
+.receipt__vat th:not(:first-child) {
+  text-align: right;
+}
+.receipt__items td {
+  padding: 3px 0;
+  vertical-align: top;
+}
+.receipt__item {
+  display: block;
+  font-weight: 700;
+}
+.receipt__sub {
+  display: block;
+  font-size: 10.5px;
+}
+.receipt__num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.receipt__vat {
+  padding: 4px 0 6px;
+  border-top: 1px dashed #000;
+}
+.receipt__label {
+  margin: 2px 0;
+  font-weight: 700;
+}
+.receipt__totals {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1px 8px;
+  padding: 6px 0;
+  border-top: 1px dashed #000;
+  border-bottom: 1px dashed #000;
+}
+.receipt__totals dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.receipt__grand {
+  font-size: 14px;
+  font-weight: 700;
+}
+.receipt__codes {
+  padding-top: 6px;
+}
+.receipt__codes dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 6px;
+  font-size: 10px;
+}
+.receipt__codes dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.receipt__qr {
+  width: 36mm;
+  margin: 8px auto 4px;
+}
+.receipt__qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.receipt__small {
+  margin: 4px 0 0;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* ── the treatment estimate: A4 ────────────────────────────── */
+.estimate {
+  max-width: 820px;
+  margin: 12px auto;
+  padding: 40px 44px;
+  background: #fff;
+  color: var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.estimate__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--ink);
+}
+.estimate__head h1 {
+  margin: 0;
+  font-size: 22px;
+}
+.estimate__head p {
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.estimate__right {
+  text-align: right;
+}
+.estimate__table-wrap {
+  overflow-x: auto;
+}
+.estimate__table {
+  width: 100%;
+  margin-top: 20px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.estimate__table th {
+  padding: 8px 6px;
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-strong);
+}
+.estimate__table td {
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.estimate__table .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.estimate__table tfoot td {
+  border-bottom: 0;
+  font-weight: 600;
+}
+.estimate__table tfoot tr.estimate__grand td {
+  font-size: 15px;
+  border-top: 2px solid var(--ink);
+}
+.estimate__alt {
+  display: block;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.estimate__note {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.estimate__sign {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-top: 48px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.estimate__sign span {
+  display: block;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-strong);
+}
+
+@media (max-width: 640px) {
+  .estimate {
+    padding: 24px 18px;
+  }
+  .estimate__right {
+    text-align: left;
+  }
+  .estimate__sign {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  body {
+    background: #fff !important;
+  }
+  .printpage {
+    min-height: 0;
+    padding: 0;
+    background: #fff;
+  }
+  .printbar,
+  .printpage__error {
+    display: none !important;
+  }
+  .receipt,
+  .estimate {
+    margin: 0 auto;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .estimate {
+    max-width: none;
+    padding: 0;
+  }
+}
+
+/* A receipt printer: the page is the receipt's own width. */
+@page receipt {
+  size: 80mm auto;
+  margin: 2mm;
+}
+.receipt {
+  page: receipt;
+}

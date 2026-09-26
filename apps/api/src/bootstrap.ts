@@ -7,13 +7,23 @@ import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
 /**
- * Origins allowed to call the API cross-origin. Local Vite dev servers are
- * always permitted; production origins come from CORS_ORIGINS (comma
- * separated), since the previous localhost-only regex blocked every deployed
- * frontend. A wildcard entry like "https://*.dentalcare.app" matches any
- * single-label subdomain, which is what per-tenant hosting needs.
+ * Origins allowed to call the API cross-origin. Production origins come from
+ * CORS_ORIGINS (comma separated); a wildcard entry like
+ * "https://*.dentalcare.app" matches any single-label subdomain, which is
+ * what per-tenant hosting needs.
+ *
+ * `allowLocalhost` adds the Vite dev servers, and is FALSE in production.
+ *
+ * It used to be unconditional, which meant a deployed API accepted
+ * credentialed cross-origin calls from any http://localhost:<port> — a dev
+ * server, a desktop app with an embedded HTTP server, any local process that
+ * can get a page into the browser. Sessions here are Bearer tokens rather
+ * than cookies, so nothing is sent ambiently and there was no live exploit,
+ * but the allowance bought nothing in production and cost the whole
+ * same-origin argument the deployment rests on. In production the SPAs reach
+ * /api over a service binding, same-origin, and issue no preflight at all.
  */
-export function corsOrigins(raw: string | undefined) {
+export function corsOrigins(raw: string | undefined, allowLocalhost: boolean) {
   const patterns = (raw ?? '')
     .split(',')
     .map((s) => s.trim())
@@ -25,7 +35,7 @@ export function corsOrigins(raw: string | undefined) {
           )
         : entry,
     );
-  return [/^http:\/\/localhost:\d+$/, ...patterns];
+  return allowLocalhost ? [/^http:\/\/localhost:\d+$/, ...patterns] : patterns;
 }
 
 /**
@@ -43,9 +53,10 @@ export class WorkersLogger implements LoggerService {
     params: unknown[],
     to: (...a: unknown[]) => void,
   ): void {
-    const context = params.length && typeof params[params.length - 1] === 'string'
-      ? String(params.pop())
-      : undefined;
+    const context =
+      params.length && typeof params[params.length - 1] === 'string'
+        ? String(params.pop())
+        : undefined;
     to(`[${level}]${context ? ` [${context}]` : ''} ${String(message)}`, ...params);
   }
 
@@ -91,8 +102,7 @@ export function configureApp(
     app.useLogger(new WorkersLogger());
     app.use((req: Request, res: Response, next: NextFunction) => {
       const incoming = req.headers['x-request-id'];
-      const id =
-        (Array.isArray(incoming) ? incoming[0] : incoming) || randomUUID();
+      const id = (Array.isArray(incoming) ? incoming[0] : incoming) || randomUUID();
       req.headers['x-request-id'] = id;
       res.setHeader('x-request-id', id);
       next();
@@ -112,6 +122,12 @@ export function configureApp(
   // All routes live under /api (the SPAs are served separately).
   app.setGlobalPrefix('api');
 
+  // Express's default JSON limit is 100 KB. A patient-import batch of 500
+  // rows with medical histories and addresses is several times that. 2 MB
+  // covers it with room, and stays far below anything that is a file upload
+  // in disguise — those go through multipart, with their own limits.
+  app.useBodyParser('json', { limit: '2mb' });
+
   // Validate and strip request bodies against DTOs.
   app.useGlobalPipes(
     new ValidationPipe({
@@ -124,9 +140,13 @@ export function configureApp(
   const config = app.get(ConfigService);
 
   // CORS for local SPA dev (the Vite proxy avoids this) and for any deployment
-  // where the SPAs are not same-origin with the API.
+  // where the SPAs are not same-origin with the API. localhost is allowed
+  // outside production only — see corsOrigins.
   app.enableCors({
-    origin: corsOrigins(config.get<string>('CORS_ORIGINS')),
+    origin: corsOrigins(
+      config.get<string>('CORS_ORIGINS'),
+      config.get<string>('NODE_ENV') !== 'production',
+    ),
     credentials: true,
   });
 

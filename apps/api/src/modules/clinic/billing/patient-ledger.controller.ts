@@ -13,6 +13,7 @@ import { AccessTokenPayload } from '@/shared/types/access-token';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
 import { auditActor } from '@/core/audit/clinic-audit.service';
+import { LogPatientAccess } from '@/core/audit/patient-access';
 import { BillingService } from './billing.service';
 import { LedgerAdjustmentDto } from './dto/billing.dto';
 
@@ -23,6 +24,7 @@ export class PatientLedgerController {
 
   @Get()
   @RequirePermissions('invoices:read')
+  @LogPatientAccess('billing')
   ledger(@Param('patientId', ParseUUIDPipe) patientId: string) {
     return this.billing.ledgerFor(patientId);
   }

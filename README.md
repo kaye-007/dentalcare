@@ -4,24 +4,29 @@ Multi-tenant clinic management SaaS for dental practices. One shared
 deployment; each clinic is a tenant reached by its own subdomain. Internal
 clinic-staff system — no patient portal.
 
-Patients · scheduling · treatments & odontogram · staff and payroll ·
-invoicing & payments · expenses · owner analytics · appointment reminders.
+Patients and the clinical record (odontogram, perio charting, signing) ·
+scheduling and SMS reminders · treatment plans · invoicing, payments and the
+patient ledger · inventory with lots and recalls · staff, payroll and
+analytics · two-step sign-in.
 
 ## Apps
 
 | Workspace | Purpose | Dev URL |
 |---|---|---|
 | `apps/api` | NestJS API — clinic plane + platform plane | http://localhost:3000 |
-| `apps/tenant-web` | Clinic SPA (owner / frontdesk) | http://localhost:5173 |
+| `apps/tenant-web` | Clinic SPA (admin, dentist, hygienist, assistant, receptionist) | http://localhost:5173 |
 | `apps/admin-web` | NODE X platform console | http://localhost:5174 |
 
-**Stack.** NestJS 10 · PostgreSQL 16 (raw SQL, no ORM) · React 18 + Vite ·
-JWT auth · Docker. Money is stored as integers in whole euros.
+**Stack.** NestJS 11 · PostgreSQL 16 (raw SQL, no ORM) · React 18 + Vite ·
+JWT access tokens with rotating server-side sessions and TOTP · Cloudflare
+Workers + Hyperdrive, or Docker. Money is integer minor units (cents) in one
+currency per clinic.
 
 ## Two planes, two database roles
 
 - **Clinic plane** runs as `app_user`, a non-superuser role. Row-Level
-  Security is enforced on all 14 tenant tables and scoped per request by
+  Security is enforced on every table that carries a `tenant_id` (the
+  integration suite reads the list from the catalogue) and scoped per request by
   `app.current_tenant_id`. Services never filter by `tenant_id` — the
   database does it.
 - **Platform plane** (superadmin) uses the privileged connection because it
@@ -143,7 +148,9 @@ API accepts an `X-Tenant-Subdomain` header — but only when
 |---|---|
 | `npm run api:dev` / `web:dev` / `admin:dev` | Development servers |
 | `npm run api:build` / `web:build` / `admin:build` | Production builds |
-| `npm test -w @dentalcare/api` | Test suite |
+| `npm test -w @dentalcare/api` | Unit tests, no database |
+| `npm run test:integration -w @dentalcare/api` | Integration tests against Postgres |
+| `npm run cf:check-caching -w @dentalcare/api` | Ask Cloudflare whether both Hyperdrive configs have caching disabled |
 | `npm run migrate:up` / `migrate:down` | Database migrations |
 | `npm run migrate:create` | Scaffold a new migration |
 
@@ -153,19 +160,27 @@ API accepts an `X-Tenant-Subdomain` header — but only when
 The API validates configuration at boot and **refuses to start** on an
 invalid one rather than running unsafely — most importantly, it will not
 start in production without `APP_DATABASE_URL`, or if that role can bypass
-Row-Level Security.
+Row-Level Security. Production also requires `PLATFORM_JWT_SECRET`,
+`MFA_ENCRYPTION_KEYS` and `MFA_ENFORCEMENT=required`. SMS is off until
+`SMS_PROVIDER=twilio` and its credentials are set.
 
 Full reference: [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Deployment
 
-Frontends on Vercel; the API as a Docker container on Render, Railway, or a
-VPS. The API is a long-running process with a resident scheduler and
-persistent connection pools — it is deliberately not serverless.
+Two runtimes from one codebase, chosen by `RUNTIME`:
 
-**The API must currently run at exactly one replica** — the reminder
-scheduler has no distributed lock. See
-[DEPLOYMENT.md](docs/DEPLOYMENT.md#scaling-beyond-one-instance).
+- **Cloudflare Workers** (`RUNTIME=workers`): the API as a Worker behind two
+  Hyperdrive configs, the SPAs as static-asset Workers, reminders on a Cron
+  Trigger. Scales horizontally. Configured in `apps/api/wrangler.jsonc`.
+- **Container** (`RUNTIME=node`, the default): `infra/docker/`. Resident
+  connection pools and an in-process reminder scheduler, so it runs as **one
+  replica**.
+
+Which one is the primary production target is still an open decision. Both
+build and pass the test suites; neither has served real clinic traffic. See
+[DEPLOYMENT.md](docs/DEPLOYMENT.md), and its staging checklist before believing
+either.
 
 ## Documentation
 
@@ -181,12 +196,15 @@ scheduler has no distributed lock. See
 ## Tests
 
 ```bash
-npm test -w @dentalcare/api
+npm test -w @dentalcare/api                    # unit — no database
+npm run test:integration -w @dentalcare/api    # against Postgres, as the real roles
 ```
 
-36 regression tests across 3 suites, covering the configuration gate, tenant
-status enforcement, subdomain resolution, token binding and cross-plane
-isolation, and role guards. No database required.
+Unit: 26 suites, 541 tests — configuration gates, permissions, money, the
+billing, stock and lot engines, TOTP and session tokens, reminder wording and
+delivery policy. Integration: 22 suites, 355 tests — tenant isolation and
+privileges, sessions and MFA, the clinical record, money, inventory lots and
+SMS delivery, each against a real database. Figures from 2026-09-14.
 
 ## Licence
 

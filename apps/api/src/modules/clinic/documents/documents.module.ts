@@ -2,11 +2,11 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@/modules/clinic/auth';
 import { DocumentsController } from './documents.controller';
 import { DocumentsService } from './documents.service';
-import { PatientDocumentsController } from './patient-documents.controller';
+import { PatientDocumentsController, PatientPhotoController } from './patient-documents.controller';
 
 @Module({
   imports: [AuthModule],
-  controllers: [PatientDocumentsController, DocumentsController],
+  controllers: [PatientDocumentsController, PatientPhotoController, DocumentsController],
   providers: [DocumentsService],
   exports: [DocumentsService],
 })

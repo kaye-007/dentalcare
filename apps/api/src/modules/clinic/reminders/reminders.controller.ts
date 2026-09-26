@@ -17,7 +17,7 @@ import { AccessTokenPayload } from '@/shared/types/access-token';
 import { SendReminderDto } from './dto/reminders.dto';
 import { RemindersService } from './reminders.service';
 
-// Bare @Controller() on purpose: the two routes below live under different
+// Bare @Controller() on purpose: the routes below live under different
 // resource roots ('reminders' and 'appointments/:id/reminders'), so each
 // carries its full path rather than sharing a prefix.
 @Controller()
@@ -29,6 +29,13 @@ export class RemindersController {
   @RequirePermissions('reminders:read')
   list(@Query('appointmentId') appointmentId?: string) {
     return this.reminders.list(appointmentId);
+  }
+
+  /** Whether SMS is available here, so the appointment screen offers it or not. */
+  @Get('reminders/channels')
+  @RequirePermissions('reminders:read')
+  channels() {
+    return this.reminders.deliveryChannels();
   }
 
   @Post('appointments/:id/reminders')

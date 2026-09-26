@@ -73,6 +73,16 @@ export class StaffController {
     return this.staff.resetPassword(id, dto.password, auditActor(user));
   }
 
+  /** Lost phone and lost recovery codes. Never for the caller's own account. */
+  @Post(':id/mfa/reset')
+  @RequirePermissions('staff:manage')
+  resetMfa(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.staff.resetMfa(id, auditActor(user));
+  }
+
   @Post(':id/salary-payments')
   @RequirePermissions('payroll:manage')
   recordSalary(

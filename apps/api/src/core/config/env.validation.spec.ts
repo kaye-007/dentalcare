@@ -10,6 +10,7 @@ import { validateEnv } from './env.validation';
  */
 const STRONG_SECRET = 'a'.repeat(40);
 const PLATFORM_SECRET = 'b'.repeat(40);
+const MFA_KEYS = `k1:${Buffer.alloc(32, 7).toString('base64')}`;
 
 const base = {
   DATABASE_URL: 'postgres://u:p@localhost:5432/dentalcare',
@@ -46,6 +47,7 @@ describe('validateEnv', () => {
       ...base,
       NODE_ENV: 'production',
       PLATFORM_JWT_SECRET: PLATFORM_SECRET,
+      MFA_ENCRYPTION_KEYS: MFA_KEYS,
     };
 
     it('refuses to boot without APP_DATABASE_URL', () => {
@@ -87,6 +89,7 @@ describe('validateEnv', () => {
       ...base,
       NODE_ENV: 'production',
       APP_DATABASE_URL: 'postgres://app_user:p@localhost:5432/dentalcare',
+      MFA_ENCRYPTION_KEYS: MFA_KEYS,
     };
 
     // The clinic plane and the platform plane shared one key. A leak of the
@@ -131,6 +134,44 @@ describe('validateEnv', () => {
     it('does not require it outside production', () => {
       expect(() => validateEnv({ ...base, NODE_ENV: 'development' })).not.toThrow();
     });
+  });
+
+  describe('multi-factor authentication', () => {
+    const prodBase = {
+      ...base,
+      NODE_ENV: 'production',
+      APP_DATABASE_URL: 'postgres://app_user:p@localhost:5432/dentalcare',
+      PLATFORM_JWT_SECRET: PLATFORM_SECRET,
+    };
+
+    it('requires MFA_ENCRYPTION_KEYS in production', () => {
+      expect(() => validateEnv(prodBase)).toThrow(/MFA_ENCRYPTION_KEYS/);
+    });
+
+    it('refuses optional MFA in production', () => {
+      expect(() =>
+        validateEnv({ ...prodBase, MFA_ENCRYPTION_KEYS: MFA_KEYS, MFA_ENFORCEMENT: 'optional' }),
+      ).toThrow(/MFA_ENFORCEMENT/);
+    });
+
+    it('defaults to required', () => {
+      expect(validateEnv({ ...base }).MFA_ENFORCEMENT).toBe('required');
+    });
+
+    it('refuses a malformed keyring in any environment', () => {
+      expect(() =>
+        validateEnv({ ...base, MFA_ENCRYPTION_KEYS: 'k1:not-thirty-two-bytes' }),
+      ).toThrow(/MFA_ENCRYPTION_KEYS/);
+    });
+
+    it('needs no keyring outside production', () => {
+      expect(() => validateEnv({ ...base, NODE_ENV: 'development' })).not.toThrow();
+    });
+  });
+
+  it('refuses a refresh lifetime that is not a duration', () => {
+    expect(() => validateEnv({ ...base, JWT_REFRESH_TTL: 'a week' })).toThrow(/JWT_REFRESH_TTL/);
+    expect(validateEnv({ ...base, JWT_REFRESH_TTL: '12h' }).JWT_REFRESH_TTL).toBe('12h');
   });
 
   it('rejects a JWT_SECRET under 16 characters in any environment', () => {

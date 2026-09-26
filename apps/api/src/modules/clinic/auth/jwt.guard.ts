@@ -32,7 +32,12 @@ export class JwtAuthGuard implements CanActivate {
         { secret: this.config.get<string>('JWT_SECRET') },
       );
 
-      if (payload.type === 'refresh') {
+      // Only an access token opens a route, and an access token carries no
+      // `type`. Refresh tokens stopped being JWTs in 0005, but MFA challenge
+      // tokens are JWTs signed with the same key — and one proves a password,
+      // not a second factor. Refusing every typed token refuses both, and any
+      // token kind added later, without this line having to know about it.
+      if (payload.type !== undefined) {
         throw new UnauthorizedException('Wrong token type');
       }
 

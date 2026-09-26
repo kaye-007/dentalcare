@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Ruler, Plus, Trash2, Droplet } from 'lucide-react';
+import { Ruler, Plus, X, Droplet, ShieldCheck } from 'lucide-react';
 import {
   ApiError,
   perioApi,
@@ -11,7 +11,9 @@ import {
 import { archesFor, formatTooth } from '@dentalcare/shared';
 import { useAuth } from '../lib/auth';
 import { EmptyState, StatusPill } from './ui';
-import { dateLocale } from '../lib/i18n';
+import { WithdrawModal } from './VoidModal';
+import { toDate } from '../lib/format';
+import { dateLocale } from '../lib/strings';
 
 /**
  * Periodontal charting.
@@ -22,6 +24,10 @@ import { dateLocale } from '../lib/i18n';
  *
  * Edits are held locally until "Save readings" so a clinician can work down
  * the arch at probing speed without waiting for the network between numbers.
+ *
+ * A finished exam is signed. From then on the database refuses any change to
+ * it or its readings, so the grid goes read-only. A wrong exam is withdrawn as
+ * entered in error — never deleted.
  */
 
 type Draft = Record<
@@ -42,12 +48,14 @@ const DEEP = 5;
 export default function PerioChartCard({ patientId }: { patientId: string }) {
   const { can } = useAuth();
   const canEdit = can('clinical:write');
+  const canSign = can('clinical:sign');
 
   const [exams, setExams] = useState<PerioExamSummary[] | null>(null);
   const [openExam, setOpenExam] = useState<PerioExam | null>(null);
   const [draft, setDraft] = useState<Draft>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
 
   const load = useCallback(() => {
     perioApi
@@ -93,35 +101,34 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
     }
   }
 
+  /** The draft as the API wants it. Untouched sites are "not measured", not zero. */
+  function draftMeasurements() {
+    return Object.entries(draft)
+      .filter(
+        ([, v]) =>
+          v.probingDepth !== null || v.recession !== null || v.bleeding || v.suppuration,
+      )
+      .map(([k, v]) => {
+        const [tooth, site] = k.split(':');
+        return {
+          tooth: Number(tooth),
+          site: site as PerioSite,
+          probingDepth: v.probingDepth,
+          recession: v.recession,
+          bleeding: v.bleeding,
+          suppuration: v.suppuration,
+        };
+      });
+  }
+
   async function save() {
     if (!openExam) return;
     setBusy(true);
     setError(null);
     try {
-      const measurements = Object.entries(draft)
-        // Sites with nothing recorded are not sent: an untouched site is
-        // "not measured", which is different from a measured zero.
-        .filter(
-          ([, v]) =>
-            v.probingDepth !== null ||
-            v.recession !== null ||
-            v.bleeding ||
-            v.suppuration,
-        )
-        .map(([k, v]) => {
-          const [tooth, site] = k.split(':');
-          return {
-            tooth: Number(tooth),
-            site: site as PerioSite,
-            probingDepth: v.probingDepth,
-            recession: v.recession,
-            bleeding: v.bleeding,
-            suppuration: v.suppuration,
-          };
-        });
+      const measurements = draftMeasurements();
       if (measurements.length === 0) {
         setError('Enter at least one reading before saving.');
-        setBusy(false);
         return;
       }
       const updated = await perioApi.saveMeasurements(openExam.id, { measurements });
@@ -134,15 +141,35 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
     }
   }
 
-  async function removeExam(id: string) {
+  /**
+   * Save whatever is on screen, then sign. Signing first would lock out the
+   * readings the clinician just typed, and they would learn it only by
+   * reopening the exam.
+   */
+  async function saveAndSign() {
+    if (!openExam) return;
+    setBusy(true);
     setError(null);
     try {
-      await perioApi.deleteExam(id);
-      if (openExam?.id === id) setOpenExam(null);
+      const measurements = draftMeasurements();
+      if (measurements.length > 0) {
+        await perioApi.saveMeasurements(openExam.id, { measurements });
+      }
+      const signed = await perioApi.signExam(openExam.id);
+      setOpenExam(signed);
       load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not delete the exam.');
+      setError(e instanceof ApiError ? e.message : 'Could not sign the exam.');
+    } finally {
+      setBusy(false);
     }
+  }
+
+  async function withdrawExam(id: string, reason: string) {
+    await perioApi.withdrawExam(id, reason);
+    setWithdrawing(null);
+    if (openExam?.id === id) setOpenExam(null);
+    load();
   }
 
   const EMPTY_CELL: Draft[string] = {
@@ -159,7 +186,7 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
     });
 
   return (
-    <section className="card span-12">
+    <section className="card card--record span-12">
       <header className="card__head">
         <h3>
           <Ruler size={16} aria-hidden /> Periodontal charting
@@ -195,7 +222,7 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
                   className="linkbtn recordrow__title"
                   onClick={() => (openExam?.id === e.id ? setOpenExam(null) : open(e.id))}
                 >
-                  {new Date(e.examinedOn).toLocaleDateString(dateLocale(), {
+                  {toDate(e.examinedOn).toLocaleDateString(dateLocale(), {
                     day: 'numeric',
                     month: 'long',
                     year: 'numeric',
@@ -215,14 +242,21 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
                   />
                 )}
                 {e.clinicianName && <span className="cell-sub">{e.clinicianName}</span>}
+                {e.signedAt && (
+                  <StatusPill
+                    status="resolved"
+                    label={`Signed${e.signedByName ? ` · ${e.signedByName}` : ''}`}
+                  />
+                )}
               </div>
-              {canEdit && (
+              {canEdit && (!e.signedAt || canSign) && (
                 <button
                   className="iconbtn"
-                  onClick={() => removeExam(e.id)}
-                  aria-label="Delete exam"
+                  onClick={() => setWithdrawing(e.id)}
+                  aria-label="Withdraw exam as entered in error"
+                  title="Withdraw as entered in error"
                 >
-                  <Trash2 size={15} />
+                  <X size={15} />
                 </button>
               )}
             </li>
@@ -294,7 +328,7 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
                               inputMode="numeric"
                               maxLength={2}
                               value={depth === null ? '' : String(depth)}
-                              disabled={!canEdit}
+                              disabled={!canEdit || Boolean(openExam.signedAt)}
                               aria-label={`Tooth ${tooth} ${site} probing depth`}
                               onChange={(ev) => {
                                 const raw = ev.target.value.replace(/[^\d]/g, '');
@@ -305,7 +339,7 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
                             <button
                               type="button"
                               className={`periocell__bop${cell?.bleeding ? ' periocell__bop--on' : ''}`}
-                              disabled={!canEdit}
+                              disabled={!canEdit || Boolean(openExam.signedAt)}
                               aria-label={`Tooth ${tooth} ${site} bleeding on probing`}
                               title="Bleeding on probing"
                               onClick={() =>
@@ -324,20 +358,56 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
             </table>
           </div>
 
-          {canEdit && (
+          {openExam.signedAt ? (
             <div className="inlineform__foot">
-              <button
-                className="btn btn--ghost btn--sm"
-                onClick={() => setOpenExam(null)}
-              >
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+                <ShieldCheck size={13} aria-hidden /> Signed
+                {openExam.signedByName ? ` by ${openExam.signedByName}` : ''} on{' '}
+                {new Date(openExam.signedAt).toLocaleDateString(dateLocale(), {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+                . The readings can no longer change.
+              </p>
+              <button className="btn btn--ghost btn--sm" onClick={() => setOpenExam(null)}>
                 Close
               </button>
-              <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
-                {busy ? 'Saving…' : 'Save readings'}
-              </button>
             </div>
+          ) : (
+            canEdit && (
+              <div className="inlineform__foot">
+                <button
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setOpenExam(null)}
+                >
+                  Close
+                </button>
+                {canSign && (
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={saveAndSign}
+                    disabled={busy}
+                    title="Saves the readings on screen and signs the exam. A signed exam cannot change."
+                  >
+                    <ShieldCheck size={14} aria-hidden /> Save &amp; sign
+                  </button>
+                )}
+                <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
+                  {busy ? 'Saving…' : 'Save readings'}
+                </button>
+              </div>
+            )
           )}
         </div>
+      )}
+
+      {withdrawing && (
+        <WithdrawModal
+          what="this periodontal exam"
+          onClose={() => setWithdrawing(null)}
+          onConfirm={(reason) => withdrawExam(withdrawing, reason)}
+        />
       )}
     </section>
   );

@@ -7,10 +7,11 @@ import {
   type LedgerEntry,
   type PatientLedger,
 } from '../lib/api';
-import { formatMoney } from '../lib/format';
+import { currencySymbol, formatMoney, toDate } from '../lib/format';
+import MoneyInput from './MoneyInput';
 import { useAuth } from '../lib/auth';
 import { EmptyState, StatusPill } from './ui';
-import { dateLocale } from '../lib/i18n';
+import { dateLocale } from '../lib/strings';
 
 /**
  * The patient's account: every charge, payment and correction, with a running
@@ -33,7 +34,10 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
     if (!canRead) return;
     billingApi
       .ledger(patientId)
-      .then((l) => { setLedger(l); setError(null); })
+      .then((l) => {
+        setLedger(l);
+        setError(null);
+      })
       .catch((e: Error) => setError(e.message));
   }, [patientId, canRead]);
 
@@ -42,9 +46,11 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
   if (!canRead) return null;
 
   return (
-    <section className="card span-12">
+    <section className="card card--record span-12">
       <header className="card__head">
-        <h3><Receipt size={16} aria-hidden /> Account ledger</h3>
+        <h3>
+          <Receipt size={16} aria-hidden /> Account ledger
+        </h3>
         {canAdjust && !adding && (
           <button className="btn btn--ghost btn--sm" onClick={() => setAdding(true)}>
             <Plus size={14} /> Adjustment
@@ -59,9 +65,15 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
       ) : (
         <>
           <div className="ledgersummary">
-            <div className={`ledgerbalance${ledger.balance > 0 ? ' ledgerbalance--owing' : ''}`}>
+            <div
+              className={`ledgerbalance${ledger.balance > 0 ? ' ledgerbalance--owing' : ''}`}
+            >
               <span className="stat__label">
-                {ledger.balance > 0 ? 'Outstanding' : ledger.balance < 0 ? 'In credit' : 'Settled'}
+                {ledger.balance > 0
+                  ? 'Outstanding'
+                  : ledger.balance < 0
+                    ? 'In credit'
+                    : 'Settled'}
               </span>
               <span className="stat__value">{formatMoney(Math.abs(ledger.balance))}</span>
             </div>
@@ -72,7 +84,10 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
           {adding && (
             <AdjustmentForm
               patientId={patientId}
-              onDone={() => { setAdding(false); load(); }}
+              onDone={() => {
+                setAdding(false);
+                load();
+              }}
               onCancel={() => setAdding(false)}
             />
           )}
@@ -87,15 +102,18 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
             <table className="table table--compact">
               <thead>
                 <tr>
-                  <th>Date</th><th>Entry</th><th>Detail</th>
-                  <th className="num">Amount</th><th className="num">Balance</th>
+                  <th>Date</th>
+                  <th>Entry</th>
+                  <th>Detail</th>
+                  <th className="num">Amount</th>
+                  <th className="num">Balance</th>
                 </tr>
               </thead>
               <tbody>
                 {ledger.entries.map((e: LedgerEntry) => (
                   <tr key={e.id}>
                     <td className="muted">
-                      {new Date(e.occurredOn).toLocaleDateString(dateLocale())}
+                      {toDate(e.occurredOn).toLocaleDateString(dateLocale())}
                     </td>
                     <td>
                       <StatusPill
@@ -109,7 +127,8 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
                     </td>
                     {/* Sign is carried by the symbol, not by colour alone. */}
                     <td className="num" style={{ fontWeight: 600 }}>
-                      {e.amount > 0 ? '+' : '−'}{formatMoney(Math.abs(e.amount))}
+                      {e.amount > 0 ? '+' : '−'}
+                      {formatMoney(Math.abs(e.amount))}
                     </td>
                     <td className="num muted">{formatMoney(e.balanceAfter)}</td>
                   </tr>
@@ -124,22 +143,32 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
 }
 
 function AdjustmentForm({
-  patientId, onDone, onCancel,
-}: { patientId: string; onDone: () => void; onCancel: () => void }) {
-  const [entryType, setEntryType] = useState<'adjustment' | 'write_off' | 'refund'>('write_off');
-  const [amount, setAmount] = useState(0);
+  patientId,
+  onDone,
+  onCancel,
+}: {
+  patientId: string;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [entryType, setEntryType] = useState<'adjustment' | 'write_off' | 'refund'>(
+    'write_off',
+  );
+  const [amount, setAmount] = useState<number | null>(null);
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (amount <= 0 || !description.trim()) return;
+    if (!amount || amount <= 0 || !description.trim()) return;
     setBusy(true);
     setErr(null);
     try {
       await billingApi.addAdjustment(patientId, {
-        entryType, amount, description: description.trim(),
+        entryType,
+        amount,
+        description: description.trim(),
       });
       onDone();
     } catch (e2) {
@@ -149,14 +178,17 @@ function AdjustmentForm({
   }
 
   const effect =
-    entryType === 'write_off' ? 'reduces what the patient owes'
-      : entryType === 'refund' ? 'returns money to the patient'
+    entryType === 'write_off'
+      ? 'reduces what the patient owes'
+      : entryType === 'refund'
+        ? 'returns money to the patient'
         : 'increases what the patient owes';
 
   return (
     <form className="inlineform" onSubmit={submit}>
       <div className="grid2">
-        <label className="field"><span>Type</span>
+        <label className="field">
+          <span>Type</span>
           <select
             value={entryType}
             onChange={(e) => setEntryType(e.target.value as typeof entryType)}
@@ -165,28 +197,31 @@ function AdjustmentForm({
             <option value="write_off">Write off</option>
             <option value="adjustment">Adjustment (charge)</option>
             <option value="refund">Refund</option>
-          </select></label>
-        <label className="field"><span>Amount</span>
-          <input
-            type="number" min={1} value={amount}
-            onChange={(e) => setAmount(Number(e.target.value) || 0)}
-            required
-          /></label>
+          </select>
+        </label>
+        <label className="field">
+          <span>Amount ({currencySymbol()})</span>
+          <MoneyInput value={amount} onChange={setAmount} placeholder="0.00" required />
+        </label>
       </div>
       <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
         Enter a positive amount — this entry {effect}.
       </p>
-      <label className="field"><span>Reason (recorded permanently)</span>
+      <label className="field">
+        <span>Reason (recorded permanently)</span>
         <input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Goodwill gesture, billing error, uncollectable…"
           required
           maxLength={300}
-        /></label>
+        />
+      </label>
       {err && <p className="formerror">{err}</p>}
       <div className="inlineform__foot">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
         <button className="btn btn--primary btn--sm" disabled={busy}>
           {busy ? 'Recording…' : 'Record entry'}
         </button>

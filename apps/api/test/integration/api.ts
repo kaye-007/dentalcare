@@ -60,6 +60,7 @@ export async function startApi(): Promise<TestApi> {
 export interface Response<T = unknown> {
   status: number;
   body: T;
+  headers: Headers;
 }
 
 /**
@@ -78,9 +79,11 @@ export async function call<T = unknown>(
     subdomain?: string;
     token?: string;
     body?: unknown;
+    /** Extra request headers, e.g. Idempotency-Key. */
+    headers?: Record<string, string>;
   } = {},
 ): Promise<Response<T>> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   if (opts.subdomain) headers['X-Tenant-Subdomain'] = opts.subdomain;
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
@@ -101,7 +104,7 @@ export async function call<T = unknown>(
     }
   }
 
-  return { status: res.status, body: body as T };
+  return { status: res.status, body: body as T, headers: res.headers };
 }
 
 export interface Session {

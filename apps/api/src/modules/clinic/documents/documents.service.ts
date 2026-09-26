@@ -17,7 +17,8 @@ import {
   isAllowedType,
 } from '@/core/storage/file-signature';
 import { ClinicAuditService, ClinicAuditActor } from '@/core/audit/clinic-audit.service';
-import { UpdateDocumentDto, UploadDocumentDto } from './dto/documents.dto';
+import { PatientAccessActor, PatientAccessService } from '@/core/audit/patient-access';
+import { PhotoTag, UpdateDocumentDto, UploadDocumentDto } from './dto/documents.dto';
 
 /* ═════════════════════════ service ═════════════════════════ */
 
@@ -33,16 +34,27 @@ interface DocumentRow {
   tooth: number | null;
   taken_on: string | null;
   caption: string | null;
+  photo_tag: PhotoTag | null;
   uploaded_by_name: string | null;
   created_at: string;
 }
 
 const SELECT = `
   SELECT d.id, d.patient_id, d.storage_key, d.file_name, d.content_type,
-         d.byte_size, d.checksum, d.kind, d.tooth, d.taken_on, d.caption,
+         d.byte_size, d.checksum, d.kind, d.tooth, d.taken_on, d.caption, d.photo_tag,
          u.full_name AS uploaded_by_name, d.created_at
     FROM patient_documents d
     LEFT JOIN users u ON u.id = d.uploaded_by`;
+
+const RETURNING = `RETURNING id, patient_id, storage_key, file_name, content_type,
+                   byte_size, checksum, kind, tooth, taken_on, caption, photo_tag,
+                   NULL::text AS uploaded_by_name, created_at`;
+
+/** Images a browser can draw, and so the only ones worth a thumbnail. */
+const PREVIEWABLE = ['image/jpeg', 'image/png', 'image/webp'];
+
+/** A profile picture is cropped and re-encoded in the browser; it is small. */
+const MAX_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024;
 
 @Injectable()
 export class DocumentsService {
@@ -54,6 +66,7 @@ export class DocumentsService {
     private readonly tenant: TenantContextService,
     private readonly audit: ClinicAuditService,
     private readonly storage: StorageService,
+    private readonly access: PatientAccessService,
     config: ConfigService,
   ) {
     this.maxBytes = Number(config.get('MAX_UPLOAD_BYTES') ?? 40 * 1024 * 1024);
@@ -122,6 +135,10 @@ export class DocumentsService {
         `That file type is not accepted. Allowed formats: ${ALLOWED_TYPES_LABEL}.`,
       );
     }
+    const kind = dto.kind ?? (detected.startsWith('image/') && detected !== 'image/tiff' ? 'photo' : 'other');
+    if (dto.photoTag && kind !== 'photo') {
+      throw new BadRequestException('Before, after and progress apply to photos only');
+    }
 
     const tenantId = this.tenant.getRequiredTenantId();
     const checksum = StorageService.checksum(file.buffer);
@@ -140,7 +157,10 @@ export class DocumentsService {
           LIMIT 1`,
         [patientId, checksum],
       );
-      if (dupe[0]) return { ...mapDocument(dupe[0]), duplicate: true as const };
+      // Object.assign, not a spread: a spread copies enumerable properties
+      // only, so it dropped the storage key and every profile photo failed
+      // when setProfilePhoto signed a link for `undefined`.
+      if (dupe[0]) return Object.assign(mapDocument(dupe[0]), { duplicate: true as const });
 
       // Object first: a stored object with no row is a recoverable orphan,
       // whereas a row with no object is a broken download for the clinician.
@@ -153,11 +173,9 @@ export class DocumentsService {
         const { rows } = await client.query<DocumentRow>(
           `INSERT INTO patient_documents
              (tenant_id, patient_id, storage_key, file_name, content_type,
-              byte_size, checksum, kind, tooth, taken_on, caption, uploaded_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-           RETURNING id, patient_id, storage_key, file_name, content_type,
-                     byte_size, checksum, kind, tooth, taken_on, caption,
-                     NULL::text AS uploaded_by_name, created_at`,
+              byte_size, checksum, kind, tooth, taken_on, caption, uploaded_by, photo_tag)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           ${RETURNING}`,
           [
             tenantId,
             patientId,
@@ -166,14 +184,15 @@ export class DocumentsService {
             detected,
             file.size,
             checksum,
-            dto.kind ?? 'other',
+            kind,
             dto.tooth ?? null,
             dto.takenOn || null,
             dto.caption ?? null,
             userId,
+            dto.photoTag ?? null,
           ],
         );
-        return { ...mapDocument(rows[0]), duplicate: false as const };
+        return Object.assign(mapDocument(rows[0]), { duplicate: false as const });
       } catch (err) {
         // Do not leave a paid-for object behind if the row could not be written.
         await this.storage.remove(key);
@@ -182,9 +201,16 @@ export class DocumentsService {
     });
   }
 
-  /** Signed URL for viewing inline (X-ray preview) or downloading. */
-  async link(id: string, disposition: 'inline' | 'attachment') {
+  /**
+   * Signed URL for viewing inline (X-ray preview) or downloading.
+   *
+   * Minting the URL is the moment the file is opened, so it is the moment the
+   * record-access log is written — before the URL exists, so a link that was
+   * handed out is a link that was recorded.
+   */
+  async link(id: string, disposition: 'inline' | 'attachment', actor: PatientAccessActor) {
     this.assertStorage();
+    const tenantId = this.tenant.getRequiredTenantId();
     return this.tx(async (client) => {
       const { rows } = await client.query<DocumentRow>(
         `${SELECT} WHERE d.id = $1 AND d.deleted_at IS NULL`,
@@ -192,6 +218,8 @@ export class DocumentsService {
       );
       const doc = rows[0];
       if (!doc) throw new NotFoundException('Document not found');
+
+      await this.access.record(tenantId, doc.patient_id, 'document_file', actor);
 
       const url =
         disposition === 'attachment'
@@ -218,19 +246,114 @@ export class DocumentsService {
     if (dto.tooth !== undefined) push('tooth', dto.tooth ?? null);
     if (dto.takenOn !== undefined) push('taken_on', dto.takenOn || null);
     if (dto.caption !== undefined) push('caption', dto.caption || null);
+    if (dto.photoTag !== undefined) push('photo_tag', dto.photoTag ?? null);
+    // A document moved out of 'photo' loses its tag in the same statement,
+    // which the 0009 constraint would otherwise refuse.
+    if (dto.kind !== undefined && dto.kind !== 'photo' && dto.photoTag === undefined) {
+      sets.push('photo_tag = NULL');
+    }
     if (!sets.length) throw new BadRequestException('Nothing to update');
 
     return this.tx(async (client) => {
-      const { rows } = await client.query<DocumentRow>(
-        `UPDATE patient_documents SET ${sets.join(', ')}
-          WHERE id = $1 AND deleted_at IS NULL
-          RETURNING id, patient_id, storage_key, file_name, content_type,
-                    byte_size, checksum, kind, tooth, taken_on, caption,
-                    NULL::text AS uploaded_by_name, created_at`,
-        params,
-      );
+      const { rows } = await client
+        .query<DocumentRow>(
+          `UPDATE patient_documents SET ${sets.join(', ')}
+            WHERE id = $1 AND deleted_at IS NULL
+            ${RETURNING}`,
+          params,
+        )
+        .catch((err: { code?: string }) => {
+          if (err.code === '23514') {
+            throw new BadRequestException('Before, after and progress apply to photos only');
+          }
+          throw err;
+        });
       if (!rows[0]) throw new NotFoundException('Document not found');
       return mapDocument(rows[0]);
+    });
+  }
+
+  /**
+   * Short-lived view links for the image documents of one patient, so the
+   * list can show thumbnails. One access-log entry for the lot: opening the
+   * documents tab is one look at the record, however many pictures it shows.
+   */
+  async thumbnails(patientId: string, actor: PatientAccessActor) {
+    this.assertStorage();
+    const tenantId = this.tenant.getRequiredTenantId();
+    const docs = await this.tx(async (client) => {
+      const { rows } = await client.query<{ id: string; storage_key: string }>(
+        `SELECT id, storage_key FROM patient_documents
+          WHERE patient_id = $1 AND deleted_at IS NULL AND content_type = ANY($2::text[])
+          ORDER BY created_at DESC LIMIT 60`,
+        [patientId, PREVIEWABLE],
+      );
+      return rows;
+    });
+    if (docs.length === 0) return [];
+    await this.access.record(tenantId, patientId, 'document_file', actor);
+    return Promise.all(
+      docs.map(async (d) => ({ id: d.id, url: await this.storage.signedViewUrl(d.storage_key) })),
+    );
+  }
+
+  /**
+   * Set a patient's profile picture: stored as a patient document like any
+   * other photo, and pointed at from the patient record. The browser crops and
+   * re-encodes it first, which also strips the camera's EXIF data — a phone
+   * photo's GPS position has no business in a clinic's bucket.
+   */
+  async setProfilePhoto(
+    patientId: string,
+    file: Express.Multer.File | undefined,
+    actor: ClinicAuditActor,
+  ) {
+    if (file && file.size > MAX_PROFILE_PHOTO_BYTES) {
+      throw new BadRequestException('A profile photo must be under 5 MB');
+    }
+    if (file && !PREVIEWABLE.includes(detectFileType(file.buffer) ?? '')) {
+      throw new BadRequestException('A profile photo must be a JPEG, PNG or WEBP image');
+    }
+    const doc = await this.upload(
+      patientId,
+      file,
+      { kind: 'photo', caption: 'Profile photo' },
+      actor.userId,
+    );
+    return this.tx(async (client) => {
+      const { rows } = await client.query<{ name: string }>(
+        `UPDATE patients SET photo_document_id = $2, updated_at = now()
+          WHERE id = $1 RETURNING first_name || ' ' || last_name AS name`,
+        [patientId, doc.id],
+      );
+      if (!rows[0]) throw new NotFoundException('Patient not found');
+      await this.audit.record(client, actor, {
+        action: 'patient.photo_changed',
+        entityType: 'patient',
+        entityId: patientId,
+        summary: `Changed ${rows[0].name}'s profile photo`,
+        metadata: { documentId: doc.id },
+      });
+      return { photoDocumentId: doc.id, photoUrl: await this.storage.signedViewUrl(doc.storageKey) };
+    });
+  }
+
+  /** The picture stays in the patient's documents; it just stops being the profile photo. */
+  async clearProfilePhoto(patientId: string, actor: ClinicAuditActor) {
+    return this.tx(async (client) => {
+      const { rows } = await client.query<{ name: string }>(
+        `UPDATE patients SET photo_document_id = NULL, updated_at = now()
+          WHERE id = $1 RETURNING first_name || ' ' || last_name AS name`,
+        [patientId],
+      );
+      if (!rows[0]) throw new NotFoundException('Patient not found');
+      await this.audit.record(client, actor, {
+        action: 'patient.photo_changed',
+        entityType: 'patient',
+        entityId: patientId,
+        summary: `Removed ${rows[0].name}'s profile photo`,
+      });
+      return { photoDocumentId: null, photoUrl: null };
     });
   }
 
@@ -241,19 +364,26 @@ export class DocumentsService {
    */
   async remove(id: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
+      // This returned a `title` column the table has never had, so every delete
+      // failed with a 500 before anything was removed.
       const { rows } = await client.query<{
         storage_key: string;
-        title: string | null;
+        file_name: string;
         kind: string;
         patient_id: string;
       }>(
         `UPDATE patient_documents
             SET deleted_at = now(), deleted_by = $2
           WHERE id = $1 AND deleted_at IS NULL
-          RETURNING storage_key, title, kind, patient_id`,
+          RETURNING storage_key, file_name, kind, patient_id`,
         [id, actor.userId],
       );
       if (!rows[0]) throw new NotFoundException('Document not found');
+      // A deleted picture cannot stay the face on the patient's record.
+      await client.query(
+        'UPDATE patients SET photo_document_id = NULL WHERE photo_document_id = $1',
+        [id],
+      );
       // The audit row is written before the bytes go, and in the same
       // transaction as the soft delete: object storage has no rollback, so if
       // anything here fails the record must not already be gone.
@@ -261,7 +391,7 @@ export class DocumentsService {
         action: 'document.deleted',
         entityType: 'patient_document',
         entityId: id,
-        summary: `Deleted ${rows[0].kind} "${rows[0].title ?? 'untitled'}"`,
+        summary: `Deleted ${rows[0].kind} "${rows[0].file_name}"`,
         metadata: { kind: rows[0].kind, patientId: rows[0].patient_id },
       });
       await this.storage.remove(rows[0].storage_key);
@@ -307,7 +437,16 @@ function formatBytes(n: number): string {
   return `${n} bytes`;
 }
 
-const mapDocument = (r: DocumentRow) => ({
+/**
+ * The API shape of a document. `storageKey` is attached non-enumerable: the
+ * service needs it to sign a link, and JSON.stringify — which DOES serialise
+ * an ordinary getter — must never put a bucket key in a response.
+ */
+const mapDocument = (r: DocumentRow) =>
+  Object.defineProperty(documentFields(r), 'storageKey', { value: r.storage_key, enumerable: false }) as
+    ReturnType<typeof documentFields> & { readonly storageKey: string };
+
+const documentFields = (r: DocumentRow) => ({
   id: r.id,
   patientId: r.patient_id,
   fileName: r.file_name,
@@ -319,9 +458,12 @@ const mapDocument = (r: DocumentRow) => ({
   tooth: r.tooth,
   takenOn: r.taken_on,
   caption: r.caption,
+  photoTag: r.photo_tag,
   uploadedByName: r.uploaded_by_name,
   createdAt: r.created_at,
   isImage: r.content_type.startsWith('image/'),
+  /** A browser can draw it: TIFF and DICOM are images it cannot. */
+  isPreviewable: PREVIEWABLE.includes(r.content_type),
 });
 
 /* ═══════════════════════ controllers ═══════════════════════ */

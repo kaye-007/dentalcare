@@ -18,6 +18,14 @@ node_modules/.tmp/
 .git/cursor/
 .cursor/
 
+# ── assistant / analysis scratch ──────────────────────────
+# Regenerable output that kept reappearing at the repo root. None of it is
+# input to a build: the graph is rebuilt by /graphify, the rest were one-off
+# snapshots that git already holds the source for.
+graphify-out/
+_audit_tmp/
+Claude outputs/
+
 # ── secrets ───────────────────────────────────────────────
 .env
 .env.local

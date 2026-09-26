@@ -16,6 +16,8 @@ import {
   ALL_TEETH,
   SURFACES,
   TOOTH_CONDITIONS,
+  VAT_CATEGORIES,
+  type VatCategory,
   type Surface,
   type ToothCondition,
 } from '@dentalcare/shared';
@@ -89,6 +91,11 @@ export class CreateProcedureCodeDto {
   @IsOptional()
   @IsUUID()
   treatmentId?: string;
+
+  /** TVSH on plan invoices: medical is exempt, cosmetic carries the clinic rate. */
+  @IsOptional()
+  @IsIn([...VAT_CATEGORIES])
+  vatCategory?: VatCategory;
 }
 
 export class UpdateProcedureCodeDto {
@@ -117,6 +124,10 @@ export class UpdateProcedureCodeDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsIn([...VAT_CATEGORIES])
+  vatCategory?: VatCategory;
 }
 
 export class CreateProcedureDto {

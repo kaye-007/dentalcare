@@ -2,36 +2,59 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
+import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
+import { rethrowRecordLocked, withdrawEntry } from '@/core/audit/clinical-record';
 import { CreateAllergyDto, CreateConditionDto, CreateMedicationDto, UpdateAllergyDto, UpdateConditionDto, UpdateMedicationDto } from './dto/patient-history.dto';
 
 /* ═════════════════════════ service ═════════════════════════ */
+
+/**
+ * Allergies, medical conditions and medications.
+ *
+ * Nothing here is deleted. An allergy recorded against the wrong patient, or
+ * a medication that was never prescribed, is withdrawn as entered in error:
+ * it leaves every list and summary and stays in the database with who
+ * withdrew it and why. A condition that has simply got better is RESOLVED,
+ * and a medication that has stopped is ENDED — those are facts about the
+ * patient, not corrections of the record, and they are different verbs on
+ * purpose.
+ */
 
 interface AllergyRow {
   id: string; substance: string; reaction: string | null;
   severity: 'mild' | 'moderate' | 'severe'; notes: string | null;
   recorded_by_name: string | null; created_at: string; updated_at: string;
+  patient_id?: string;
 }
 
 interface ConditionRow {
   id: string; name: string; status: 'active' | 'resolved';
   diagnosed_on: string | null; notes: string | null;
   recorded_by_name: string | null; created_at: string; updated_at: string;
+  patient_id?: string;
 }
 
 interface MedicationRow {
   id: string; name: string; dosage: string | null; frequency: string | null;
   started_on: string | null; ended_on: string | null; notes: string | null;
   recorded_by_name: string | null; created_at: string; updated_at: string;
+  patient_id?: string;
 }
 
 /** Postgres unique-violation. */
 const UNIQUE_VIOLATION = '23505';
+
+const changedFields = (dto: object) =>
+  Object.entries(dto)
+    .filter(([, v]) => v !== undefined)
+    .map(([k]) => k);
 
 @Injectable()
 export class PatientHistoryService {
   constructor(
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
+    private readonly audit: ClinicAuditService,
   ) {}
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
@@ -50,6 +73,15 @@ export class PatientHistoryService {
     if (!rowCount) throw new NotFoundException('Patient not found');
   }
 
+  private async patientName(client: PoolClient, patientId: string): Promise<string> {
+    const { rows } = await client.query<{ name: string }>(
+      `SELECT first_name || ' ' || last_name AS name FROM patients WHERE id = $1`,
+      [patientId],
+    );
+    if (!rows[0]) throw new NotFoundException('Patient not found');
+    return rows[0].name;
+  }
+
   /* ── allergies ── */
 
   async listAllergies(patientId: string) {
@@ -60,7 +92,7 @@ export class PatientHistoryService {
                 u.full_name AS recorded_by_name, a.created_at, a.updated_at
            FROM patient_allergies a
            LEFT JOIN users u ON u.id = a.recorded_by
-          WHERE a.patient_id = $1
+          WHERE a.patient_id = $1 AND a.entered_in_error_at IS NULL
           ORDER BY CASE a.severity
                      WHEN 'severe' THEN 0 WHEN 'moderate' THEN 1 ELSE 2
                    END,
@@ -71,10 +103,11 @@ export class PatientHistoryService {
     });
   }
 
-  async createAllergy(patientId: string, dto: CreateAllergyDto, userId: string) {
+  async createAllergy(patientId: string, dto: CreateAllergyDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      await this.assertPatient(client, patientId);
+      const patient = await this.patientName(client, patientId);
+      let row: AllergyRow;
       try {
         const { rows } = await client.query<AllergyRow>(
           `INSERT INTO patient_allergies
@@ -83,9 +116,9 @@ export class PatientHistoryService {
            RETURNING id, substance, reaction, severity, notes,
                      NULL::text AS recorded_by_name, created_at, updated_at`,
           [tenantId, patientId, dto.substance, dto.reaction ?? null,
-           dto.severity, dto.notes ?? null, userId],
+           dto.severity, dto.notes ?? null, actor.userId],
         );
-        return mapAllergy(rows[0]);
+        row = rows[0]!;
       } catch (err) {
         if ((err as { code?: string }).code === UNIQUE_VIOLATION) {
           throw new BadRequestException(
@@ -94,10 +127,18 @@ export class PatientHistoryService {
         }
         throw err;
       }
+      await this.audit.record(client, actor, {
+        action: 'clinical.history_recorded',
+        entityType: 'patient_allergy',
+        entityId: row.id,
+        summary: `Recorded a ${row.severity} allergy to ${row.substance} for ${patient}`,
+        metadata: { patientId, severity: row.severity },
+      });
+      return mapAllergy(row);
     });
   }
 
-  async updateAllergy(id: string, dto: UpdateAllergyDto) {
+  async updateAllergy(id: string, dto: UpdateAllergyDto, actor: ClinicAuditActor) {
     const sets: string[] = [];
     const params: unknown[] = [id];
     const push = (col: string, value: unknown) => {
@@ -111,35 +152,48 @@ export class PatientHistoryService {
     if (!sets.length) throw new BadRequestException('Nothing to update');
 
     return this.tx(async (client) => {
+      let row: AllergyRow | undefined;
       try {
         const { rows } = await client.query<AllergyRow>(
           `UPDATE patient_allergies SET ${sets.join(', ')}, updated_at = now()
-            WHERE id = $1
-            RETURNING id, substance, reaction, severity, notes,
+            WHERE id = $1 AND entered_in_error_at IS NULL
+            RETURNING id, substance, reaction, severity, notes, patient_id,
                       NULL::text AS recorded_by_name, created_at, updated_at`,
           params,
         );
-        if (!rows[0]) throw new NotFoundException('Allergy not found');
-        return mapAllergy(rows[0]);
+        row = rows[0];
       } catch (err) {
         if ((err as { code?: string }).code === UNIQUE_VIOLATION) {
           throw new BadRequestException(
             'That substance is already recorded for this patient',
           );
         }
-        throw err;
+        rethrowRecordLocked(err);
       }
+      if (!row) throw new NotFoundException('Allergy not found');
+      await this.audit.record(client, actor, {
+        action: 'clinical.history_updated',
+        entityType: 'patient_allergy',
+        entityId: id,
+        summary: `Updated the allergy to ${row.substance}`,
+        metadata: { patientId: row.patient_id, fields: changedFields(dto) },
+      });
+      return mapAllergy(row);
     });
   }
 
-  async deleteAllergy(id: string) {
+  async withdrawAllergy(id: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'DELETE FROM patient_allergies WHERE id = $1',
-        [id],
+      await withdrawEntry<{ patient_id: string; entered_in_error_at: unknown; substance: string }>(
+        client, this.audit, actor, {
+          table: 'patient_allergies',
+          id,
+          reason,
+          action: 'clinical.history_withdrawn',
+          describe: (r) => `the allergy to ${r.substance}`,
+        },
       );
-      if (!rowCount) throw new NotFoundException('Allergy not found');
-      return { deleted: true as const };
+      return { withdrawn: true as const };
     });
   }
 
@@ -153,7 +207,7 @@ export class PatientHistoryService {
                 u.full_name AS recorded_by_name, c.created_at, c.updated_at
            FROM patient_conditions c
            LEFT JOIN users u ON u.id = c.recorded_by
-          WHERE c.patient_id = $1
+          WHERE c.patient_id = $1 AND c.entered_in_error_at IS NULL
           ORDER BY (c.status = 'resolved'), c.diagnosed_on DESC NULLS LAST, lower(c.name)`,
         [patientId],
       );
@@ -161,10 +215,10 @@ export class PatientHistoryService {
     });
   }
 
-  async createCondition(patientId: string, dto: CreateConditionDto, userId: string) {
+  async createCondition(patientId: string, dto: CreateConditionDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      await this.assertPatient(client, patientId);
+      const patient = await this.patientName(client, patientId);
       const { rows } = await client.query<ConditionRow>(
         `INSERT INTO patient_conditions
            (tenant_id, patient_id, name, status, diagnosed_on, notes, recorded_by)
@@ -172,13 +226,21 @@ export class PatientHistoryService {
          RETURNING id, name, status, diagnosed_on, notes,
                    NULL::text AS recorded_by_name, created_at, updated_at`,
         [tenantId, patientId, dto.name, dto.status ?? 'active',
-         dto.diagnosedOn || null, dto.notes ?? null, userId],
+         dto.diagnosedOn || null, dto.notes ?? null, actor.userId],
       );
-      return mapCondition(rows[0]);
+      const row = rows[0]!;
+      await this.audit.record(client, actor, {
+        action: 'clinical.history_recorded',
+        entityType: 'patient_condition',
+        entityId: row.id,
+        summary: `Recorded the condition "${row.name}" for ${patient}`,
+        metadata: { patientId, status: row.status },
+      });
+      return mapCondition(row);
     });
   }
 
-  async updateCondition(id: string, dto: UpdateConditionDto) {
+  async updateCondition(id: string, dto: UpdateConditionDto, actor: ClinicAuditActor) {
     const sets: string[] = [];
     const params: unknown[] = [id];
     const push = (col: string, value: unknown) => {
@@ -192,26 +254,46 @@ export class PatientHistoryService {
     if (!sets.length) throw new BadRequestException('Nothing to update');
 
     return this.tx(async (client) => {
-      const { rows } = await client.query<ConditionRow>(
-        `UPDATE patient_conditions SET ${sets.join(', ')}, updated_at = now()
-          WHERE id = $1
-          RETURNING id, name, status, diagnosed_on, notes,
-                    NULL::text AS recorded_by_name, created_at, updated_at`,
-        params,
-      );
-      if (!rows[0]) throw new NotFoundException('Condition not found');
-      return mapCondition(rows[0]);
+      let row: ConditionRow | undefined;
+      try {
+        const { rows } = await client.query<ConditionRow>(
+          `UPDATE patient_conditions SET ${sets.join(', ')}, updated_at = now()
+            WHERE id = $1 AND entered_in_error_at IS NULL
+            RETURNING id, name, status, diagnosed_on, notes, patient_id,
+                      NULL::text AS recorded_by_name, created_at, updated_at`,
+          params,
+        );
+        row = rows[0];
+      } catch (err) {
+        rethrowRecordLocked(err);
+      }
+      if (!row) throw new NotFoundException('Condition not found');
+      await this.audit.record(client, actor, {
+        action: 'clinical.history_updated',
+        entityType: 'patient_condition',
+        entityId: id,
+        summary:
+          dto.status === 'resolved'
+            ? `Marked the condition "${row.name}" as resolved`
+            : `Updated the condition "${row.name}"`,
+        metadata: { patientId: row.patient_id, fields: changedFields(dto) },
+      });
+      return mapCondition(row);
     });
   }
 
-  async deleteCondition(id: string) {
+  async withdrawCondition(id: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'DELETE FROM patient_conditions WHERE id = $1',
-        [id],
+      await withdrawEntry<{ patient_id: string; entered_in_error_at: unknown; name: string }>(
+        client, this.audit, actor, {
+          table: 'patient_conditions',
+          id,
+          reason,
+          action: 'clinical.history_withdrawn',
+          describe: (r) => `the condition "${r.name}"`,
+        },
       );
-      if (!rowCount) throw new NotFoundException('Condition not found');
-      return { deleted: true as const };
+      return { withdrawn: true as const };
     });
   }
 
@@ -225,7 +307,7 @@ export class PatientHistoryService {
                 m.notes, u.full_name AS recorded_by_name, m.created_at, m.updated_at
            FROM patient_medications m
            LEFT JOIN users u ON u.id = m.recorded_by
-          WHERE m.patient_id = $1
+          WHERE m.patient_id = $1 AND m.entered_in_error_at IS NULL
           ORDER BY (m.ended_on IS NOT NULL), m.started_on DESC NULLS LAST, lower(m.name)`,
         [patientId],
       );
@@ -233,11 +315,11 @@ export class PatientHistoryService {
     });
   }
 
-  async createMedication(patientId: string, dto: CreateMedicationDto, userId: string) {
+  async createMedication(patientId: string, dto: CreateMedicationDto, actor: ClinicAuditActor) {
     assertDateOrder(dto.startedOn, dto.endedOn);
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      await this.assertPatient(client, patientId);
+      const patient = await this.patientName(client, patientId);
       const { rows } = await client.query<MedicationRow>(
         `INSERT INTO patient_medications
            (tenant_id, patient_id, name, dosage, frequency, started_on, ended_on, notes, recorded_by)
@@ -245,13 +327,21 @@ export class PatientHistoryService {
          RETURNING id, name, dosage, frequency, started_on, ended_on, notes,
                    NULL::text AS recorded_by_name, created_at, updated_at`,
         [tenantId, patientId, dto.name, dto.dosage ?? null, dto.frequency ?? null,
-         dto.startedOn || null, dto.endedOn || null, dto.notes ?? null, userId],
+         dto.startedOn || null, dto.endedOn || null, dto.notes ?? null, actor.userId],
       );
-      return mapMedication(rows[0]);
+      const row = rows[0]!;
+      await this.audit.record(client, actor, {
+        action: 'clinical.history_recorded',
+        entityType: 'patient_medication',
+        entityId: row.id,
+        summary: `Recorded the medication ${row.name} for ${patient}`,
+        metadata: { patientId },
+      });
+      return mapMedication(row);
     });
   }
 
-  async updateMedication(id: string, dto: UpdateMedicationDto) {
+  async updateMedication(id: string, dto: UpdateMedicationDto, actor: ClinicAuditActor) {
     const sets: string[] = [];
     const params: unknown[] = [id];
     const push = (col: string, value: unknown) => {
@@ -271,32 +361,57 @@ export class PatientHistoryService {
       // still be checked against the startedOn already stored.
       const { rows: existing } = await client.query<{
         started_on: string | null; ended_on: string | null;
-      }>('SELECT started_on, ended_on FROM patient_medications WHERE id = $1', [id]);
+      }>(
+        `SELECT started_on, ended_on FROM patient_medications
+          WHERE id = $1 AND entered_in_error_at IS NULL`,
+        [id],
+      );
       if (!existing[0]) throw new NotFoundException('Medication not found');
       assertDateOrder(
         dto.startedOn !== undefined ? dto.startedOn || null : existing[0].started_on,
         dto.endedOn !== undefined ? dto.endedOn || null : existing[0].ended_on,
       );
 
-      const { rows } = await client.query<MedicationRow>(
-        `UPDATE patient_medications SET ${sets.join(', ')}, updated_at = now()
-          WHERE id = $1
-          RETURNING id, name, dosage, frequency, started_on, ended_on, notes,
-                    NULL::text AS recorded_by_name, created_at, updated_at`,
-        params,
-      );
-      return mapMedication(rows[0]);
+      let row: MedicationRow | undefined;
+      try {
+        const { rows } = await client.query<MedicationRow>(
+          `UPDATE patient_medications SET ${sets.join(', ')}, updated_at = now()
+            WHERE id = $1
+            RETURNING id, name, dosage, frequency, started_on, ended_on, notes, patient_id,
+                      NULL::text AS recorded_by_name, created_at, updated_at`,
+          params,
+        );
+        row = rows[0];
+      } catch (err) {
+        rethrowRecordLocked(err);
+      }
+      if (!row) throw new NotFoundException('Medication not found');
+      await this.audit.record(client, actor, {
+        action: 'clinical.history_updated',
+        entityType: 'patient_medication',
+        entityId: id,
+        summary:
+          dto.endedOn && !existing[0].ended_on
+            ? `Stopped the medication ${row.name}`
+            : `Updated the medication ${row.name}`,
+        metadata: { patientId: row.patient_id, fields: changedFields(dto) },
+      });
+      return mapMedication(row);
     });
   }
 
-  async deleteMedication(id: string) {
+  async withdrawMedication(id: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'DELETE FROM patient_medications WHERE id = $1',
-        [id],
+      await withdrawEntry<{ patient_id: string; entered_in_error_at: unknown; name: string }>(
+        client, this.audit, actor, {
+          table: 'patient_medications',
+          id,
+          reason,
+          action: 'clinical.history_withdrawn',
+          describe: (r) => `the medication ${r.name}`,
+        },
       );
-      if (!rowCount) throw new NotFoundException('Medication not found');
-      return { deleted: true as const };
+      return { withdrawn: true as const };
     });
   }
 

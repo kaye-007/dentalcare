@@ -12,6 +12,8 @@ import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
 import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
+import { auditActor } from '@/core/audit/clinic-audit.service';
+import { LogPatientAccess } from '@/core/audit/patient-access';
 import { ChartingService } from './charting.service';
 import { CreateProcedureDto } from './dto/charting.dto';
 
@@ -22,6 +24,7 @@ export class PatientProceduresController {
 
   @Get()
   @RequirePermissions('clinical:read')
+  @LogPatientAccess('procedures')
   list(@Param('patientId', ParseUUIDPipe) patientId: string) {
     return this.charting.listProcedures(patientId);
   }
@@ -31,8 +34,8 @@ export class PatientProceduresController {
   log(
     @Param('patientId', ParseUUIDPipe) patientId: string,
     @Body() dto: CreateProcedureDto,
-    @CurrentUser() user: AccessTokenPayload,
+    @CurrentUser() user?: AccessTokenPayload,
   ) {
-    return this.charting.logProcedure(patientId, dto, user.sub);
+    return this.charting.logProcedure(patientId, dto, auditActor(user));
   }
 }

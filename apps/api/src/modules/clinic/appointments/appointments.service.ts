@@ -21,6 +21,7 @@ import {
   isStatus,
 } from './status-machine';
 import { AppointmentEvents } from './appointment-events';
+import { closureOn } from '@/modules/clinic/settings/closures.service';
 
 /** Postgres error codes translated into user-facing messages. */
 const EXCLUSION_VIOLATION = '23P01';
@@ -404,6 +405,19 @@ export class AppointmentsService {
     const weekday = day.getUTCDay();
 
     return this.tx(async (client) => {
+      // A holiday or a day off wins over the weekly pattern.
+      const closure = await closureOn(client, staffId, date);
+      if (closure) {
+        return {
+          date,
+          weekday,
+          slots: [],
+          reason: 'closed' as const,
+          closure: closure.reason,
+          wholeClinic: closure.wholeClinic,
+        };
+      }
+
       const { rows: shifts } = await client.query<{ starts_at: string; ends_at: string }>(
         `SELECT starts_at::text AS starts_at, ends_at::text AS ends_at
            FROM staff_availability

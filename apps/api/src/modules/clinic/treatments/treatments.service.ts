@@ -3,6 +3,8 @@ import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditService, ClinicAuditActor } from '@/core/audit/clinic-audit.service';
+import { vatCategoryOf } from '@dentalcare/shared';
+import { moneyText } from '@/core/money/clinic-currency';
 import { CreateTreatmentDto, UpdateTreatmentDto } from './dto/treatments.dto';
 
 /* ── service ─────────────────────────────────────────────── */
@@ -13,9 +15,10 @@ interface Row {
   duration_minutes: number;
   visit_type: string | null;
   status: string;
+  is_taxable: boolean;
 }
 
-const FULL = 'id, name, price, duration_minutes, visit_type, status';
+const FULL = 'id, name, price, duration_minutes, visit_type, status, is_taxable';
 
 const map = (r: Row) => ({
   id: r.id,
@@ -24,6 +27,8 @@ const map = (r: Row) => ({
   durationMinutes: r.duration_minutes,
   visitType: r.visit_type,
   status: r.status,
+  /** TVSH: 'medical' is exempt, 'cosmetic' carries the clinic's VAT rate. */
+  vatCategory: vatCategoryOf(r.is_taxable),
 });
 
 @Injectable()
@@ -65,16 +70,17 @@ export class TreatmentsService {
     return this.db.withTenant(tenantId, async (client) => {
       try {
         const { rows } = await client.query<Row>(
-          `INSERT INTO treatments (tenant_id, name, price, duration_minutes, visit_type, status)
-           VALUES ($1,$2,$3,$4,$5,$6) RETURNING ${FULL}`,
-          [tenantId, dto.name, dto.price, dto.durationMinutes, dto.visitType ?? null, dto.status ?? 'active'],
+          `INSERT INTO treatments (tenant_id, name, price, duration_minutes, visit_type, status, is_taxable)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING ${FULL}`,
+          [tenantId, dto.name, dto.price, dto.durationMinutes, dto.visitType ?? null, dto.status ?? 'active',
+           dto.vatCategory === 'cosmetic'],
         );
         await this.audit.record(client, actor, {
           action: 'treatment.created',
           entityType: 'treatment',
           entityId: rows[0]!.id,
-          summary: `Added "${dto.name}" at ${dto.price}`,
-          metadata: { name: dto.name, price: dto.price },
+          summary: `Added "${dto.name}" at ${await moneyText(client, dto.price)}`,
+          metadata: { name: dto.name, price: dto.price, vatCategory: dto.vatCategory ?? 'medical' },
         });
         return map(rows[0]!);
       } catch (err: unknown) {
@@ -103,6 +109,10 @@ export class TreatmentsService {
         sets.push(`${col} = $${params.length}`);
       }
     }
+    if (dto.vatCategory !== undefined) {
+      params.push(dto.vatCategory === 'cosmetic');
+      sets.push(`is_taxable = $${params.length}`);
+    }
     return this.tx(async (client) => {
       if (!sets.length) {
         const r = await client.query<Row>(`SELECT ${FULL} FROM treatments WHERE id = $1`, [id]);
@@ -123,16 +133,23 @@ export class TreatmentsService {
       const prev = before.rows[0];
       const next = rows[0];
       const repriced = prev.price !== next.price;
+      // A category change moves TVSH on every future invoice for this work,
+      // so it is said in the summary rather than folded into "Updated".
+      const recategorised = prev.is_taxable !== next.is_taxable;
+      const vatNote = recategorised ? ` (TVSH category now ${vatCategoryOf(next.is_taxable)})` : '';
       await this.audit.record(client, actor, {
         action: 'treatment.updated',
         entityType: 'treatment',
         entityId: id,
         summary: repriced
-          ? `Repriced "${next.name}" from ${prev.price} to ${next.price}`
-          : `Updated "${next.name}"`,
+          ? `Repriced "${next.name}" from ${prev.price} to ${next.price}${vatNote}`
+          : `Updated "${next.name}"${vatNote}`,
         metadata: {
           name: next.name,
           ...(repriced ? { priceFrom: prev.price, priceTo: next.price } : {}),
+          ...(recategorised
+            ? { vatCategoryFrom: vatCategoryOf(prev.is_taxable), vatCategoryTo: vatCategoryOf(next.is_taxable) }
+            : {}),
         },
       });
       return map(rows[0]);

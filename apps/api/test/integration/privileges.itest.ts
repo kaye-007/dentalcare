@@ -122,6 +122,66 @@ describe('the platform tables are out of reach', () => {
   });
 });
 
+/**
+ * A table nobody has written yet must be unreachable.
+ *
+ * The baseline used to end with the line pg_dump wrote for it:
+ *
+ *     ALTER DEFAULT PRIVILEGES FOR ROLE <owner> IN SCHEMA public
+ *       GRANT SELECT,INSERT,DELETE,UPDATE ON TABLES TO app_user;
+ *
+ * Two faults in one statement. It names the building role — `--no-owner`
+ * strips ownership from tables but not from a DEFAULT ACL — so the migration
+ * only ran on a database owned by a role of that exact name, and failed on
+ * every managed Postgres with `role "..." does not exist`. And it is a
+ * standing grant on tables that do not exist yet: a clinical table added in a
+ * later migration would arrive writable by the runtime role before anyone had
+ * decided it should be, which is the blanket grant the explicit per-table
+ * list exists to replace.
+ *
+ * Both are gone, and this is what keeps them gone. A regenerated baseline
+ * that reintroduces the line fails here rather than in production.
+ */
+describe('a future table is not granted in advance', () => {
+  it('the schema carries no default ACL at all', async () => {
+    const { rows } = await ownerQuery<{ count: string }>(
+      'SELECT count(*)::text AS count FROM pg_default_acl',
+    );
+
+    expect(rows[0]?.count).toBe('0');
+  });
+
+  describe('a table created after the baseline', () => {
+    beforeAll(async () => {
+      await owner().query(
+        `CREATE TABLE IF NOT EXISTS future_table (
+           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+           tenant_id uuid NOT NULL,
+           note text
+         )`,
+      );
+    });
+
+    afterAll(async () => {
+      await owner().query('DROP TABLE IF EXISTS future_table');
+    });
+
+    it.each([
+      ['read', 'SELECT * FROM future_table'],
+      [
+        'insert into',
+        "INSERT INTO future_table (tenant_id, note) VALUES (gen_random_uuid(), 'x')",
+      ],
+      ['update', "UPDATE future_table SET note = 'x'"],
+      ['delete from', 'DELETE FROM future_table'],
+    ])('the runtime role cannot %s it', async (_verb, sql) => {
+      const code = await errorCodeOf(asTenant(s.a.id, (c) => c.query(sql)));
+
+      expect(code).toBe(DENIED);
+    });
+  });
+});
+
 describe('money is immutable', () => {
   /**
    * Reception must be able to fix a mistake and must not be able to make one
