@@ -18,6 +18,7 @@ let api: TestApi;
 let s: Scenario;
 let admin: string;
 let desk: string;
+let desk2: string;
 let adminB: string;
 let accountant: string;
 let receptionistId: string;
@@ -60,10 +61,12 @@ beforeAll(async () => {
 
   const r = await createUser('receptionist', 'desk');
   receptionistId = r.id;
+  const r2 = await createUser('receptionist', 'desk-two');
   const acc = await createUser('accountant', 'books');
 
   admin = (await login(api, s.a.subdomain, s.a.adminEmail, s.password)).accessToken;
   desk = (await login(api, s.a.subdomain, r.email, s.password)).accessToken;
+  desk2 = (await login(api, s.a.subdomain, r2.email, s.password)).accessToken;
   accountant = (await login(api, s.a.subdomain, acc.email, s.password)).accessToken;
   adminB = (await login(api, s.b.subdomain, s.b.adminEmail, s.password)).accessToken;
 });
@@ -178,7 +181,7 @@ describe('setting up drawers', () => {
 });
 
 describe('a shift', () => {
-  it('refuses a cash payment from someone holding no drawer, and still takes a card', async () => {
+  it('refuses a cash payment while no drawer is open, and still takes a card', async () => {
     const inv = await invoice(admin, 300_000);
     const cash = await call<{ code: string }>(api, 'POST', `/api/invoices/${inv}/payments`, A(desk, { amount: 100_000, method: 'cash' }));
     expect(cash.status).toBe(409);
@@ -205,7 +208,7 @@ describe('a shift', () => {
     sessionId = res.body.id;
   });
 
-  it('allows one drawer per person and one person per drawer', async () => {
+  it('opens a drawer only once at a time', async () => {
     const again = await call<{ code: string }>(api, 'POST', '/api/drawer/sessions', A(desk, { drawerId }));
     expect(again.body.code).toBe('drawer_in_use');
     const other = await call<{ code: string }>(api, 'POST', '/api/drawer/sessions', A(admin, { drawerId }));
@@ -213,13 +216,14 @@ describe('a shift', () => {
     expect(other.body.code).toBe('drawer_in_use');
   });
 
-  it('takes a cash payment exactly once, however often it is sent', async () => {
+  it('takes a colleague cash payment into the shared drawer, exactly once', async () => {
     const inv = await invoice(admin, 850_000);
     const k = key();
+    // desk2 did not open the drawer; the cash still goes into it.
     const first = await call<{ status: string }>(api, 'POST', `/api/invoices/${inv}/payments`,
-      A(desk, { amount: 850_000, method: 'cash' }, { 'Idempotency-Key': k }));
+      A(desk2, { amount: 850_000, method: 'cash' }, { 'Idempotency-Key': k }));
     const replay = await call<{ status: string }>(api, 'POST', `/api/invoices/${inv}/payments`,
-      A(desk, { amount: 850_000, method: 'cash' }, { 'Idempotency-Key': k }));
+      A(desk2, { amount: 850_000, method: 'cash' }, { 'Idempotency-Key': k }));
     expect(first.status).toBe(201);
     expect(replay.status).toBe(201);
     expect(replay.headers.get('idempotent-replayed')).toBe('true');
@@ -233,7 +237,7 @@ describe('a shift', () => {
     firstCashPaymentId = payments[0]!.id;
 
     const different = await call<{ code: string }>(api, 'POST', `/api/invoices/${inv}/payments`,
-      A(desk, { amount: 1, method: 'cash' }, { 'Idempotency-Key': k }));
+      A(desk2, { amount: 1, method: 'cash' }, { 'Idempotency-Key': k }));
     expect(different.status).toBe(422);
     expect(different.body.code).toBe('idempotency_key_reused');
   });
@@ -343,9 +347,10 @@ describe('a shift', () => {
     expect(noNote.status).toBe(400);
     expect(noNote.body.code).toBe('variance_note_required');
 
-    const closed = await call<{ status: string; reviews: { currency: string; band: string }[] }>(
+    // Closed by the colleague who did not open it: the drawer is the desk's.
+    const closed = await call<{ status: string; closedBy: unknown; reviews: { currency: string; band: string }[] }>(
       api, 'POST', `/api/drawer/sessions/${sessionId}/close`,
-      A(desk, { acknowledgeOpenInvoices: true, notes: { ALL: 'Counted twice, still short' }, cardBatchTotal: 100_000 }, { 'Idempotency-Key': key() }),
+      A(desk2, { acknowledgeOpenInvoices: true, notes: { ALL: 'Counted twice, still short' }, cardBatchTotal: 100_000 }, { 'Idempotency-Key': key() }),
     );
     expect(closed.status).toBe(201);
     expect(closed.body.status).toBe('pending_approval');
@@ -444,5 +449,61 @@ describe('switching the drawer off', () => {
     // With the drawer off, cash is taken as before.
     const inv = await invoice(admin, 50_000);
     expect((await call(api, 'POST', `/api/invoices/${inv}/payments`, A(desk, { amount: 50_000, method: 'cash' }))).status).toBe(201);
+  });
+});
+
+describe('the simple day', () => {
+  it('asks which drawer when the clinic still runs several', async () => {
+    const on = await call(api, 'PATCH', '/api/features/cash_drawer', A(admin, { enabled: true }));
+    expect(on.status).toBe(200);
+    const res = await call<{ code: string }>(api, 'POST', '/api/drawer/sessions', A(desk, {}));
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('drawer_choose');
+  });
+
+  it('opens without any setup, creating the drawer on first use', async () => {
+    const drawers = await call<{ id: string }[]>(api, 'GET', '/api/drawer/drawers', A(admin));
+    for (const d of drawers.body) {
+      expect((await call(api, 'PATCH', `/api/drawer/drawers/${d.id}`, A(admin, { isActive: false }))).status).toBe(200);
+    }
+    const before = await call<{ session: unknown; drawers: unknown[] }>(api, 'GET', '/api/drawer/current', A(desk));
+    expect(before.body).toMatchObject({ session: null, drawers: [] });
+
+    const opened = await call<{ id: string; drawer: { name: string }; status: string }>(
+      api, 'POST', '/api/drawer/sessions',
+      A(desk, { floats: [{ currency: 'ALL', amount: 400_000 }] }, { 'Idempotency-Key': key() }),
+    );
+    expect(opened.status).toBe(201);
+    expect(opened.body).toMatchObject({ status: 'open', drawer: { name: 'Cash drawer' } });
+
+    // Everyone at the desk sees the same open drawer.
+    const seen = await call<{ session: { id: string } | null }>(api, 'GET', '/api/drawer/current', A(desk2));
+    expect(seen.body.session?.id).toBe(opened.body.id);
+    sessionId = opened.body.id;
+  });
+
+  it('closes on a typed total, and starts the next day from it', async () => {
+    const inv = await invoice(admin, 150_000);
+    expect((await call(api, 'POST', `/api/invoices/${inv}/payments`, A(desk2, { amount: 150_000, method: 'cash' }))).status).toBe(201);
+
+    await call(api, 'POST', `/api/drawer/sessions/${sessionId}/count/start`, A(desk2));
+    const both = await call(api, 'POST', `/api/drawer/sessions/${sessionId}/counts`,
+      A(desk2, { counts: [{ currency: 'ALL', total: 550_000, denominations: { '500000': 1 } }] }));
+    expect(both.status).toBe(400);
+
+    const counted = await call<{ lines: { expected: number; variance: number; band: string }[] }>(
+      api, 'POST', `/api/drawer/sessions/${sessionId}/counts`,
+      A(desk2, { counts: [{ currency: 'ALL', total: 550_000 }] }),
+    );
+    expect(counted.status).toBe(201);
+    expect(counted.body.lines[0]).toMatchObject({ expected: 550_000, variance: 0, band: 'exact' });
+
+    const closed = await call<{ status: string }>(api, 'POST', `/api/drawer/sessions/${sessionId}/close`,
+      A(desk2, { acknowledgeOpenInvoices: true }, { 'Idempotency-Key': key() }));
+    expect(closed.status).toBe(201);
+    expect(closed.body.status).toBe('closed');
+
+    const next = await call<{ session: unknown; suggestedFloat: number; currency: string }>(api, 'GET', '/api/drawer/current', A(desk));
+    expect(next.body).toMatchObject({ session: null, suggestedFloat: 550_000, currency: 'ALL' });
   });
 });

@@ -121,7 +121,12 @@ const APPEND_ONLY: readonly [string, string][] = [
 ];
 
 export async function destroyScenario(scenario: Scenario): Promise<void> {
-  const ids = [scenario.a.id, scenario.b.id];
+  await destroyTenants([scenario.a.id, scenario.b.id]);
+}
+
+/** Clinics a test created some other way — through the platform API, say. */
+export async function destroyTenants(ids: string[]): Promise<void> {
+  if (!ids.length) return;
   const client = await owner().connect();
   try {
     await client.query('BEGIN');

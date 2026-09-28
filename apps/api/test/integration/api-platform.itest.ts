@@ -1,7 +1,7 @@
 import * as bcrypt from 'bcryptjs';
 import { call, login, startApi, TestApi } from './api';
 import { closePools, owner, ownerQuery } from './db';
-import { createScenario, destroyScenario, Scenario } from './fixtures';
+import { createScenario, destroyScenario, destroyTenants, Scenario } from './fixtures';
 
 /**
  * The platform plane: the half of the system that is SUPPOSED to see across
@@ -111,6 +111,43 @@ describe('the console operates across clinics', () => {
     expect(denied.body.code).toBe('tenant_suspended');
 
     await ownerQuery("UPDATE tenants SET status = 'active' WHERE id = $1", [s.b.id]);
+  });
+});
+
+describe('a new clinic writes to its patients in the language of its country', () => {
+  const created: string[] = [];
+  afterAll(() => destroyTenants(created));
+
+  const clinic = async (phoneCountryCode?: string) => {
+    const tag = Math.random().toString(36).slice(2, 8);
+    const res = await call<{ id: string }>(api, 'POST', '/api/platform/tenants', {
+      token: platformToken,
+      body: {
+        clinicName: `Klinika ${tag}`,
+        subdomain: `lang-${tag}`,
+        ownerFullName: 'Pronar Testi',
+        ownerEmail: `owner-${tag}@nodex.test`,
+        ownerPassword: 'Perkohshem-2026',
+        ...(phoneCountryCode ? { phoneCountryCode } : {}),
+      },
+    });
+    expect(res.status).toBe(201);
+    created.push(res.body.id);
+    const { rows } = await owner().query<{ reminder_locale: string }>(
+      'SELECT reminder_locale FROM clinic_settings WHERE tenant_id = $1',
+      [res.body.id],
+    );
+    return rows[0]!.reminder_locale;
+  };
+
+  it('in Albanian in Albania, by default, and in Kosovo', async () => {
+    expect(await clinic()).toBe('sq');
+    expect(await clinic('355')).toBe('sq');
+    expect(await clinic('383')).toBe('sq');
+  });
+
+  it('in English anywhere else', async () => {
+    expect(await clinic('44')).toBe('en');
   });
 });
 

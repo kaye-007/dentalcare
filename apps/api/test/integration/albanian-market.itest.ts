@@ -470,3 +470,39 @@ describe('identity documents', () => {
     expect(res.rows[0]!.kind).toBe('id_document');
   });
 });
+
+describe('an invitation back for a check-up (0022)', () => {
+  const path = () => `/api/patients/${s.a.patientId}/messages`;
+
+  it('is refused for a patient who has never been', async () => {
+    const res = await call<{ message: string }>(
+      api,
+      'POST',
+      path(),
+      A({ purpose: 'recall_invitation', channel: 'log' }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/no visit yet/);
+  });
+
+  it('is written from the last visit, in the clinic’s language, and handed to WhatsApp', async () => {
+    await owner().query(
+      `INSERT INTO appointments (tenant_id, patient_id, starts_at, ends_at, reason, status,
+                                 completed_at)
+       VALUES ($1, $2, '2026-03-10T09:00:00Z', '2026-03-10T09:30:00Z', 'Kontroll',
+               'completed', '2026-03-10T09:30:00Z')`,
+      [s.a.id, s.a.patientId],
+    );
+    const res = await call<{
+      message: { message: string; appointmentId: string | null; purpose: string };
+      handoffUrl: string;
+    }>(api, 'POST', path(), A({ purpose: 'recall_invitation', channel: 'whatsapp' }));
+    expect(res.status).toBe(201);
+    expect(res.body.message.purpose).toBe('recall_invitation');
+    expect(res.body.message.appointmentId).toBeNull();
+    expect(res.body.message.message).toMatch(
+      /^Përshëndetje .*10 mars.*kontrollin e radhës/,
+    );
+    expect(res.body.handoffUrl.startsWith('https://wa.me/355691234567?text=')).toBe(true);
+  });
+});

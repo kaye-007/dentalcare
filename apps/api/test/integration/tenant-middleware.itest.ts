@@ -1,3 +1,4 @@
+import { RequestMethod } from '@nestjs/common';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { call, startApi, TestApi } from './api';
@@ -187,11 +188,12 @@ describe('the exclusion list itself', () => {
    * adding one is a security decision and should read as a deliberate change
    * in review rather than a line in a larger diff.
    */
-  it('is exactly the six known exclusions', () => {
+  it('is exactly the seven known exclusions', () => {
     expect(TENANT_MIDDLEWARE_EXCLUSIONS.map((e) => e.path).sort()).toEqual([
       'auth/google',
       'auth/google/callback',
       'auth/providers',
+      'files/{*path}',
       'health',
       'platform/{*path}',
       'reminders/delivery/twilio',
@@ -207,12 +209,17 @@ describe('the exclusion list itself', () => {
 
   /**
    * A wildcard that swallowed more than intended is the way this list would
-   * fail quietly. `platform/{*path}` is the only pattern, and it is scoped to
-   * the other plane.
+   * fail quietly. `platform/{*path}` is scoped to the other plane, and
+   * `files/{*path}` to signed downloads — GET only, and no clinic controller
+   * lives under `files/`.
    */
   it('has no exclusion that could match a clinic route', () => {
-    for (const { path: pattern } of TENANT_MIDDLEWARE_EXCLUSIONS) {
+    for (const { path: pattern, method } of TENANT_MIDDLEWARE_EXCLUSIONS) {
       if (!pattern.includes('*')) continue;
+      if (pattern.startsWith('files/')) {
+        expect(method).toBe(RequestMethod.GET);
+        continue;
+      }
       expect(pattern.startsWith('platform/')).toBe(true);
     }
   });

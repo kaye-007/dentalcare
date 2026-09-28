@@ -363,3 +363,41 @@ describe('record access', () => {
     }
   });
 });
+
+describe('radiographs are filed as what they are (0021)', () => {
+  let docId: string;
+
+  beforeAll(async () => {
+    const { rows } = await owner().query<{ id: string }>(
+      `INSERT INTO patient_documents
+         (tenant_id, patient_id, storage_key, file_name, content_type, byte_size, checksum, kind)
+       VALUES ($1, $2, 'tenants/x/patients/y/opg.jpg', 'opg-2025.jpg', 'image/jpeg', 100, 'c', 'xray')
+       RETURNING id`,
+      [s.a.id, s.a.patientId],
+    );
+    docId = rows[0]!.id;
+  });
+
+  it('re-labels an old X-ray as the panoramic it is, and a scan as a CBCT', async () => {
+    for (const kind of ['panoramic', 'cbct']) {
+      const res = await call<{ kind: string }>(
+        api,
+        'PATCH',
+        `/api/documents/${docId}`,
+        as('dentist', { kind }),
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.kind).toBe(kind);
+    }
+  });
+
+  it('refuses a kind that is not one', async () => {
+    const res = await call(
+      api,
+      'PATCH',
+      `/api/documents/${docId}`,
+      as('dentist', { kind: 'ultrasound' }),
+    );
+    expect(res.status).toBe(400);
+  });
+});
