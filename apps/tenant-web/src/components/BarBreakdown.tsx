@@ -36,7 +36,7 @@ export default function BarBreakdown({
   max?: number;
 }) {
   if (rows.length === 0) {
-    return <p className="muted" style={{ fontSize: 13 }}>{emptyText}</p>;
+    return <p className="muted bars__empty">{emptyText}</p>;
   }
 
   // Scale to the largest bar, never to the sum: these are magnitudes to

@@ -7,9 +7,10 @@ import {
   ApiError,
   type Closure,
   type StaffMember,
+  humanError,
 } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { EmptyState } from '../ui';
+import { EmptyState, LoadingRows } from '../ui';
 import { dateLocale } from '../../lib/strings';
 
 function fmt(d: string) {
@@ -36,7 +37,12 @@ export default function ClosuresCard() {
   const canStaff = can('availability:manage');
   const [items, setItems] = useState<Closure[] | null>(null);
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [form, setForm] = useState({ staffId: '', startsOn: today(), endsOn: today(), reason: '' });
+  const [form, setForm] = useState({
+    staffId: '',
+    startsOn: today(),
+    endsOn: today(),
+    reason: '',
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +50,7 @@ export default function ClosuresCard() {
     closuresApi
       .list(today())
       .then(setItems)
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
   }, []);
 
   useEffect(() => {
@@ -91,8 +97,12 @@ export default function ClosuresCard() {
         <div>
           <h2>Holidays &amp; time off</h2>
           <p className="card__sub">
-            Days the clinic is closed or a clinician is away. Weekly shifts per clinician are in{' '}
-            <Link to="/rooms" className="link">Rooms &amp; hours</Link>.
+            Days the clinic is closed or a clinician is away. Weekly shifts per clinician
+            are in{' '}
+            <Link to="/rooms" className="link">
+              Rooms &amp; hours
+            </Link>
+            .
           </p>
         </div>
       </div>
@@ -102,7 +112,10 @@ export default function ClosuresCard() {
           <div className="grid2">
             <label className="field">
               <span>Who</span>
-              <select value={form.staffId} onChange={(e) => setForm((f) => ({ ...f, staffId: e.target.value }))}>
+              <select
+                value={form.staffId}
+                onChange={(e) => setForm((f) => ({ ...f, staffId: e.target.value }))}
+              >
                 {canClinicWide && <option value="">The whole clinic</option>}
                 {staff.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -126,16 +139,30 @@ export default function ClosuresCard() {
           <div className="grid2">
             <label className="field">
               <span>From</span>
-              <input type="date" value={form.startsOn} onChange={(e) => setForm((f) => ({ ...f, startsOn: e.target.value }))} required />
+              <input
+                type="date"
+                value={form.startsOn}
+                onChange={(e) => setForm((f) => ({ ...f, startsOn: e.target.value }))}
+                required
+              />
             </label>
             <label className="field">
               <span>To (inclusive)</span>
-              <input type="date" value={form.endsOn} min={form.startsOn} onChange={(e) => setForm((f) => ({ ...f, endsOn: e.target.value }))} required />
+              <input
+                type="date"
+                value={form.endsOn}
+                min={form.startsOn}
+                onChange={(e) => setForm((f) => ({ ...f, endsOn: e.target.value }))}
+                required
+              />
             </label>
           </div>
           {error && <p className="formerror">{error}</p>}
           <div className="form__foot">
-            <button className="btn btn--primary btn--sm" disabled={busy || (!canClinicWide && !form.staffId)}>
+            <button
+              className="btn btn--primary btn--sm"
+              disabled={busy || (!canClinicWide && !form.staffId)}
+            >
               {busy ? 'Adding…' : 'Add'}
             </button>
           </div>
@@ -143,9 +170,13 @@ export default function ClosuresCard() {
       )}
 
       {items === null ? (
-        <p className="pad muted">Loading…</p>
+        <LoadingRows rows={3} label="Loading" />
       ) : items.length === 0 ? (
-        <EmptyState icon={<CalendarOff size={20} />} title="Nothing coming up" body="No holidays or time off from today onwards." />
+        <EmptyState
+          icon={<CalendarOff size={20} />}
+          title="Nothing coming up"
+          body="No holidays or time off from today onwards."
+        />
       ) : (
         <ul className="list">
           {items.map((c) => {
@@ -162,7 +193,11 @@ export default function ClosuresCard() {
                   </span>
                 </span>
                 {mayRemove && (
-                  <button className="iconbtn iconbtn--quiet" aria-label={`Remove ${c.reason}`} onClick={() => remove(c)}>
+                  <button
+                    className="iconbtn iconbtn--quiet"
+                    aria-label={`Remove ${c.reason}`}
+                    onClick={() => remove(c)}
+                  >
                     <Trash2 size={14} />
                   </button>
                 )}

@@ -4,6 +4,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarClock,
+  PackageMinus,
+  PackagePlus,
   ClipboardList,
   History,
   Layers,
@@ -13,7 +15,9 @@ import {
   RotateCcw,
   Search,
   ShieldAlert,
+  ShoppingCart,
   Trash2,
+  Truck,
   TriangleAlert,
   Users,
 } from 'lucide-react';
@@ -30,8 +34,12 @@ import {
   type StockMovement,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { EmptyState, Modal, PageHeader } from '../components/ui';
+import { EmptyState, Modal, MoreMenu, PageHeader, type MoreItem } from '../components/ui';
+import { useIsPhone } from '../lib/useIsPhone';
+import { formatQty } from '../lib/format';
 import PatientPicker from '../components/PatientPicker';
+import PartnersModal from '../components/PartnersModal';
+import { ReorderSheet, SupplierPicker } from '../components/Suppliers';
 import { dateLocale, t, type StringKey } from '../lib/strings';
 
 /**
@@ -61,10 +69,7 @@ const REASON_REQUIRED: readonly MovementKind[] = ['write_off', 'adjustment'];
 const kindLabelKey = (k: MovementKind) => `inv.kind.${k}` as StringKey;
 const kindHelpKey = (k: MovementKind) => `inv.kind.${k}.help` as StringKey;
 
-/** Trailing zeros help nobody: 2.5 boxes reads better than 2.50. */
-function qty(value: number): string {
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
-}
+const qty = formatQty;
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString(dateLocale(), {
@@ -99,7 +104,9 @@ function ExpiryPill({ state, date }: { state: ExpiryState; date: string | null }
   return (
     <span className={`pill ${state === 'expired' ? 'pill--danger' : 'pill--warn'}`}>
       <CalendarClock size={11} aria-hidden />{' '}
-      {t(state === 'expired' ? 'inv.badge.expired' : 'inv.badge.expiring', { date: day(date) })}
+      {t(state === 'expired' ? 'inv.badge.expired' : 'inv.badge.expiring', {
+        date: day(date),
+      })}
     </span>
   );
 }
@@ -115,10 +122,28 @@ const BAR_BUTTON = {
 type Tab = 'items' | 'movements';
 type Filter = 'all' | 'low' | 'expiring' | 'archived';
 
+/** In stock / Low stock / Out of stock — words, so colour is never the only signal. */
+function StockPill({ item }: { item: InventoryItem }) {
+  if (item.outOfStock)
+    return (
+      <span className="pill pill--danger">
+        <TriangleAlert size={11} aria-hidden /> {t('inv.badge.out')}
+      </span>
+    );
+  if (item.lowStock)
+    return (
+      <span className="pill pill--warn">
+        <TriangleAlert size={11} aria-hidden /> {t('inv.badge.low')}
+      </span>
+    );
+  return <span className="pill pill--done">{t('inv.badge.ok')}</span>;
+}
+
 export default function InventoryPage() {
   const { can } = useAuth();
   const canManage = can('inventory:manage');
   const canRecord = can('inventory:write');
+  const phone = useIsPhone();
 
   const [tab, setTab] = useState<Tab>('items');
   const [filter, setFilter] = useState<Filter>('all');
@@ -135,9 +160,15 @@ export default function InventoryPage() {
 
   const [editing, setEditing] = useState<InventoryItem | null>(null);
   const [creating, setCreating] = useState(false);
-  const [moving, setMoving] = useState<InventoryItem | null>(null);
+  const [moving, setMoving] = useState<{
+    item: InventoryItem;
+    kind: MovementKind;
+  } | null>(null);
   const [historyFor, setHistoryFor] = useState<InventoryItem | null>(null);
   const [lotsFor, setLotsFor] = useState<InventoryItem | null>(null);
+  const [supplierFor, setSupplierFor] = useState<InventoryItem | null>(null);
+  const [reordering, setReordering] = useState(false);
+  const [suppliers, setSuppliers] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -180,7 +211,20 @@ export default function InventoryPage() {
       .catch(() => setMovements([]));
   }, [tab]);
 
-  const lowCount = useMemo(() => (items ?? []).filter((i) => i.lowStock).length, [items]);
+  // The shelf at a glance: what is out, what is low, what is fine.
+  const glance = useMemo(() => {
+    if (!items || filter !== 'all' || category) return '';
+    const out = items.filter((i) => i.outOfStock).length;
+    const low = items.filter((i) => i.lowStock && !i.outOfStock).length;
+    const fine = items.length - out - low;
+    return [
+      out > 0 ? `${out} out of stock` : null,
+      low > 0 ? `${low} low` : null,
+      `${fine} in stock`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }, [items, filter, category]);
 
   async function setStatus(item: InventoryItem, status: 'active' | 'archived') {
     setError(null);
@@ -203,7 +247,9 @@ export default function InventoryPage() {
           : alerts.expiringCount > 1
             ? t('inv.expiry.many', { count: alerts.expiringCount })
             : null,
-        alerts.expiredCount > 0 ? t('inv.expiry.expired', { count: alerts.expiredCount }) : null,
+        alerts.expiredCount > 0
+          ? t('inv.expiry.expired', { count: alerts.expiredCount })
+          : null,
       ]
         .filter(Boolean)
         .join(' · ')
@@ -213,30 +259,67 @@ export default function InventoryPage() {
     <div className="page">
       <PageHeader
         title={t('inv.title')}
-        meta={
-          lowCount > 0
-            ? lowCount === 1
-              ? t('inv.alerts.one')
-              : t('inv.alerts.many', { count: lowCount })
-            : t('inv.meta')
-        }
+        meta={glance || t('inv.meta')}
         actions={
-          canManage ? (
+          <>
             <button
-              className="btn btn--primary btn--sm"
-              onClick={() => setCreating(true)}
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setSuppliers(true)}
             >
-              <Plus size={14} aria-hidden /> {t('inv.add')}
+              <Truck size={14} aria-hidden /> Suppliers
             </button>
-          ) : undefined
+            {canManage && (
+              <button
+                className="btn btn--primary btn--sm"
+                onClick={() => setCreating(true)}
+              >
+                <Plus size={14} aria-hidden /> {t('inv.add')}
+              </button>
+            )}
+          </>
         }
       />
+
+      {/* What needs ordering, and the one thing to do about it. */}
+      {alerts && alerts.lowCount > 0 && (
+        <div className="alertbar alertbar--low" role="status">
+          <TriangleAlert size={16} aria-hidden />
+          <span>
+            {[
+              alerts.outOfStockCount > 0
+                ? `${alerts.outOfStockCount} out of stock`
+                : null,
+              `${alerts.lowCount - alerts.outOfStockCount} running low`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+          <span className="alertbar__items">
+            {alerts.items
+              .slice(0, 4)
+              .map((i) => i.name)
+              .join(', ')}
+          </span>
+          {canRecord && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm alertbar__action"
+              onClick={() => setReordering(true)}
+            >
+              <ShoppingCart size={14} aria-hidden /> Reorder
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Recalled stock first: it is the one that must not reach a patient. */}
       {alerts && alerts.recalledLots.length > 0 && (
         <div className="alertbar" role="status">
           <ShieldAlert size={16} aria-hidden />
-          <span>{t('inv.expiry.recalled', { items: summarise(alerts.recalledLots) })}</span>
+          <span>
+            {t('inv.expiry.recalled', { items: summarise(alerts.recalledLots) })}
+          </span>
         </div>
       )}
 
@@ -352,110 +435,66 @@ export default function InventoryPage() {
                 />
               )
             ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t('inv.col.item')}</th>
-                    <th>{t('inv.col.category')}</th>
-                    <th className="num">{t('inv.col.inStock')}</th>
-                    <th className="num">{t('inv.col.minimum')}</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr
-                      key={item.id}
-                      className={
-                        item.lowStock || item.expiry === 'expired' ? 'row--warn' : undefined
-                      }
-                    >
-                      <td>
-                        <div className="stack-xs">
-                          <strong>{item.name}</strong>
-                          {item.outOfStock ? (
-                            <span className="pill pill--danger">
-                              <TriangleAlert size={11} aria-hidden /> {t('inv.badge.out')}
-                            </span>
-                          ) : item.lowStock ? (
-                            <span className="pill pill--warn">
-                              <TriangleAlert size={11} aria-hidden /> {t('inv.badge.low')}
-                            </span>
-                          ) : null}
-                          <ExpiryPill state={item.expiry} date={item.nextExpiry} />
-                        </div>
-                      </td>
-                      <td className="muted">{item.category ?? '—'}</td>
-                      <td className="num">
-                        <strong>{qty(item.quantity)}</strong>{' '}
-                        <span className="muted">{item.unit}</span>
-                      </td>
-                      <td className="num muted">{qty(item.minimumQuantity)}</td>
-                      <td>
-                        <div className="rowactions">
-                          {canRecord && item.status === 'active' && (
-                            <button
-                              className="btn btn--ghost btn--sm"
-                              onClick={() => setMoving(item)}
-                            >
-                              <ClipboardList size={13} aria-hidden /> {t('inv.record')}
-                            </button>
-                          )}
-                          {item.trackLots && (
-                            <button
-                              className="iconbtn"
-                              title={t('inv.lots')}
-                              aria-label={t('inv.lots')}
-                              onClick={() => setLotsFor(item)}
-                            >
-                              <Layers size={14} aria-hidden />
-                            </button>
-                          )}
-                          <button
-                            className="iconbtn"
-                            title={t('inv.history')}
-                            aria-label={t('inv.history')}
-                            onClick={() => setHistoryFor(item)}
-                          >
-                            <History size={14} aria-hidden />
-                          </button>
-                          {canManage && (
-                            <>
-                              <button
-                                className="iconbtn"
-                                title={t('inv.action.edit')}
-                                aria-label={t('inv.action.edit')}
-                                onClick={() => setEditing(item)}
-                              >
-                                <Pencil size={14} aria-hidden />
-                              </button>
-                              {item.status === 'active' ? (
-                                <button
-                                  className="iconbtn"
-                                  title={t('inv.action.archive')}
-                                  aria-label={t('inv.action.archive')}
-                                  onClick={() => void setStatus(item, 'archived')}
-                                >
-                                  <Trash2 size={14} aria-hidden />
-                                </button>
-                              ) : (
-                                <button
-                                  className="iconbtn"
-                                  title={t('inv.action.restore')}
-                                  aria-label={t('inv.action.restore')}
-                                  onClick={() => void setStatus(item, 'active')}
-                                >
-                                  <RotateCcw size={14} aria-hidden />
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <StockList
+                items={items}
+                phone={phone}
+                canRecord={canRecord}
+                menu={(item) => [
+                  ...(item.trackLots
+                    ? [
+                        {
+                          label: t('inv.lots'),
+                          icon: <Layers size={15} />,
+                          onSelect: () => setLotsFor(item),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: t('inv.history'),
+                    icon: <History size={15} />,
+                    onSelect: () => setHistoryFor(item),
+                  },
+                  ...(canRecord && item.status === 'active'
+                    ? [
+                        {
+                          label: item.supplierName
+                            ? `Supplier: ${item.supplierName}`
+                            : 'Set supplier…',
+                          icon: <Truck size={15} />,
+                          onSelect: () => setSupplierFor(item),
+                        },
+                        {
+                          label: t('inv.count'),
+                          icon: <ClipboardList size={15} />,
+                          onSelect: () =>
+                            setMoving({ item, kind: 'adjustment' as const }),
+                        },
+                      ]
+                    : []),
+                  ...(canManage
+                    ? [
+                        {
+                          label: t('inv.action.edit'),
+                          icon: <Pencil size={15} />,
+                          onSelect: () => setEditing(item),
+                        },
+                        item.status === 'active'
+                          ? {
+                              label: t('inv.action.archive'),
+                              icon: <Trash2 size={15} />,
+                              danger: true,
+                              onSelect: () => void setStatus(item, 'archived'),
+                            }
+                          : {
+                              label: t('inv.action.restore'),
+                              icon: <RotateCcw size={15} />,
+                              onSelect: () => void setStatus(item, 'active'),
+                            },
+                      ]
+                    : []),
+                ]}
+                onMove={(item, kind) => setMoving({ item, kind })}
+              />
             )}
           </div>
         </>
@@ -489,7 +528,8 @@ export default function InventoryPage() {
 
       {moving && (
         <MovementModal
-          item={moving}
+          item={moving.item}
+          initialKind={moving.kind}
           onClose={() => setMoving(null)}
           onRecorded={(item) => {
             setMoving(null);
@@ -516,7 +556,177 @@ export default function InventoryPage() {
           onChanged={() => void load()}
         />
       )}
+
+      {reordering && alerts && (
+        <ReorderSheet
+          items={alerts.items}
+          onClose={() => setReordering(false)}
+          onSetSupplier={(item) => {
+            setReordering(false);
+            setSupplierFor(item);
+          }}
+        />
+      )}
+      {supplierFor && (
+        <SupplierPicker
+          item={supplierFor}
+          onClose={() => setSupplierFor(null)}
+          onSaved={() => {
+            setSupplierFor(null);
+            void load();
+          }}
+        />
+      )}
+      {suppliers && (
+        <PartnersModal
+          kind="supplier"
+          canWrite={canRecord}
+          onClose={() => {
+            setSuppliers(false);
+            void load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/* ── the stock list ──────────────────────────────────────────
+   What is on the shelf and whether to order more: item, category, stock,
+   minimum, status. The two things done to stock every day — it came in, it
+   was used — are one tap on the row; everything else is under More. A phone
+   gets one compact card per item instead of a table that scrolls sideways. */
+function StockList({
+  items,
+  phone,
+  canRecord,
+  menu,
+  onMove,
+}: {
+  items: InventoryItem[];
+  phone: boolean;
+  canRecord: boolean;
+  menu: (item: InventoryItem) => MoreItem[];
+  onMove: (item: InventoryItem, kind: MovementKind) => void;
+}) {
+  // One visible action per row — stock arriving is the one to do quickly;
+  // taking stock out is first in the row's menu, with the rest.
+  const canMove = (item: InventoryItem) => canRecord && item.status === 'active';
+  const moves = (item: InventoryItem) =>
+    canMove(item) ? (
+      <button
+        type="button"
+        className="btn btn--ghost btn--sm"
+        aria-label={`${t('inv.stockIn')}: ${item.name}`}
+        onClick={() => onMove(item, 'receipt')}
+      >
+        <PackagePlus size={14} aria-hidden /> {t('inv.stockIn')}
+      </button>
+    ) : null;
+  const rowMenu = (item: InventoryItem): MoreItem[] => [
+    ...(canMove(item) && !item.outOfStock
+      ? [
+          {
+            label: t('inv.stockOut'),
+            icon: <PackageMinus size={15} aria-hidden />,
+            onSelect: () => onMove(item, 'usage'),
+          },
+        ]
+      : []),
+    ...menu(item),
+  ];
+
+  if (phone) {
+    return (
+      <ul className="stockcards">
+        {items.map((item) => (
+          <li
+            key={item.id}
+            className={`stockcard${item.outOfStock ? ' stockcard--out' : item.lowStock ? ' stockcard--low' : ''}`}
+          >
+            <div className="stockcard__head">
+              <span className="stockcard__name">{item.name}</span>
+              <MoreMenu items={rowMenu(item)} label={`More for ${item.name}`} />
+            </div>
+            <div className="stockcard__facts">
+              <span className="stockcard__qty">
+                <strong>{qty(item.quantity)}</strong> {item.unit}
+              </span>
+              <span className="muted">
+                {t('inv.col.minimum')} {qty(item.minimumQuantity)}
+                {item.category ? ` · ${item.category}` : ''}
+              </span>
+            </div>
+            <div className="stockcard__foot">
+              <span className="stockcard__pills">
+                <StockPill item={item} />
+                <ExpiryPill state={item.expiry} date={item.nextExpiry} />
+              </span>
+              <span className="stockcard__moves">{moves(item)}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <table className="table stocktable">
+      <thead>
+        <tr>
+          <th>{t('inv.col.item')}</th>
+          <th className="hide-md">{t('inv.col.category')}</th>
+          <th className="num">{t('inv.col.inStock')}</th>
+          <th className="num hide-md">{t('inv.col.minimum')}</th>
+          <th className="hide-md">{t('inv.col.status')}</th>
+          <th>
+            <span className="sr-only">Actions</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item) => (
+          <tr
+            key={item.id}
+            // The Status column says low or out; the row itself is only
+            // marked for stock that has expired on the shelf.
+            className={item.expiry === 'expired' ? 'row--warn' : undefined}
+          >
+            <td>
+              <div className="stack-xs">
+                <strong>{item.name}</strong>
+                {/* Tablets: the minimum, category and stock state under the
+                    name, as the phone card has them, so Add stock stays
+                    inside the card. */}
+                <span className="cell-sub show-md">
+                  {t('inv.col.minimum')} {qty(item.minimumQuantity)}
+                  {item.category ? ` · ${item.category}` : ''}
+                </span>
+                <span className="show-md">
+                  <StockPill item={item} />
+                </span>
+                <ExpiryPill state={item.expiry} date={item.nextExpiry} />
+              </div>
+            </td>
+            <td className="muted hide-md">{item.category ?? '—'}</td>
+            <td className="num">
+              <strong>{qty(item.quantity)}</strong>{' '}
+              <span className="muted">{item.unit}</span>
+            </td>
+            <td className="num muted hide-md">{qty(item.minimumQuantity)}</td>
+            <td className="hide-md">
+              <StockPill item={item} />
+            </td>
+            <td>
+              <div className="rowactions">
+                {moves(item)}
+                <MoreMenu items={rowMenu(item)} label={`More for ${item.name}`} />
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -792,23 +1002,26 @@ function lotLabel(l: InventoryLot): string {
   const parts = [l.lotNumber, `${qty(l.quantity)} ${l.unit}`];
   if (l.expiresOn) parts.push(day(l.expiresOn));
   if (l.status === 'recalled') parts.push(t('inv.badge.recalled'));
-  else if (l.expiry === 'expired') parts.push(t('inv.badge.expired', { date: '' }).trim());
+  else if (l.expiry === 'expired')
+    parts.push(t('inv.badge.expired', { date: '' }).trim());
   return parts.join(' · ');
 }
 
 function MovementModal({
   item,
+  initialKind = 'usage',
   onClose,
   onRecorded,
 }: {
   item: InventoryItem;
+  initialKind?: MovementKind;
   onClose: () => void;
   onRecorded: (item: InventoryItem) => void;
 }) {
   const { can } = useAuth();
   const tracked = item.trackLots;
 
-  const [kind, setKind] = useState<MovementKind>('usage');
+  const [kind, setKind] = useState<MovementKind>(initialKind);
   const [amount, setAmount] = useState('1');
   const [counted, setCounted] = useState(String(item.quantity));
   const [reason, setReason] = useState('');
@@ -840,7 +1053,7 @@ function MovementModal({
   const typed = lotNumber.trim().toLowerCase();
   const existingLot =
     kind === 'receipt' && typed
-      ? (lots ?? []).find((l) => l.lotNumber.trim().toLowerCase() === typed) ?? null
+      ? ((lots ?? []).find((l) => l.lotNumber.trim().toLowerCase() === typed) ?? null)
       : null;
 
   function chooseKind(k: MovementKind) {
@@ -944,7 +1157,10 @@ function MovementModal({
             {existingLot ? (
               // More of a lot already on record: its expiry date is already
               // known, and the API refuses a different one.
-              <p className="muted" style={{ fontSize: 12.5, alignSelf: 'end', margin: 0 }}>
+              <p
+                className="muted"
+                style={{ fontSize: 12.5, alignSelf: 'end', margin: 0 }}
+              >
                 {existingLot.expiresOn
                   ? t('inv.badge.expiring', { date: day(existingLot.expiresOn) })
                   : t('inv.lots.noExpiry')}
@@ -977,7 +1193,10 @@ function MovementModal({
                 <option
                   key={l.id}
                   value={l.id}
-                  disabled={kind === 'usage' && (l.status === 'recalled' || l.expiry === 'expired')}
+                  disabled={
+                    kind === 'usage' &&
+                    (l.status === 'recalled' || l.expiry === 'expired')
+                  }
                 >
                   {lotLabel(l)}
                 </option>
@@ -1021,7 +1240,9 @@ function MovementModal({
             </span>
             <PatientPicker
               value={patient?.name ?? ''}
-              onPick={(p) => setPatient({ id: p.id, name: `${p.firstName} ${p.lastName}` })}
+              onPick={(p) =>
+                setPatient({ id: p.id, name: `${p.firstName} ${p.lastName}` })
+              }
               onClear={() => setPatient(null)}
             />
           </div>
@@ -1126,7 +1347,9 @@ function LotsModal({
         lot={recalling}
         onClose={() => setRecalling(null)}
         onRecalled={(patients) => {
-          setNotice(t('inv.lots.recalled', { lot: recalling.lotNumber, count: patients }));
+          setNotice(
+            t('inv.lots.recalled', { lot: recalling.lotNumber, count: patients }),
+          );
           setRecalling(null);
           load();
           onChanged();
@@ -1172,7 +1395,10 @@ function LotsModal({
                     <div className="stack-xs">
                       <strong>{l.lotNumber}</strong>
                       {l.status === 'recalled' && (
-                        <span className="pill pill--danger" title={l.recallReason ?? undefined}>
+                        <span
+                          className="pill pill--danger"
+                          title={l.recallReason ?? undefined}
+                        >
                           <ShieldAlert size={11} aria-hidden /> {t('inv.badge.recalled')}
                         </span>
                       )}
@@ -1181,7 +1407,8 @@ function LotsModal({
                   <td>
                     {!l.expiresOn ? (
                       <span className="muted">{t('inv.lots.noExpiry')}</span>
-                    ) : l.quantity > 0 && (l.expiry === 'expiring' || l.expiry === 'expired') ? (
+                    ) : l.quantity > 0 &&
+                      (l.expiry === 'expiring' || l.expiry === 'expired') ? (
                       <ExpiryPill state={l.expiry} date={l.expiresOn} />
                     ) : (
                       day(l.expiresOn)
@@ -1189,7 +1416,8 @@ function LotsModal({
                   </td>
                   <td className="muted">{day(l.receivedOn)}</td>
                   <td className="num">
-                    <strong>{qty(l.quantity)}</strong> <span className="muted">{l.unit}</span>
+                    <strong>{qty(l.quantity)}</strong>{' '}
+                    <span className="muted">{l.unit}</span>
                   </td>
                   <td>
                     <div className="rowactions">

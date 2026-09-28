@@ -1,0 +1,133 @@
+/* Staff: one list, one profile per person. */
+
+.staff-yes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ok-fg);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.staff-disabled {
+  margin-top: 16px;
+}
+
+.staff-disabled__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px var(--gutter);
+  border: 0;
+  background: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.staff-disabled__toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.staff-disabled__toggle svg.is-open {
+  transform: rotate(90deg);
+}
+
+.staff-profile {
+  display: grid;
+  gap: 4px;
+}
+
+.staff-section + .staff-section {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.staff-form {
+  display: grid;
+  gap: 12px;
+}
+
+.staff-form__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.staff-cal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.staff-cal__label {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.staff-hours {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-hours li > span:first-child {
+  display: inline-block;
+  width: 38px;
+  font-weight: 600;
+}
+
+.staff-security {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.staff-security > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.staff-confirm {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
+.staff-password {
+  gap: 6px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.staff-password input {
+  flex: 1;
+  min-width: 180px;
+  height: var(--control-h);
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+}
+
+.staff-fiscal {
+  gap: 10px;
+  align-items: flex-end;
+}
+
+@media (max-width: 560px) {
+  .staff-cal {
+    grid-template-columns: 1fr;
+  }
+}

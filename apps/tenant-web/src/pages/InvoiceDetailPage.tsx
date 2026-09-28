@@ -1,28 +1,46 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import QrCode from '../components/QrCode';
-import { useParams, Link } from 'react-router-dom';
-import { ChevronLeft, Wallet, Undo2, FileDown, Landmark, RefreshCw, Printer, MessageCircle } from 'lucide-react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { Check, ChevronLeft, Wallet, Undo2, FileDown, Landmark, MessageCircle, RefreshCw, Printer, XCircle } from 'lucide-react';
 import { formatRate, vatSummary } from '@dentalcare/shared';
 import {
+  drawerApi,
   financeApi,
   fiscalApi,
   settingsApi,
   ApiError,
+  humanError,
   newIdempotencyKey,
+  type CheckoutResult,
   type ClinicPaymentMethod,
+  type DrawerCurrent,
   type FiscalRecord,
   type InvoiceDetail,
   type InvoiceDocumentKind,
   type InvoicePayment,
   type PaymentMethod,
 } from '../lib/api';
-import { StatusPill, Modal, Avatar } from '../components/ui';
+import {
+  Avatar,
+  Disclosure,
+  EmptyState,
+  ErrorState,
+  LoadingRows,
+  Modal,
+  MoreMenu,
+  PageLoading,
+  Segmented,
+  StatusPill,
+  useToast,
+} from '../components/ui';
 import VoidModal, { VoidedNote } from '../components/VoidModal';
 import { useAuth } from '../lib/auth';
+import { useMessaging } from '../lib/messaging';
 import { announceDrawerChange } from '../lib/features';
-import { currencySymbol, formatMoney, plural, toDate } from '../lib/format';
+import { currencySymbol, formatMoney, plural, symbolAfter, toDate } from '../lib/format';
 import MoneyInput from '../components/MoneyInput';
 import { dateLocale } from '../lib/strings';
+import { StartDay } from './CashDrawerPage';
 
 function fmtDate(s: string) {
   return toDate(s).toLocaleDateString(dateLocale(), {
@@ -72,10 +90,15 @@ export default function InvoiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [confirmFiscal, setConfirmFiscal] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [voiding, setVoiding] = useState<InvoicePayment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<'pdf' | 'fiscal' | null>(null);
   const { can, readOnly } = useAuth();
+  const openMessage = useMessaging();
+  const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const payRequested = searchParams.get('pay') === '1';
 
   async function load() {
     if (!id) return;
@@ -86,9 +109,25 @@ export default function InvoiceDetailPage() {
     setInv(invoice);
     setFiscal(record);
   }
+  // "Payment" on the patient record lands here with the sheet already open.
+  useEffect(() => {
+    if (!payRequested || !inv) return;
+    if (inv.status === 'unpaid' || inv.status === 'partially_paid') setPaying(true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('pay');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [payRequested, inv, setSearchParams]);
+
   useEffect(() => {
     setLoading(true);
-    load().finally(() => setLoading(false));
+    load()
+      .catch(() => setInv(null))
+      .finally(() => setLoading(false));
     fiscalApi
       .settings()
       .then((s) => setFiscalEnabled(s.enabled))
@@ -101,9 +140,10 @@ export default function InvoiceDetailPage() {
     setError(null);
     try {
       await financeApi.cancelInvoice(inv.id);
+      toast(`${inv.invoiceNumber} cancelled.`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not cancel.');
+      setError(humanError(err, 'The invoice could not be cancelled.'));
     }
   }
 
@@ -114,7 +154,7 @@ export default function InvoiceDetailPage() {
     try {
       await openPdf(inv.id);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not prepare the PDF.');
+      setError(humanError(err, 'The PDF could not be prepared.'));
     } finally {
       setBusy(null);
     }
@@ -128,23 +168,26 @@ export default function InvoiceDetailPage() {
       setFiscal(await fiscalApi.fiscalize(inv.id));
       setConfirmFiscal(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not register the invoice.');
+      setError(humanError(err, 'The invoice could not be registered with the tax authority.'));
       setConfirmFiscal(false);
     } finally {
       setBusy(null);
     }
   }
 
-  if (loading)
-    return (
-      <div className="page">
-        <p className="muted">Loading…</p>
-      </div>
-    );
+  if (loading) return <PageLoading label="Loading the invoice" />;
   if (!inv)
     return (
       <div className="page">
-        <p className="muted">Invoice not found.</p>
+        <Link to="/invoices" className="back">
+          <ChevronLeft size={16} aria-hidden /> All invoices
+        </Link>
+        <EmptyState
+          framed
+          icon={<XCircle size={22} />}
+          title="Invoice not found"
+          body="It may have been removed, or the link is incomplete."
+        />
       </div>
     );
 
@@ -173,43 +216,68 @@ export default function InvoiceDetailPage() {
           <StatusPill status={inv.status} label={inv.status === 'partially_paid' ? 'Partial' : undefined} />
           {/* What the clinic meant to issue, and whether the authority has it. */}
           {inv.documentKind === 'fiscal' ? (
-            <StatusPill
-              status={fiscal?.nivf ? 'ok' : fiscal ? 'warn' : 'danger'}
-              label={fiscal?.nivf ? 'Fiscal invoice' : fiscal ? 'Fiscal · awaiting NIVF' : 'Fiscal · not registered'}
-            />
+            <StatusPill {...fiscalState(fiscal)} />
           ) : (
             <StatusPill status="neutral" label="Internal receipt" />
           )}
-          <button className="btn btn--ghost btn--sm" onClick={pdf} disabled={busy === 'pdf'}>
-            <FileDown size={15} /> {busy === 'pdf' ? 'Preparing…' : 'PDF'}
-          </button>
-          {fiscal && (
-            <Link className="btn btn--ghost btn--sm" to={`/invoices/${inv.id}/receipt`}>
-              <Printer size={15} /> Fiscal receipt
-            </Link>
-          )}
-          {inv.balance > 0 && inv.status !== 'cancelled' && can('reminders:send') && (
-            <Link
-              className="btn btn--ghost btn--sm"
-              to={`/messages?patient=${inv.patientId}&purpose=unpaid_balance`}
-            >
-              <MessageCircle size={15} /> Balance notice
-            </Link>
-          )}
-          {canFiscalize && (
-            <button className="btn btn--ghost btn--sm" onClick={() => setConfirmFiscal(true)} disabled={partlyPaid}
-              title={partlyPaid ? 'Fiscalize once fully paid, or before any payment for a bank transfer' : undefined}>
-              <Landmark size={15} /> Fiscalize
-            </button>
-          )}
-          {open && inv.paid === 0 && !fiscal && (
-            <button className="btn btn--danger-ghost btn--sm" onClick={cancel}>
-              Cancel invoice
-            </button>
-          )}
-          {open && (
+          {/* Everything but taking money is one click further in. */}
+          <MoreMenu
+            label="More invoice actions"
+            items={[
+              {
+                label: busy === 'pdf' ? 'Preparing PDF…' : 'Download PDF',
+                icon: <FileDown size={15} aria-hidden />,
+                onSelect: () => void pdf(),
+              },
+              ...(fiscal
+                ? [
+                    {
+                      label: 'Print fiscal receipt',
+                      icon: <Printer size={15} aria-hidden />,
+                      onSelect: () => window.open(`/invoices/${inv.id}/receipt`, '_self'),
+                    },
+                  ]
+                : []),
+              ...(canFiscalize && !partlyPaid
+                ? [
+                    {
+                      label: 'Issue as fiscal invoice…',
+                      icon: <Landmark size={15} aria-hidden />,
+                      onSelect: () => setConfirmFiscal(true),
+                    },
+                  ]
+                : []),
+              // What is owed on this invoice, asked for politely, from the desk's WhatsApp.
+              ...(open && inv.balance > 0 && can('reminders:send') && !readOnly
+                ? [
+                    {
+                      label: 'Remind about the balance',
+                      icon: <MessageCircle size={15} aria-hidden />,
+                      onSelect: () =>
+                        openMessage({
+                          patientId: inv.patientId,
+                          patientName: inv.patientName,
+                          purpose: 'unpaid_balance',
+                          invoiceId: inv.id,
+                        }),
+                    },
+                  ]
+                : []),
+              ...(open && inv.paid === 0 && !fiscal && can('invoices:write') && !readOnly
+                ? [
+                    {
+                      label: 'Cancel invoice…',
+                      icon: <XCircle size={15} aria-hidden />,
+                      danger: true,
+                      onSelect: () => setConfirmCancel(true),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+          {open && can('payments:write') && !readOnly && (
             <button className="btn btn--primary" onClick={() => setPaying(true)}>
-              <Wallet size={15} /> Record payment
+              <Wallet size={15} aria-hidden /> Pay
             </button>
           )}
         </div>
@@ -254,8 +322,8 @@ export default function InvoiceDetailPage() {
               <tr>
                 <th>Description</th>
                 <th>Qty</th>
-                <th>Unit price</th>
-                <th>TVSH</th>
+                <th className="hide-sm">Unit price</th>
+                <th className="hide-sm">TVSH</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
               </tr>
             </thead>
@@ -272,8 +340,8 @@ export default function InvoiceDetailPage() {
                     )}
                   </td>
                   <td className="muted">{it.quantity}</td>
-                  <td className="muted">{formatMoney(it.unitPrice)}</td>
-                  <td className="muted">
+                  <td className="muted hide-sm">{formatMoney(it.unitPrice)}</td>
+                  <td className="muted hide-sm">
                     {it.taxRateBp > 0 ? `${formatRate(it.taxRateBp)} · ${formatMoney(it.taxAmount)}` : 'Exempt'}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(it.amount)}</td>
@@ -326,8 +394,13 @@ export default function InvoiceDetailPage() {
                   </span>
                   <StatusPill status="neutral" label={methodName(p)} />
                   {!p.voidedAt && !fiscal && can('payments:void') && (
-                    <button className="iconbtn" title="Void this payment" onClick={() => setVoiding(p)}>
-                      <Undo2 size={14} />
+                    <button
+                      className="iconbtn iconbtn--quiet"
+                      title="Void this payment"
+                      aria-label={`Void the ${formatMoney(p.amount)} payment`}
+                      onClick={() => setVoiding(p)}
+                    >
+                      <Undo2 size={14} aria-hidden />
                     </button>
                   )}
                 </li>
@@ -340,13 +413,50 @@ export default function InvoiceDetailPage() {
       {paying && (
         <PaymentModal
           balance={inv.balance}
+          lastPaid={
+            inv.payments
+              .filter((p) => !p.voidedAt)
+              .sort((a, b) => b.paidAt.localeCompare(a.paidAt))[0] ?? null
+          }
+          patientName={inv.patientName}
+          invoiceNumber={inv.invoiceNumber}
           onClose={() => setPaying(false)}
-          onSaved={async () => {
-            setPaying(false);
-            await load();
-          }}
+          onSaved={() => void load()}
+          onPdf={() => void pdf()}
           invoiceId={inv.id}
         />
+      )}
+
+      {confirmCancel && (
+        <Modal
+          title={`Cancel ${inv.invoiceNumber}?`}
+          subtitle={`${inv.patientName} · ${formatMoney(inv.total)}`}
+          onClose={() => setConfirmCancel(false)}
+        >
+          <div className="modal__body">
+            <p className="modal__text">
+              Nothing has been paid on it. The invoice stays in the list, marked cancelled, so the numbering
+              has no gaps.
+            </p>
+            <div className="modal__foot">
+              <div className="modal__foot-right">
+                <button type="button" className="btn btn--ghost" onClick={() => setConfirmCancel(false)}>
+                  Keep it
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--danger"
+                  onClick={() => {
+                    setConfirmCancel(false);
+                    void cancel();
+                  }}
+                >
+                  Cancel invoice
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {confirmFiscal && (
@@ -386,6 +496,7 @@ export default function InvoiceDetailPage() {
           onConfirm={async (reason) => {
             await financeApi.voidPayment(voiding.id, reason);
             setVoiding(null);
+            toast('Payment voided.');
             await load();
           }}
         />
@@ -394,11 +505,16 @@ export default function InvoiceDetailPage() {
   );
 }
 
-const FISCAL_STATUS: Record<FiscalRecord['status'], { pill: string; label: string }> = {
-  fiscalized: { pill: 'ok', label: 'Registered' },
-  pending: { pill: 'warn', label: 'Awaiting the tax authority' },
-  rejected: { pill: 'danger', label: 'Refused' },
-};
+/**
+ * Fiscalization in the three words the desk needs. The identifiers behind
+ * them (NIVF, NSLF, TCR…) are for an accountant or an inspector, and sit
+ * under "Fiscal details".
+ */
+function fiscalState(record: FiscalRecord | null): { status: string; label: string } {
+  if (record?.status === 'fiscalized' && record.nivf) return { status: 'ok', label: 'Fiscalized' };
+  if (record?.status === 'pending') return { status: 'warn', label: 'Fiscalization pending' };
+  return { status: 'danger', label: 'Fiscalization needs attention' };
+}
 
 function FiscalPanel({
   record,
@@ -409,7 +525,7 @@ function FiscalPanel({
   busy: boolean;
   onSendNow?: () => void;
 }) {
-  const s = FISCAL_STATUS[record.status];
+  const s = fiscalState(record);
   return (
     <section className="card" style={{ marginBottom: 16 }} aria-labelledby="fiscal-head">
       <div className="card__head">
@@ -419,15 +535,15 @@ function FiscalPanel({
           </h2>
           <p className="card__sub">
             {record.environment === 'test' ? 'TEST environment — not a legally valid fiscal invoice. ' : ''}
-            {record.status === 'pending' && record.nextAttemptAt
-              ? `Issued and valid to print; delivery is retried automatically (next attempt ${fmtDateTime(record.nextAttemptAt)}).`
+            {record.status === 'pending'
+              ? 'Valid to print now. DentalCare keeps sending it to the tax authority until it is confirmed.'
               : record.status === 'rejected'
-                ? 'The tax authority refused this registration. Contact support before issuing it again.'
-                : `Confirmed ${record.fiscalizedAt ? fmtDateTime(record.fiscalizedAt) : ''}.`}
+                ? 'The tax authority refused this invoice. Contact support before issuing it again.'
+                : `Confirmed by the tax authority${record.fiscalizedAt ? ` on ${fmtDateTime(record.fiscalizedAt)}` : ''}.`}
           </p>
         </div>
         <div className="inline-row">
-          <StatusPill status={s.pill} label={s.label} />
+          <StatusPill status={s.status} label={s.label} />
           {onSendNow && (
             <button className="btn btn--ghost btn--sm" onClick={onSendNow} disabled={busy}>
               <RefreshCw size={14} aria-hidden /> {busy ? 'Sending…' : 'Send now'}
@@ -439,6 +555,7 @@ function FiscalPanel({
         <a className="fiscal-panel__qr" href={record.qrUrl} target="_blank" rel="noreferrer" title="Verify on the tax authority's portal">
           <QrCode text={record.qrUrl} />
         </a>
+        <Disclosure summary="Fiscal details" hint="NIVF, NSLF, register">
         <dl className="fiscal-codes">
           <dt>NIVF</dt>
           <dd>{record.nivf ?? 'pending'}</dd>
@@ -464,37 +581,80 @@ function FiscalPanel({
               </dd>
             </>
           )}
+          {record.status === 'pending' && record.nextAttemptAt && (
+            <>
+              <dt>Next attempt</dt>
+              <dd>{fmtDateTime(record.nextAttemptAt)}</dd>
+            </>
+          )}
         </dl>
+        </Disclosure>
       </div>
     </section>
   );
 }
 
+/** The method's icon-free, one-word name for the segmented control. */
+const shortMethod = (m: ClinicPaymentMethod) => (m.label.length > 14 ? m.label.slice(0, 13) + '…' : m.label);
+
+/**
+ * Taking a payment: the amount, how it was paid, one button. Which document
+ * it issues is the clinic's default and only shown when there is a choice to
+ * make; a note is one click away. After it goes through, the sheet turns into
+ * the receipt of what happened — amount, method, what is still owed — so no
+ * one has to leave the page to know it worked.
+ *
+ * The method starts on the one this bill was last paid with, while the
+ * clinic still offers it: instalments are usually paid the same way. A
+ * first payment starts on the clinic's first method. Either way the choice
+ * is on screen, large, before anything is taken.
+ */
 function PaymentModal({
   invoiceId,
   balance,
+  lastPaid,
+  patientName,
+  invoiceNumber,
   onClose,
   onSaved,
+  onPdf,
 }: {
   invoiceId: string;
   balance: number;
+  lastPaid: Pick<InvoicePayment, 'method' | 'methodLabel'> | null;
+  patientName: string;
+  invoiceNumber: string;
   onClose: () => void;
   onSaved: () => void;
+  onPdf: () => void;
 }) {
   const [amount, setAmount] = useState<number | null>(balance);
   const [methods, setMethods] = useState<ClinicPaymentMethod[] | null>(null);
-  const [methodId, setMethodId] = useState('cash');
+  // The fallback methods' ids are their kinds, so this holds until settings load.
+  const [methodId, setMethodId] = useState<string>(lastPaid?.method ?? 'cash');
+  // Read once, when the sheet opens; the settings below arrive after.
+  const lastPaidRef = useRef(lastPaid);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [drawerIssue, setDrawerIssue] = useState(false);
+  // Cash with the drawer closed: start the day right here, then take the payment.
+  const [closedDrawer, setClosedDrawer] = useState<DrawerCurrent | null>(null);
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<CheckoutResult | null>(null);
   // One key for this payment, sent again on every retry of it: a double tap
   // or a lost response on a weak signal cannot take the money twice.
   const [idempotencyKey] = useState(newIdempotencyKey);
   // Which document this payment issues. Null until the clinic's settings say
   // what to preselect — `ask` leaves it null, so the choice is deliberate.
   const [docKind, setDocKind] = useState<InvoiceDocumentKind | null>(null);
+  const [askDoc, setAskDoc] = useState(true);
   const [internalAllowed, setInternalAllowed] = useState(true);
+  // Until fiscalization is set up (server code + clinic switched on), every
+  // payment issues an internal receipt — faturë fiktive — and the fiscal
+  // choice is not offered.
+  const [fiscalReady, setFiscalReady] = useState(true);
+  const fiscalReadyRef = useRef(true);
+  const amountRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     settingsApi
@@ -502,11 +662,37 @@ function PaymentModal({
       .then((s) => {
         const active = s.paymentMethods.filter((m) => m.active);
         setMethods(active);
-        if (active[0]) setMethodId(active[0].id);
+        const last = lastPaidRef.current;
+        const same =
+          last &&
+          (active.find((m) => last.methodLabel !== null && m.label === last.methodLabel) ??
+            active.find((m) => m.kind === last.method));
+        const start = same ?? active[0];
+        if (start) setMethodId(start.id);
         setInternalAllowed(s.internalReceiptsEnabled);
-        if (s.defaultCheckoutMode !== 'ask') setDocKind(s.defaultCheckoutMode);
+        if (s.defaultCheckoutMode !== 'ask' && fiscalReadyRef.current) {
+          setDocKind(s.defaultCheckoutMode);
+          setAskDoc(false);
+        }
       })
       .catch(() => setMethods(null));
+    fiscalApi
+      .settings()
+      .then((f) => {
+        const ready = f.enabled && (f as { available?: boolean }).available !== false;
+        setFiscalReady(ready);
+        fiscalReadyRef.current = ready;
+        if (!ready) {
+          setDocKind('internal');
+          setAskDoc(false);
+        }
+      })
+      .catch(() => {
+        setFiscalReady(false);
+        fiscalReadyRef.current = false;
+        setDocKind('internal');
+        setAskDoc(false);
+      });
   }, []);
 
   const options: ClinicPaymentMethod[] = methods ?? [
@@ -514,15 +700,18 @@ function PaymentModal({
     { id: 'card', label: 'Card', kind: 'card', active: true },
     { id: 'bank', label: 'Bank transfer', kind: 'bank', active: true },
   ];
+  const method = options.find((m) => m.id === methodId);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
     if (!amount) {
       setError('Enter the amount received.');
+      amountRef.current?.focus();
       return;
     }
     if (amount > balance) {
-      setError(`That is more than the ${formatMoney(balance)} outstanding.`);
+      setError(`That is more than the ${formatMoney(balance)} still owed.`);
+      amountRef.current?.focus();
       return;
     }
     if (!docKind) {
@@ -531,6 +720,7 @@ function PaymentModal({
     }
     setError(null);
     setDrawerIssue(false);
+    setClosedDrawer(null);
     setBusy(true);
     try {
       const out = await financeApi.recordPayment(
@@ -544,31 +734,121 @@ function PaymentModal({
         idempotencyKey,
       );
       announceDrawerChange();
-      // The money is recorded either way. A fiscal invoice the authority has
-      // not taken yet is not an error to hide behind a closed dialog.
-      if (out.fiscalError) {
-        setError(`Payment recorded. ${out.fiscalError} It is in the fiscal queue.`);
-        setBusy(false);
-        onSaved();
-        return;
-      }
+      // The money is recorded either way; the page behind catches up now.
+      setDone(out);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not record payment.');
+      if (err instanceof ApiError && err.code === 'drawer_not_open') {
+        // Not an error to send someone away for: offer to start the day here.
+        const current = await drawerApi.current().catch(() => null);
+        if (current && !current.session) {
+          setClosedDrawer(current);
+          return;
+        }
+      }
+      setError(humanError(err, 'The payment could not be recorded. Nothing was taken — try again.'));
       setDrawerIssue(err instanceof ApiError && (err.code === 'drawer_not_open' || err.code === 'drawer_counting'));
     } finally {
       setBusy(false);
     }
   }
 
+  if (done) {
+    const paid = amount ?? 0;
+    return (
+      <Modal title="Paid" subtitle={`${patientName} · ${invoiceNumber}`} onClose={onClose}>
+        <div className="modal__body paydone">
+          <span className="paydone__check" aria-hidden>
+            <Check size={28} strokeWidth={2.4} />
+          </span>
+          <p className="paydone__amount">{formatMoney(paid)}</p>
+          <p className="paydone__method">
+            {method?.label ?? 'Payment'} ·{' '}
+            {docKind !== 'fiscal'
+              ? 'internal receipt'
+              : done.fiscal?.status === 'fiscalized'
+                ? '✓ Fiscalized'
+                : 'Fiscalization pending'}
+          </p>
+          <p className={`paydone__left${done.balance > 0 ? ' paydone__left--owing' : ''}`}>
+            {done.balance > 0 ? `${formatMoney(done.balance)} still to pay` : 'Paid in full'}
+          </p>
+          {done.fiscalError && (
+            <p className="formwarn" role="status">
+              <span>
+                The payment is recorded. {done.fiscalError} The invoice is in the fiscal queue and will be sent
+                again automatically.
+              </span>
+            </p>
+          )}
+          <div className="modal__foot">
+            {done.fiscal ? (
+              <Link className="btn btn--ghost" to={`/invoices/${invoiceId}/receipt`}>
+                <Printer size={15} aria-hidden /> Print receipt
+              </Link>
+            ) : (
+              <button type="button" className="btn btn--ghost" onClick={onPdf}>
+                <FileDown size={15} aria-hidden /> Receipt PDF
+              </button>
+            )}
+            <div className="modal__foot-right">
+              <button type="button" className="btn btn--primary" onClick={onClose} autoFocus>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  const docLabel = docKind === 'fiscal' ? 'Fiscal invoice (faturë e fiskalizuar)' : 'Internal receipt (faturë fiktive)';
+
   return (
-    <Modal title="Record payment" subtitle={`Outstanding balance: ${formatMoney(balance)}`} onClose={onClose}>
-      <form className="modal__body" onSubmit={submit}>
-        <div className="grid2">
-          <label className="field">
-            <span>Amount ({currencySymbol()})</span>
-            <MoneyInput value={amount} onChange={setAmount} placeholder="0.00" required />
-          </label>
+    <Modal title="Payment" subtitle={`${patientName} · ${formatMoney(balance)} owed`} onClose={onClose}>
+      <form className="modal__body paysheet" onSubmit={submit} noValidate>
+        <label className="paysheet__amount">
+          <span className="sr-only">Amount received ({currencySymbol()})</span>
+          {!symbolAfter() && (
+            <span className="paysheet__currency" aria-hidden>
+              {currencySymbol()}
+            </span>
+          )}
+          <MoneyInput
+            ref={amountRef}
+            value={amount}
+            onChange={(v) => {
+              setAmount(v);
+              if (error) setError(null);
+            }}
+            placeholder="0"
+            aria-invalid={Boolean(error && (!amount || amount > balance))}
+            autoFocus
+          />
+          {symbolAfter() && (
+            <span className="paysheet__currency" aria-hidden>
+              {currencySymbol()}
+            </span>
+          )}
+        </label>
+        {amount !== null && amount > 0 && amount < balance && (
+          <p className="paysheet__hint">
+            Part payment · {formatMoney(balance - amount)} will remain.{' '}
+            <button type="button" className="linkbtn" onClick={() => setAmount(balance)}>
+              Pay all {formatMoney(balance)}
+            </button>
+          </p>
+        )}
+
+        {options.length <= 4 ? (
+          <Segmented
+            size="lg"
+            label="Payment method"
+            value={methodId}
+            onChange={setMethodId}
+            options={options.map((m) => ({ value: m.id, label: shortMethod(m) }))}
+          />
+        ) : (
           <label className="field">
             <span>Method</span>
             <select value={methodId} onChange={(e) => setMethodId(e.target.value)}>
@@ -579,52 +859,79 @@ function PaymentModal({
               ))}
             </select>
           </label>
-        </div>
-        <fieldset className="docswitch">
-          <legend>What this payment issues</legend>
-          <label className={`docswitch__opt${docKind === 'fiscal' ? ' is-picked' : ''}`}>
-            <input
-              type="radio"
-              name="document"
-              value="fiscal"
-              checked={docKind === 'fiscal'}
-              onChange={() => setDocKind('fiscal')}
-            />
-            <span className="docswitch__text">
-              <strong>Faturë e fiskalizuar</strong>
-              <span className="small muted">
-                Official fiscal invoice. Registered with the tax authority, which returns the NIVF; the receipt
-                carries the NSLF and the QR code.
+        )}
+
+        {askDoc ? (
+          <fieldset className="docswitch">
+            <legend>What this payment issues</legend>
+            <label className={`docswitch__opt${docKind === 'fiscal' ? ' is-picked' : ''}`}>
+              <input
+                type="radio"
+                name="document"
+                value="fiscal"
+                checked={docKind === 'fiscal'}
+                onChange={() => setDocKind('fiscal')}
+              />
+              <span className="docswitch__text">
+                <strong>Fiscal invoice</strong>
+                <span className="small muted">Registered with the tax authority (faturë e fiskalizuar).</span>
               </span>
-            </span>
-          </label>
-          <label
-            className={`docswitch__opt${docKind === 'internal' ? ' is-picked' : ''}${internalAllowed ? '' : ' is-off'}`}
-          >
-            <input
-              type="radio"
-              name="document"
-              value="internal"
-              disabled={!internalAllowed}
-              checked={docKind === 'internal'}
-              onChange={() => setDocKind('internal')}
-            />
-            <span className="docswitch__text">
-              <strong>Faturë fiktive</strong>
-              <span className="small muted">
-                {internalAllowed
-                  ? 'Internal receipt on the clinic’s own letterhead. Nothing is sent to the tax authority, and it is not a tax invoice.'
-                  : 'Turned off for this clinic: every payment is fiscalized.'}
+            </label>
+            <label
+              className={`docswitch__opt${docKind === 'internal' ? ' is-picked' : ''}${internalAllowed ? '' : ' is-off'}`}
+            >
+              <input
+                type="radio"
+                name="document"
+                value="internal"
+                disabled={!internalAllowed}
+                checked={docKind === 'internal'}
+                onChange={() => setDocKind('internal')}
+              />
+              <span className="docswitch__text">
+                <strong>Internal receipt</strong>
+                <span className="small muted">
+                  {internalAllowed
+                    ? 'On the clinic’s letterhead; not sent to the tax authority.'
+                    : 'Turned off for this clinic: every payment is fiscalized.'}
+                </span>
               </span>
-            </span>
+            </label>
+          </fieldset>
+        ) : (
+          <p className="paysheet__doc">
+            Issues {/^[aeiou]/i.test(docLabel) ? 'an' : 'a'} {docLabel.split(' (')[0]!.toLowerCase()}.{' '}
+            {internalAllowed && fiscalReady && (
+              <button type="button" className="linkbtn" onClick={() => setAskDoc(true)}>
+                Change
+              </button>
+            )}
+          </p>
+        )}
+
+        <Disclosure summary="Add a note" hint={note ? note : undefined}>
+          <label className="field">
+            <span className="sr-only">Note</span>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" maxLength={300} />
           </label>
-        </fieldset>
-        <label className="field">
-          <span>Note</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" maxLength={300} />
-        </label>
+        </Disclosure>
+
+        {closedDrawer && (
+          <div className="channel-note">
+            <StartDay
+              current={closedDrawer}
+              submitLabel="Start drawer"
+              onStarted={() => {
+                setClosedDrawer(null);
+                announceDrawerChange();
+                // Same idempotency key: the refused attempt released it.
+                void submit();
+              }}
+            />
+          </div>
+        )}
         {error && (
-          <p className="formerror">
+          <p className="formerror" role="alert">
             {error}{' '}
             {drawerIssue && (
               <Link to="/drawer" className="table__link">
@@ -633,20 +940,9 @@ function PaymentModal({
             )}
           </p>
         )}
-        <div className="modal__foot">
-          <div className="modal__foot-right">
-            <button type="button" className="btn btn--ghost" onClick={onClose}>
-              Cancel
-            </button>
-            <button className="btn btn--primary" disabled={busy || !docKind}>
-              {busy
-                ? 'Saving…'
-                : docKind === 'fiscal'
-                  ? `Record ${formatMoney(amount || 0)} and fiscalize`
-                  : `Record ${formatMoney(amount || 0)}`}
-            </button>
-          </div>
-        </div>
+        <button className="btn btn--primary paysheet__go" disabled={busy || !docKind}>
+          {busy ? 'Paying…' : `Pay ${formatMoney(amount || 0)}`}
+        </button>
       </form>
     </Modal>
   );
@@ -658,8 +954,14 @@ export function PaymentsPage() {
   const [voiding, setVoiding] = useState<import('../lib/api').PaymentHistoryRow | null>(null);
   const { can } = useAuth();
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   async function load() {
-    setItems(await financeApi.listPayments());
+    setLoadError(null);
+    try {
+      setItems(await financeApi.listPayments());
+    } catch (err) {
+      setLoadError(humanError(err, 'Payments could not be loaded.'));
+    }
   }
   useEffect(() => {
     void load();
@@ -683,18 +985,29 @@ export function PaymentsPage() {
         </div>
       </div>
       <div className="card">
-        {items === null ? (
-          <div className="pad muted">Loading…</div>
+        {loadError ? (
+          <ErrorState body={loadError} onRetry={() => void load()} />
+        ) : items === null ? (
+          <LoadingRows rows={6} avatar label="Loading payments" />
         ) : items.length === 0 ? (
-          <p className="pad muted">No payments recorded yet.</p>
+          <EmptyState
+            icon={<Wallet size={22} />}
+            title="No payments yet"
+            body="Payments appear here as they are taken from an invoice."
+            action={
+              <Link to="/invoices" className="btn btn--ghost btn--sm">
+                Go to invoices
+              </Link>
+            }
+          />
         ) : (
-          <table className="table">
+          <table className="table table--money">
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Invoice</th>
+                <th className="hide-sm hide-md">Invoice</th>
                 <th>Patient</th>
-                <th>Method</th>
+                <th className="hide-sm">Method</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
                 {can('payments:void') && <th />}
               </tr>
@@ -703,7 +1016,7 @@ export function PaymentsPage() {
               {items.map((p) => (
                 <tr key={p.id} className={p.voidedAt ? 'tr--voided' : undefined}>
                   <td className="muted">{fmtDateTime(p.paidAt)}</td>
-                  <td>
+                  <td className="hide-sm hide-md">
                     <Link to={`/invoices/${p.invoiceId}`} className="link">
                       {p.invoiceNumber}
                     </Link>
@@ -715,15 +1028,24 @@ export function PaymentsPage() {
                     </div>
                     {p.voidedAt && <VoidedNote at={p.voidedAt} by={p.voidedByName} reason={p.voidReason} />}
                   </td>
-                  <td>
+                  <td className="hide-sm">
                     <StatusPill status="neutral" label={methodName(p)} />
                   </td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(p.amount)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                    {formatMoney(p.amount)}
+                    {/* On a phone the method rides under the amount. */}
+                    <span className="cell-sub only-sm">{methodName(p)}</span>
+                  </td>
                   {can('payments:void') && (
                     <td style={{ textAlign: 'right' }}>
                       {!p.voidedAt && (
-                        <button className="iconbtn" title="Void this payment" onClick={() => setVoiding(p)}>
-                          <Undo2 size={14} />
+                        <button
+                          className="iconbtn iconbtn--quiet"
+                          title="Void this payment"
+                          aria-label={`Void the ${formatMoney(p.amount)} payment from ${p.patientName}`}
+                          onClick={() => setVoiding(p)}
+                        >
+                          <Undo2 size={14} aria-hidden />
                         </button>
                       )}
                     </td>

@@ -6,11 +6,12 @@ import {
   LEDGER_LABELS,
   type LedgerEntry,
   type PatientLedger,
+  humanError,
 } from '../lib/api';
 import { currencySymbol, formatMoney, toDate } from '../lib/format';
 import MoneyInput from './MoneyInput';
 import { useAuth } from '../lib/auth';
-import { EmptyState, StatusPill } from './ui';
+import { EmptyState, StatusPill, LoadingRows } from './ui';
 import { dateLocale } from '../lib/strings';
 
 /**
@@ -38,7 +39,7 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
         setLedger(l);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
   }, [patientId, canRead]);
 
   useEffect(load, [load]);
@@ -61,7 +62,7 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
       {error && <p className="formerror">{error}</p>}
 
       {ledger === null ? (
-        <p className="muted">Loading account…</p>
+        <LoadingRows rows={3} label="Loading account" />
       ) : (
         <>
           <div className="ledgersummary">
@@ -103,21 +104,26 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Entry</th>
+                  <th className="hide-sm">Entry</th>
                   <th>Detail</th>
                   <th className="num">Amount</th>
-                  <th className="num">Balance</th>
+                  <th className="num hide-sm">Balance</th>
                 </tr>
               </thead>
               <tbody>
                 {ledger.entries.map((e: LedgerEntry) => (
                   <tr key={e.id}>
                     <td className="muted">
-                      {toDate(e.occurredOn).toLocaleDateString(dateLocale())}
+                      {toDate(e.occurredOn).toLocaleDateString(dateLocale(), {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
                     </td>
-                    <td>
+                    <td className="hide-sm">
+                      {/* A charge and a payment are ordinary events, not alerts. */}
                       <StatusPill
-                        status={e.amount > 0 ? 'scheduled' : 'current'}
+                        status={e.amount > 0 ? 'neutral' : 'done'}
                         label={LEDGER_LABELS[e.entryType] ?? e.entryType}
                       />
                     </td>
@@ -130,7 +136,7 @@ export default function PatientLedgerCard({ patientId }: { patientId: string }) 
                       {e.amount > 0 ? '+' : '−'}
                       {formatMoney(Math.abs(e.amount))}
                     </td>
-                    <td className="num muted">{formatMoney(e.balanceAfter)}</td>
+                    <td className="num muted hide-sm">{formatMoney(e.balanceAfter)}</td>
                   </tr>
                 ))}
               </tbody>

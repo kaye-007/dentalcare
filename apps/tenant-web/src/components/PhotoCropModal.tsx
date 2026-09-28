@@ -1,3 +1,4 @@
+import { humanError } from '../lib/api';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Modal } from './ui';
 import { cropRect, cropSquare, loadImage, type SquareCrop } from '../lib/image';
@@ -29,7 +30,7 @@ export default function PhotoCropModal({
     setSrc(url);
     loadImage(file)
       .then(setImg)
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
@@ -67,13 +68,17 @@ export default function PhotoCropModal({
     try {
       await onSave(await cropSquare(img, crop));
     } catch (e) {
-      setError((e as Error).message);
+      setError(humanError(e));
       setBusy(false);
     }
   }
 
   return (
-    <Modal title="Profile photo" subtitle="Drag to position, slide to zoom." onClose={onClose}>
+    <Modal
+      title="Profile photo"
+      subtitle="Drag to position, slide to zoom."
+      onClose={onClose}
+    >
       <div className="modal__body">
         <div
           className="cropper"
@@ -106,16 +111,28 @@ export default function PhotoCropModal({
             max={1}
             step={0.01}
             value={1.2 - crop.size}
-            onChange={(e) => setCrop((c) => ({ ...c, size: 1.2 - Number(e.target.value) }))}
+            onChange={(e) =>
+              setCrop((c) => ({ ...c, size: 1.2 - Number(e.target.value) }))
+            }
           />
         </label>
         {error && <p className="formerror">{error}</p>}
         <div className="modal__foot">
           <div className="modal__foot-right">
-            <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={onClose}
+              disabled={busy}
+            >
               Cancel
             </button>
-            <button type="button" className="btn btn--primary" onClick={save} disabled={busy || !img}>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={save}
+              disabled={busy || !img}
+            >
               {busy ? 'Saving…' : 'Save photo'}
             </button>
           </div>

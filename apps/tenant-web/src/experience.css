@@ -1,0 +1,1335 @@
+/* ════════════════════════════════════════════════════════════
+   Experience layer — the shared pieces added in the UI/UX pass
+   (docs/UI_UX_IMPLEMENTATION.md). Tokens live in styles.css; this file
+   only uses them. Loaded after the module stylesheets.
+   ════════════════════════════════════════════════════════════ */
+
+/* ── motion primitives ────────────────────────────────────── */
+@keyframes xp-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes xp-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes xp-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes xp-draw {
+  from {
+    stroke-dashoffset: 48;
+  }
+}
+
+/* A page (and a tab's content) arrives with a short fade, keyed by route so
+   it runs once per arrival. Opacity only, on purpose: a transform on this
+   wrapper would become the containing block for every position:fixed dialog
+   inside it, and a modal opened during the fade would jump. */
+.route-enter,
+[role='tabpanel'] {
+  animation: xp-fade var(--dur-2) ease-out;
+}
+
+/* ── skeletons ────────────────────────────────────────────── */
+.skel {
+  display: block;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--primary-tint), #f1f0ec, var(--primary-tint));
+  background-size: 200% 100%;
+  animation: xp-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes xp-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.skelrows {
+  display: flex;
+  flex-direction: column;
+}
+.skelrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px var(--gutter);
+}
+.skelrow + .skelrow {
+  border-top: 1px solid var(--border);
+}
+.skelrow__lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.skelhead {
+  display: grid;
+  gap: 10px;
+}
+
+/* ── error state ──────────────────────────────────────────── */
+.empty--error .empty__icon {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+.modal__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* ── segmented control ────────────────────────────────────── */
+.seg {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--seg-n), minmax(0, 1fr));
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-tint);
+  isolation: isolate;
+}
+.seg__thumb {
+  position: absolute;
+  z-index: -1;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / var(--seg-n));
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgba(28, 24, 18, 0.1),
+    0 0 0 1px rgba(28, 24, 18, 0.04);
+  transform: translateX(calc(100% * var(--seg-i)));
+  transition: transform var(--dur-3) var(--ease-spring);
+}
+.seg__opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-2) ease;
+}
+.seg__opt--on {
+  color: var(--ink);
+}
+.seg__opt:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.seg__opt:focus-visible {
+  outline-offset: -2px;
+}
+.seg--lg .seg__opt {
+  min-height: 44px;
+  font-size: 14.5px;
+}
+
+/* ── disclosure ───────────────────────────────────────────── */
+.disclosure {
+  border-top: 1px solid var(--border);
+}
+.disclosure__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.disclosure__toggle:hover {
+  color: var(--ink);
+}
+.disclosure__chev {
+  flex-shrink: 0;
+  color: var(--muted);
+  transform: rotate(-90deg);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.disclosure--open .disclosure__chev {
+  transform: none;
+}
+.disclosure__hint {
+  margin-left: auto;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.disclosure__body[hidden] {
+  display: none;
+}
+.disclosure__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0 8px;
+  animation: xp-enter var(--dur-2) var(--ease-out);
+}
+
+/* ── more menu ────────────────────────────────────────────── */
+.moremenu {
+  position: relative;
+}
+.moremenu__list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transform-origin: top right;
+  animation: xp-menu var(--dur-2) var(--ease-out);
+}
+@keyframes xp-menu {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-4px);
+  }
+}
+.moremenu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.moremenu__item:hover,
+.moremenu__item:focus-visible {
+  background: var(--primary-050);
+  color: var(--ink);
+  outline-offset: -2px;
+}
+.moremenu__item--danger {
+  color: var(--danger-fg);
+}
+.moremenu__item--danger:hover,
+.moremenu__item--danger:focus-visible {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+/* ── toasts ───────────────────────────────────────────────── */
+.toasts {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: #fff;
+  font-size: 13.5px;
+  line-height: 1.45;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  animation: xp-enter var(--dur-3) var(--ease-out);
+}
+.toast svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.toast--ok svg {
+  color: #7ee0b5;
+}
+.toast--error svg {
+  color: var(--accent-300);
+}
+.toast__body {
+  flex: 1;
+}
+.toast__close {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+.toast__close:hover {
+  color: #fff;
+}
+
+/* ── section navigation ───────────────────────────────────────
+   A section's sub-pages as one quiet underline row, under the top bar.
+   Where the sidebar says "Payments", this says which part of it. */
+.secnav {
+  display: flex;
+  gap: 4px;
+  margin: -8px 0 24px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+.secnav::-webkit-scrollbar {
+  display: none;
+}
+.secnav__item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--dur-1) ease;
+}
+.secnav__item:hover {
+  color: var(--ink);
+}
+.secnav__item::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  bottom: -1px;
+  left: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--primary);
+  transform: scaleX(0);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.secnav__item--active {
+  color: var(--ink);
+}
+.secnav__item--active::after {
+  transform: scaleX(1);
+}
+.secnav__item:focus-visible {
+  outline-offset: -2px;
+}
+@media (max-width: 760px) {
+  .secnav__item {
+    min-height: var(--target);
+  }
+}
+
+/* ── reduced motion — this layer's share of the global rule ── */
+@media (prefers-reduced-motion: reduce) {
+  .skel {
+    animation: none;
+  }
+  .seg__thumb {
+    transition: none;
+  }
+}
+
+/* ── Clinical › Today ─────────────────────────────────────────
+   The next patient is the page's one big thing; the rest of the day waits
+   underneath in time order, and what is done recedes. */
+.clin {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.clin__next {
+  padding: 22px 24px;
+}
+.clin__eyebrow {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.clin__nextmain {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.clin__who {
+  min-width: 0;
+}
+.clin__name {
+  display: inline-block;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--ink);
+  text-decoration: none;
+}
+.clin__name:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+.clin__what {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+.clin__time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.clin__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+.clin__clear {
+  margin: 0;
+  padding: 18px 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+.clin__rowtime {
+  width: 48px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.clin__done .row {
+  opacity: 0.7;
+}
+@media (max-width: 760px) {
+  .clin__next {
+    padding: 18px var(--gutter);
+  }
+  .clin__name {
+    font-size: 22px;
+  }
+  .clin__actions .btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* ── dashboard ────────────────────────────────────────────── */
+.dash__calm {
+  margin: 0;
+  padding: 18px var(--gutter);
+  font-size: 14px;
+  color: var(--muted);
+}
+.daystats--stack {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 0;
+}
+
+/* ── patient record ───────────────────────────────────────────
+   Who (name, allergy), what to do (four actions), where things stand (phone,
+   next, last, balance). Everything else is one click further in. */
+.profile__do {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 var(--gutter) 18px;
+}
+.profile__noflag {
+  font-size: 13px;
+  color: var(--muted);
+}
+.profile__facts {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.profile__facts dd.profile__owes {
+  color: var(--danger-fg);
+}
+.profile__details .pad {
+  padding: 0 var(--gutter);
+}
+.profile__details .disclosure {
+  border-top: 0;
+}
+.profile__details .info,
+.profile__details .info__empty {
+  padding-left: 0;
+  padding-right: 0;
+}
+.profile__details .info--stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+.info--stack > div:nth-last-child(-n + 3) {
+  border-bottom: 1px solid var(--border);
+}
+.info--stack > div:last-child {
+  border-bottom: 0;
+}
+.noteform textarea {
+  transition: min-height var(--dur-2) var(--ease-out);
+}
+.noteform .btn {
+  animation: xp-enter var(--dur-2) var(--ease-out);
+}
+.story__none {
+  margin: 0;
+  padding: 10px var(--gutter) 6px 44px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.story__more {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--gutter) 14px;
+}
+.timeline__item--note .timeline__dot {
+  border-color: var(--border-strong);
+  border-radius: 3px;
+}
+.timeline__notebody {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.profile__details .info__heading {
+  padding: 14px 0 0;
+}
+/* In a side rail an empty section is a line, not a poster. */
+.span-4 .empty {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 2px 8px;
+  padding: 14px var(--gutter);
+  text-align: left;
+}
+.span-4 .empty__icon {
+  display: none;
+}
+.span-4 .empty__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.span-4 .empty__body {
+  display: none;
+}
+.span-4 .empty__action {
+  margin: 0 0 0 auto;
+}
+
+/* ── payment sheet ────────────────────────────────────────────
+   The amount is the page. Method is a switch, the button says exactly what
+   will happen, and everything else is folded away. */
+.paysheet {
+  gap: 18px;
+}
+.paysheet__amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px 12px 10px;
+  border-bottom: 2px solid var(--border);
+  transition: border-color var(--dur-2) ease;
+}
+.paysheet__amount:focus-within {
+  border-color: var(--primary);
+}
+.paysheet__currency {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.paysheet__amount input {
+  /* Grows with what is typed, so the currency sign stays beside it. */
+  field-sizing: content;
+  min-width: 1.2ch;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 44px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--ink);
+}
+.paysheet__amount input:focus-visible {
+  outline: none;
+}
+.paysheet__amount input[aria-invalid='true'] {
+  color: var(--danger-fg);
+}
+.paysheet__hint,
+.paysheet__doc {
+  margin: -6px 0 0;
+  font-size: 13.5px;
+  text-align: center;
+  color: var(--muted);
+}
+.paysheet__doc {
+  margin: 0;
+}
+.paysheet__go {
+  width: 100%;
+  min-height: 48px;
+  font-size: 15px;
+}
+.paysheet .disclosure {
+  border-top: 0;
+}
+.paysheet .disclosure__toggle {
+  min-height: 36px;
+  padding: 4px 0;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* The result: a check that draws itself once, the amount, what is left. */
+.paydone {
+  align-items: center;
+  gap: 6px;
+  padding-top: 20px;
+  text-align: center;
+}
+.paydone__check {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+  animation: xp-pop var(--dur-3) var(--ease-spring);
+}
+.paydone__amount {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  animation: xp-enter var(--dur-3) var(--ease-out) 60ms both;
+}
+.paydone__method {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.paydone__left {
+  margin: 10px 0 0;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.paydone__left--owing {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+.paydone .modal__foot {
+  width: 100%;
+  margin-top: 14px;
+}
+.paydone .formwarn {
+  text-align: left;
+}
+
+/* ── cash drawer ──────────────────────────────────────────────
+   The drawer as an object: closed, it asks for one number; open, it shows
+   one number. At close the difference is the answer to a sum, in words. */
+.till {
+  padding: 24px;
+}
+.till__notice {
+  margin-top: 0;
+}
+.till__open {
+  display: grid;
+  gap: 20px;
+}
+.till__state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.till__since {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.till__figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 48px;
+}
+.till__figure {
+  display: grid;
+  gap: 4px;
+}
+.till__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.till__amount {
+  font-size: 44px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  animation: xp-enter var(--dur-3) var(--ease-out);
+}
+.till__amount--blind {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.startday__body {
+  max-width: 420px;
+  gap: 14px;
+}
+.startday__title {
+  font-size: 18px;
+}
+.startday__amount {
+  display: grid;
+  gap: 4px;
+}
+.startday__amount input {
+  width: 100%;
+  padding: 4px 0 8px;
+  border: 0;
+  border-bottom: 2px solid var(--border);
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 40px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  transition: border-color var(--dur-2) ease;
+}
+.startday__amount input:focus {
+  border-color: var(--primary);
+}
+.startday__amount input:focus-visible {
+  outline: none;
+}
+.tally {
+  display: grid;
+  margin: 0;
+}
+.tally__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.tally__row dt {
+  font-size: 14px;
+  color: var(--muted);
+}
+.tally__row dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tally__row--diff {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 2px solid var(--ink);
+}
+.tally__row--diff dt {
+  font-weight: 600;
+  color: var(--ink);
+}
+.tally__row--diff dd {
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.tally__row--exact dd {
+  color: var(--ok-fg);
+}
+.tally__row--note dd {
+  color: var(--warn-fg);
+}
+.tally__row--approval dd {
+  color: var(--danger-fg);
+}
+.tally__say {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.tally__say--approval {
+  color: var(--danger-fg);
+}
+@media (max-width: 760px) {
+  .till {
+    padding: 18px var(--gutter);
+  }
+  .till__amount {
+    font-size: 36px;
+  }
+}
+
+/* A narrow page lines up with the section tabs above it rather than
+   floating in the middle of the wider column they span. */
+.page--narrow {
+  margin-left: max(0px, (100% - 1240px) / 2);
+  margin-right: auto;
+}
+
+.drawer-page .toolbar--filters {
+  justify-content: flex-start;
+  gap: 12px 16px;
+}
+
+/* ── odontogram: selection you can feel ───────────────────────
+   A tooth dips under the pointer, the selection ring settles onto the
+   chosen tooth, and that tooth's record slides in beside it. Each motion
+   answers "what did I just pick?" and nothing moves otherwise. */
+.odo__tooth,
+.arch__crown {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.odo__tooth:active,
+.arch__tooth:active .arch__crown {
+  transform: scale(0.95);
+}
+.odo__selring,
+.arch__selring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: xp-ring var(--dur-3) var(--ease-spring);
+}
+@keyframes xp-ring {
+  from {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+.toothhistory__swap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  animation: xp-enter var(--dur-2) var(--ease-out);
+}
+.toothhistory__badge {
+  animation: xp-pop var(--dur-3) var(--ease-spring);
+}
+
+/* ── settings: sections beside content ─────────────────────── */
+.setlayout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 760px);
+  align-items: start;
+  gap: 32px;
+}
+.setnav {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.setnav__item {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) ease,
+    color var(--dur-1) ease;
+}
+.setnav__item:hover {
+  background: var(--primary-tint);
+  color: var(--ink);
+}
+.setnav__item--active,
+.setnav__item--active:hover {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--border);
+}
+.setlayout .settings-stack {
+  animation: xp-fade var(--dur-2) ease-out;
+}
+@media (max-width: 900px) {
+  .setlayout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .setnav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .setnav__item {
+    flex-shrink: 0;
+    min-height: var(--target);
+  }
+}
+@media (max-width: 760px) {
+  .profile__actions {
+    position: absolute;
+    top: 14px;
+    right: var(--gutter);
+  }
+  .profile__main {
+    position: relative;
+  }
+  .profile__do .btn {
+    flex: 1 1 calc(50% - 4px);
+  }
+}
+
+/* ── contrast floor ───────────────────────────────────────────
+   Unselected options sit on the tinted track, where --muted falls just
+   under 4.5:1. They get a darker grey; the selected one is still told
+   apart by its white thumb, not by colour alone. */
+.tab,
+.seg__opt {
+  color: #56565e;
+}
+.agenda__end {
+  color: var(--muted);
+}
+/* Secondary lines on a coloured appointment card were faded with opacity,
+   which took the status colour under 4.5:1. Size and weight already rank
+   them below the name. */
+.appt__sub,
+.appt__time {
+  opacity: 1;
+}
+
+/* ── dashboard: coming up ─────────────────────────────────────
+   Seven days as small columns: how full each day is at a glance, one tap
+   to open it in the calendar. Tomorrow's patients underneath, to call. */
+.weekstrip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 14px var(--gutter) 6px;
+  list-style: none;
+}
+.weekstrip__day {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 4px 8px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--dur-1) ease;
+}
+.weekstrip__day:hover {
+  background: var(--primary-050);
+}
+.weekstrip__name {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.weekstrip__num {
+  font-size: 17px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.weekstrip__bar {
+  display: flex;
+  align-items: flex-end;
+  width: 10px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-tint);
+  overflow: hidden;
+}
+.weekstrip__bar > span {
+  width: 100%;
+  min-height: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transition: height var(--dur-3) var(--ease-out);
+}
+.weekstrip__count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.comingup__time {
+  width: 48px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* Row actions in today's agenda: call, check in. */
+.agenda__side {
+  gap: 8px;
+}
+.agenda__call {
+  width: 32px;
+  height: 32px;
+}
+@media (max-width: 760px) {
+  .weekstrip {
+    gap: 2px;
+    padding: 12px 8px 4px;
+  }
+  .weekstrip__name {
+    font-size: 11px;
+  }
+  .agenda__call,
+  .agenda__checkin {
+    min-height: var(--target);
+  }
+  .agenda__call {
+    width: var(--target);
+  }
+}
+
+/* ── phone tab bar ────────────────────────────────────────────
+   Glass, like the top bar: it floats over the page it navigates. Hidden
+   on anything wider than a phone, where the sidebar does this job. */
+.tabbar {
+  display: none;
+}
+@media (max-width: 760px) {
+  .tabbar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border-top: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow:
+      var(--glass-edge),
+      0 -1px 24px -8px rgba(28, 24, 18, 0.14);
+  }
+  .tabbar__item {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-height: 50px;
+    padding: 6px 2px 4px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color var(--dur-1) ease;
+  }
+  .tabbar__item--active {
+    color: var(--ink);
+  }
+  .tabbar__item--active svg {
+    color: var(--accent);
+  }
+  .tabbar__item:active {
+    transform: scale(0.94);
+  }
+  /* The tab bar replaces the hamburger, and the page makes room for it. */
+  .navtoggle {
+    display: none !important;
+  }
+  .content {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+  .toasts {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Free start times in the booking panel: tap instead of type. */
+.timechips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.timechips .chip {
+  min-width: 64px;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 760px) {
+  .timechips .chip {
+    min-height: var(--target);
+  }
+}
+
+/* Phones: a table keeps the columns that answer "who, how much, what state";
+   the rest is one tap away on the row itself. */
+@media (max-width: 760px) {
+  .table .hide-sm {
+    display: none;
+  }
+  .table .namecell {
+    gap: 8px;
+  }
+  .table td,
+  .table th {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+/* ── calendar: list view (the phone's calendar) ───────────────
+   The agenda rows from the dashboard, for any day, with the practitioner
+   picked from a row of chips instead of a column each. */
+.daylist__who {
+  display: flex;
+  gap: 6px;
+  padding: 12px var(--gutter);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+.daylist__who::-webkit-scrollbar {
+  display: none;
+}
+.daylist__who .chip {
+  flex-shrink: 0;
+}
+.daylist__open {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.daylist__open:hover .agenda__patient {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.daylist__go {
+  color: var(--muted-2);
+}
+.daylist .agenda__item--cancelled .agenda__patient {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+@media (max-width: 760px) {
+  .daylist__who .chip {
+    min-height: var(--target);
+  }
+  .daylist__go {
+    display: none;
+  }
+}
+
+/* New patient straight from the booking search. */
+.picker__new {
+  color: var(--ink);
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+}
+.quickpatient {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  animation: xp-enter var(--dur-2) var(--ease-out);
+}
+.quickpatient__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.quickpatient__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Phones: one line of money, three small figures, instead of three tall cards. */
+.only-sm {
+  display: none;
+}
+@media (max-width: 760px) {
+  .only-sm {
+    display: block;
+  }
+  .hide-sm {
+    display: none;
+  }
+  .sumstrip:not(.sumstrip--4) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .sumstrip > div {
+    padding: 10px 12px;
+  }
+  .sumstrip strong {
+    font-size: 17px;
+  }
+}
+
+/* ── booking, one step per screen (phones) ────────────────────── */
+.wizard__progress {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.wizard__count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.wizard__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+}
+.wizard__bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-tint);
+  overflow: hidden;
+}
+.wizard__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-3) var(--ease-out);
+}
+.panel .steps > li {
+  animation: xp-enter var(--dur-2) var(--ease-out);
+}
+.wizard__summary {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+}
+.summary {
+  display: grid;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.summary > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 14px;
+}
+.summary > div + div {
+  border-top: 1px solid var(--border);
+}
+.summary dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+.summary dd {
+  display: grid;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.summary__sub {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+}

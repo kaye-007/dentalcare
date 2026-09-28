@@ -7,10 +7,11 @@ import {
   type PerioExam,
   type PerioExamSummary,
   type PerioSite,
+  humanError,
 } from '../lib/api';
 import { archesFor, formatTooth } from '@dentalcare/shared';
 import { useAuth } from '../lib/auth';
-import { EmptyState, StatusPill } from './ui';
+import { StatusPill, LoadingRows } from './ui';
 import { WithdrawModal } from './VoidModal';
 import { toDate } from '../lib/format';
 import { dateLocale } from '../lib/strings';
@@ -64,7 +65,7 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
         setExams(e);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
   }, [patientId]);
 
   useEffect(load, [load]);
@@ -201,17 +202,15 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
       {error && <p className="formerror">{error}</p>}
 
       {exams === null ? (
-        <p className="muted">Loading exams…</p>
+        <LoadingRows rows={3} label="Loading exams" />
       ) : exams.length === 0 ? (
-        <EmptyState
-          icon={<Ruler size={20} />}
-          title="No periodontal exams"
-          body={
-            canEdit
-              ? 'Start an exam to record probing depths, recession, bleeding and mobility.'
-              : 'No periodontal exams have been recorded.'
-          }
-        />
+        // One line, not an illustration: "none yet" is not news.
+        <p className="medsec__none">
+          No periodontal exams yet
+          {canEdit
+            ? ' — New exam records probing depths, recession, bleeding and mobility.'
+            : '.'}
+        </p>
       ) : (
         <ul className="recordlist">
           {exams.map((e) => (
@@ -370,7 +369,10 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
                 })}
                 . The readings can no longer change.
               </p>
-              <button className="btn btn--ghost btn--sm" onClick={() => setOpenExam(null)}>
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => setOpenExam(null)}
+              >
                 Close
               </button>
             </div>
@@ -393,7 +395,11 @@ export default function PerioChartCard({ patientId }: { patientId: string }) {
                     <ShieldCheck size={14} aria-hidden /> Save &amp; sign
                   </button>
                 )}
-                <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
+                <button
+                  className="btn btn--primary btn--sm"
+                  onClick={save}
+                  disabled={busy}
+                >
                   {busy ? 'Saving…' : 'Save readings'}
                 </button>
               </div>

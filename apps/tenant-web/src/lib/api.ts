@@ -19,6 +19,10 @@ import type {
   Surface,
   ToothCondition,
   WorkingDay,
+  WhatsAppExclusion,
+  WhatsAppOptInSource,
+  WhatsAppSendStatus,
+  WhatsAppValues,
 } from '@dentalcare/shared';
 
 const ACCESS_KEY = 'dc.access';
@@ -58,12 +62,39 @@ export class ApiError extends Error {
   }
 }
 
+/** What the person at the desk reads when the failure is ours, not theirs. */
+export const GENERIC_ERROR = 'Something went wrong on our side. Please try again in a moment.';
+export const NETWORK_ERROR =
+  'DentalCare could not be reached. Check the internet connection and try again.';
+
+/**
+ * Words that only ever appear in a message that leaked from the machinery —
+ * a database driver, a proxy, a runtime. The API's own messages are written
+ * for people; these never are, so they are replaced rather than shown.
+ */
+const TECHNICAL =
+  /\b(sql|syntax error|relation "|violates|constraint|econn|etimedout|enotfound|stack|undefined is not|cannot read propert|typeerror|referenceerror|internal server error|bad gateway|gateway time-?out|service unavailable|cloudflare|worker threw|exception|hyperdrive|postgres|pg_)\b/i;
+
+function humanMessage(status: number, message: string): string {
+  if (status === 429) return 'Too many attempts in a short time. Wait a moment and try again.';
+  if (status === 413) return 'That file is too large to upload.';
+  if (status >= 500 || TECHNICAL.test(message)) return GENERIC_ERROR;
+  // Nest's defaults, which are true but say nothing a person can act on.
+  if (status === 403 && (!message || /^forbidden( resource)?$/i.test(message)))
+    return 'Your role does not allow this. Ask a clinic administrator if you need it.';
+  if (status === 404 && (!message || /^(not found|cannot (get|post|put|patch|delete) )/i.test(message)))
+    return 'That record could not be found. It may have been removed.';
+  if (!message) return GENERIC_ERROR;
+  return message;
+}
+
 /**
  * Turn a failed Response into an ApiError. Nest returns validation failures as
- * a `message` array, so those are joined into one readable line.
+ * a `message` array, so those are joined into one readable line. A server
+ * failure never reaches the screen as its raw text — see `humanMessage`.
  */
 async function toApiError(res: Response): Promise<ApiError> {
-  let message = res.statusText;
+  let message = '';
   let code: string | null = null;
   let details: Record<string, unknown> = {};
   try {
@@ -74,9 +105,40 @@ async function toApiError(res: Response): Promise<ApiError> {
     if (typeof body.code === 'string') code = body.code;
     if (body && typeof body === 'object') details = body as Record<string, unknown>;
   } catch {
-    /* response had no JSON body — keep statusText */
+    /* response had no JSON body — the status decides the wording */
   }
-  return new ApiError(res.status, message, code, details);
+  return new ApiError(res.status, humanMessage(res.status, String(message)), code, details);
+}
+
+/**
+ * The sentence to show for any caught error. An ApiError already carries a
+ * human message; anything else (a thrown TypeError, a failed fetch) gets the
+ * caller's own fallback, which names what was being attempted.
+ */
+export function humanError(err: unknown, fallback = GENERIC_ERROR): string {
+  if (err instanceof ApiError) return err.message || fallback;
+  // A plain Error thrown by our own code on purpose ("That image is too
+  // large") is written for people; a runtime failure is not.
+  if (
+    err instanceof Error &&
+    err.constructor === Error &&
+    err.message &&
+    !TECHNICAL.test(err.message)
+  ) {
+    return err.message;
+  }
+  return fallback;
+}
+
+/** fetch, with a network failure turned into an ApiError that reads like one. */
+async function fetchOrFail(input: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (err) {
+    // An abort is the caller's decision, not a failure to report.
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    throw new ApiError(0, NETWORK_ERROR, 'network');
+  }
 }
 
 /**
@@ -150,7 +212,7 @@ async function send(
   if (auth && tokenStore.access) {
     headers.set('Authorization', `Bearer ${tokenStore.access}`);
   }
-  return fetch(`/api${path}`, { ...options, headers });
+  return fetchOrFail(`/api${path}`, { ...options, headers });
 }
 
 /**
@@ -164,7 +226,7 @@ export async function fetchBlob(path: string): Promise<Blob> {
     const headers = new Headers();
     applyTenantHeader(headers);
     if (tokenStore.access) headers.set('Authorization', `Bearer ${tokenStore.access}`);
-    return fetch(`/api${path}`, { headers });
+    return fetchOrFail(`/api${path}`, { headers });
   };
   let res = await doSend();
   if (res.status === 401 && tokenStore.refresh) {
@@ -195,7 +257,7 @@ export async function upload<T>(path: string, form: FormData): Promise<T> {
       headers.set('Authorization', `Bearer ${tokenStore.access}`);
     }
     // A FormData body can be sent again as-is, so the 401 retry below is safe.
-    return fetch(`/api${path}`, { method: 'POST', body: form, headers });
+    return fetchOrFail(`/api${path}`, { method: 'POST', body: form, headers });
   };
 
   let res = await doSend();
@@ -271,6 +333,8 @@ export interface AuthUser {
   mfa?: { enrolled: boolean; required: boolean };
   /** Every amount the API returns is minor units (cents) of this currency. */
   currency?: CurrencyCode;
+  /** The clinic's IANA time zone; appointments are shown and booked in it. */
+  timezone?: string;
 }
 
 /* ── Sign-in, sessions and two-step sign-in (0005) ───────── */
@@ -366,6 +430,10 @@ export interface PatientListItem {
   city: string | null;
   status: 'active' | 'inactive' | 'archived';
   createdAt: string;
+  /** Present for roles that can read appointments. */
+  nextAppointmentAt?: string | null;
+  /** Minor units, what the patient owes (negative: credit). Roles that read invoices only. */
+  balance?: number;
 }
 export interface PatientNote {
   id: string;
@@ -405,6 +473,12 @@ export interface Patient {
   /** The patient's own reminder channel; null follows the clinic. */
   preferredChannel: ReminderChannelId | null;
   photoDocumentId: string | null;
+  /** WhatsApp reminders (0017): the number, when not the phone, as E.164. */
+  whatsappPhone: string | null;
+  /** The patient agreed to WhatsApp reminders — when, and how. */
+  whatsappOptIn: boolean;
+  whatsappOptedInAt: string | null;
+  whatsappOptInSource: WhatsAppOptInSource | null;
   /** Short-lived signed link to the profile picture. */
   photoUrl?: string | null;
   /** Travels with every patient load so no screen can miss a severe allergy. */
@@ -464,6 +538,8 @@ export { DOCUMENT_KINDS, type DocumentKind } from '@dentalcare/shared';
 
 export const DOCUMENT_KIND_LABELS: Record<DocumentKind, string> = {
   xray: 'X-ray',
+  panoramic: 'Panoramic (OPG)',
+  cbct: 'CBCT',
   photo: 'Photo',
   consent: 'Consent form',
   referral: 'Referral',
@@ -532,6 +608,10 @@ export interface PatientPayload {
   nationalId?: string;
   /** '' follows the clinic's default channel. */
   preferredChannel?: ReminderChannelId | '';
+  /** '' clears it: reminders then go to the phone above. */
+  whatsappPhone?: string;
+  whatsappOptIn?: boolean;
+  whatsappOptInSource?: WhatsAppOptInSource;
 }
 
 export const api = {
@@ -588,6 +668,10 @@ export const api = {
     if (params.page) qs.set('page', String(params.page));
     const s = qs.toString();
     return request<PatientList>(`/patients${s ? `?${s}` : ''}`);
+  },
+  /** Patients due for a check-up: last completed visit more than `months` ago, nothing booked. */
+  recallDue(months: number) {
+    return request<{ months: number; items: RecallPatient[] }>(`/patients/recall?months=${months}`);
   },
   getPatient(id: string) {
     return request<Patient>(`/patients/${id}`);
@@ -988,6 +1072,25 @@ export interface FreeSlots {
   wholeClinic?: boolean;
 }
 
+/** A time the visit can be booked, with the practitioner and room already chosen. */
+export interface FoundTime {
+  startsAt: string;
+  endsAt: string;
+  staffId: string | null;
+  staffName: string | null;
+  operatoryId: string | null;
+  operatoryName: string | null;
+  operatoryColor: string | null;
+}
+export interface FoundTimes {
+  times: FoundTime[];
+  /** The dentist who saw the patient last, offered first. */
+  usualStaffId: string | null;
+  from: string;
+  /** Where "more times" carries on: the day after the last one looked at. */
+  nextFrom: string;
+}
+
 /** A holiday or closure (staffId null) or one person's time off. */
 export interface Closure {
   id: string;
@@ -1020,6 +1123,10 @@ export interface StaffMember {
   role: Role;
   status: 'active' | 'disabled';
   position: string | null;
+  /** Has a calendar column and a weekly schedule. */
+  seesPatients: boolean;
+  /** The room their new bookings start in. */
+  homeOperatoryId?: string | null;
 }
 export interface AppointmentPayload {
   patientId: string;
@@ -1056,7 +1163,16 @@ export const appointmentsApi = {
     });
   },
   /** Details and timing only — status moves through `transition`. */
-  update(id: string, p: Partial<AppointmentPayload>) {
+  update(
+    id: string,
+    p: Partial<
+      Omit<AppointmentPayload, 'staffId' | 'operatoryId'> & {
+        /** null clears it; absent keeps it. */
+        staffId: string | null;
+        operatoryId: string | null;
+      }
+    >,
+  ) {
     return request<Appointment>(`/appointments/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(p),
@@ -1096,6 +1212,37 @@ export const appointmentsApi = {
     if (params.duration) qs.set('duration', String(params.duration));
     if (params.operatoryId) qs.set('operatoryId', params.operatoryId);
     return request<FreeSlots>(`/appointments/free-slots?${qs}`);
+  },
+  /**
+   * "When can she come in?" The server walks the working hours, closures and
+   * bookings and answers with times that will book. `spread` (the default)
+   * is a few a day across the coming fortnight; `spread: false` with
+   * `days: 1` is every free start on one day. `ignore` leaves the visit being
+   * moved out of the conflicts.
+   */
+  findTimes(p: {
+    duration: number;
+    staffId?: string;
+    patientId?: string;
+    operatoryId?: string;
+    preferOperatoryId?: string;
+    ignore?: string;
+    from?: string;
+    days?: number;
+    limit?: number;
+    spread?: boolean;
+  }) {
+    const qs = new URLSearchParams({ duration: String(p.duration) });
+    if (p.staffId) qs.set('staffId', p.staffId);
+    if (p.patientId) qs.set('patientId', p.patientId);
+    if (p.operatoryId) qs.set('operatoryId', p.operatoryId);
+    if (p.preferOperatoryId) qs.set('preferOperatoryId', p.preferOperatoryId);
+    if (p.ignore) qs.set('ignore', p.ignore);
+    if (p.from) qs.set('from', p.from);
+    if (p.days) qs.set('days', String(p.days));
+    if (p.limit) qs.set('limit', String(p.limit));
+    if (p.spread === false) qs.set('spread', '0');
+    return request<FoundTimes>(`/appointments/find-times?${qs}`);
   },
   staff() {
     return request<StaffMember[]>('/staff');
@@ -1141,6 +1288,13 @@ export const operatoriesApi = {
 
 /* ── Staff availability (weekly schedule) ────────────────── */
 export const availabilityApi = {
+  /** Their own, or anyone's with availability:manage. null clears it. */
+  setHomeRoom(staffId: string, operatoryId: string | null) {
+    return request<{ staffId: string; homeOperatoryId: string | null }>(
+      `/availability/home-room/${staffId}`,
+      { method: 'PUT', body: JSON.stringify({ operatoryId }) },
+    );
+  },
   list(staffId?: string) {
     return request<AvailabilityEntry[]>(
       `/availability${staffId ? `?staffId=${staffId}` : ''}`,
@@ -1809,9 +1963,11 @@ export interface StaffFull {
   role: Role;
   status: 'active' | 'disabled';
   position: string | null;
-  /** present only when the requester holds payroll:read */
-  salaryAmount?: number | null;
-  salaryNote?: string | null;
+  /** Has a calendar column, a weekly schedule and appointments in their name. */
+  seesPatients: boolean;
+  /** Present only for whoever manages staff. */
+  twoStepEnabled?: boolean;
+  fiscalOperatorCode?: string | null;
   createdAt: string;
 }
 export interface SalaryPayment {
@@ -1832,8 +1988,7 @@ export const staffApi = {
     password: string;
     role: Role;
     position?: string;
-    salaryAmount?: number;
-    salaryNote?: string;
+    seesPatients?: boolean;
   }) {
     return request<StaffFull>('/staff', { method: 'POST', body: JSON.stringify(p) });
   },
@@ -1844,8 +1999,7 @@ export const staffApi = {
       role?: Role;
       status?: 'active' | 'disabled';
       position?: string | null;
-      salaryAmount?: number | null;
-      salaryNote?: string | null;
+      seesPatients?: boolean;
     },
   ) {
     return request<StaffFull>(`/staff/${id}`, {
@@ -2257,6 +2411,31 @@ export interface LineItemPayload {
   unitPrice: number;
   /** Omitted: the treatment's category, or medical for a custom line. */
   vatCategory?: VatCategory;
+  /** The charted procedure this line bills; the server checks it is unbilled. */
+  procedureId?: string;
+}
+
+export interface RecallPatient {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  lastVisit: string;
+  lastReason: string | null;
+  lastDentist: string | null;
+}
+
+/** Completed chart work no invoice covers yet — what a new invoice starts with. */
+export interface UnbilledProcedure {
+  procedureId: string;
+  tooth: number | null;
+  description: string;
+  /** Minor units. */
+  fee: number;
+  performedOn: string;
+  treatmentId: string | null;
+  vatCategory: VatCategory;
+  clinicianName: string | null;
 }
 export interface PaymentHistoryRow extends Voidable {
   id: string;
@@ -2283,7 +2462,7 @@ export interface ExpenseRow extends Voidable {
  * optional fields are absent, not zero, for Reception.
  */
 export interface FinanceSummary {
-  period: 'month' | 'all';
+  period: 'today' | 'month' | 'all';
   outstanding: number;
   totalInvoiced?: number;
   totalCollected?: number;
@@ -2298,15 +2477,22 @@ export interface CheckoutResult extends InvoiceSummaryRow {
 }
 
 export const financeApi = {
-  listInvoices(params: { q?: string; status?: string } = {}) {
+  /** `status: 'open'` is unpaid and partially paid together. */
+  listInvoices(params: { q?: string; status?: string; patientId?: string } = {}) {
     const qs = new URLSearchParams();
     if (params.q) qs.set('q', params.q);
     if (params.status && params.status !== 'all') qs.set('status', params.status);
+    if (params.patientId) qs.set('patientId', params.patientId);
     const s = qs.toString();
     return request<InvoiceSummaryRow[]>(`/invoices${s ? `?${s}` : ''}`);
   },
   getInvoice(id: string) {
     return request<InvoiceDetail>(`/invoices/${id}`);
+  },
+  unbilled(patientId: string) {
+    return request<UnbilledProcedure[]>(
+      `/invoices/unbilled?patientId=${encodeURIComponent(patientId)}`,
+    );
   },
   createInvoice(p: { patientId: string; issuedAt?: string; items: LineItemPayload[] }) {
     return request<InvoiceSummaryRow>('/invoices', {
@@ -2373,7 +2559,7 @@ export const financeApi = {
       body: JSON.stringify({ reason }),
     });
   },
-  summary(period: 'month' | 'all' = 'month') {
+  summary(period: 'today' | 'month' | 'all' = 'month') {
     return request<FinanceSummary>(`/finance/summary?period=${period}`);
   },
 };
@@ -2450,12 +2636,20 @@ export interface ReportOverview {
     newPatients: number;
     appointments: number;
     appointmentsCompleted: number;
+    appointmentsCancelled: number;
+    appointmentsNoShow: number;
   };
   monthlyTrend: ReportTrendPoint[];
   revenueByTreatment: ReportBreakdownRow[];
   expensesByCategory: ReportBreakdownRow[];
   paymentsByMethod: ReportBreakdownRow[];
   appointmentsByDentist: ReportDentistRow[];
+  /** Completed treatment in the period, by service, counted. */
+  treatmentsPerformed: ReportBreakdownRow[];
+  /** Stock recorded as used in the period, by item. */
+  consumption: (ReportBreakdownRow & { unit: string })[];
+  /** Ordered and fitted in the period; open and late are as of now. */
+  lab: { ordered: number; fitted: number; open: number; late: number; cost: number };
 }
 
 export interface VatBand {
@@ -2932,6 +3126,10 @@ export interface InventoryItem {
   nextExpiry: string | null;
   /** Resolved by the API against the database's date, like `lowStock`. */
   expiry: ExpiryState;
+  /** Who it is reordered from (0020). */
+  supplierId: string | null;
+  supplierName: string | null;
+  supplierPhone: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3041,6 +3239,13 @@ export interface MovementPayload {
 }
 
 export const inventoryApi = {
+  /** Who an item is reordered from; null for nobody. Reception may set it. */
+  setSupplier(itemId: string, supplierId: string | null) {
+    return request<InventoryItem>(`/inventory/${itemId}/supplier`, {
+      method: 'PUT',
+      body: JSON.stringify({ supplierId }),
+    });
+  },
   list(
     params: {
       q?: string;
@@ -3239,6 +3444,10 @@ export interface DrawerCurrent {
     heldBy: string | null;
     defaultFloat: CurrencyAmounts;
   }[];
+  /** The clinic's currency, which cash payments are taken in. */
+  currency: CurrencyCode;
+  /** What to start the day with: the last close's count, else the clinic default. */
+  suggestedFloat: number;
   blindCount: boolean;
 }
 
@@ -3285,7 +3494,11 @@ export interface PinApproval {
   pin: string;
 }
 
-type CountPayload = { currency: CurrencyCode; denominations: DenominationCounts }[];
+/** Each currency counted note by note, or typed as one total. */
+type CountPayload = (
+  | { currency: CurrencyCode; denominations: DenominationCounts }
+  | { currency: CurrencyCode; total: number }
+)[];
 
 export const drawerApi = {
   current() {
@@ -3320,7 +3533,8 @@ export const drawerApi = {
   },
   open(
     p: {
-      drawerId: string;
+      /** Omitted: the clinic's drawer, created on first use. */
+      drawerId?: string;
       floats: { currency: CurrencyCode; amount: number; denominations?: DenominationCounts }[];
     },
     key: string,
@@ -3418,5 +3632,287 @@ export const drawerApi = {
   },
   session(id: string) {
     return request<DrawerSession>(`/drawer/sessions/${id}`);
+  },
+};
+
+/* ════════ WhatsApp reminders (0017) ════════
+ * The clinic's own WhatsApp Cloud API number. The access token is sent to
+ * save or test the connection and never comes back: nothing below has a
+ * field for it in any response. */
+
+export interface WhatsAppConnection {
+  connected: boolean;
+  saved: boolean;
+  wabaId: string | null;
+  phoneNumberId: string | null;
+  displayPhoneNumber: string | null;
+  verifiedName: string | null;
+  status: 'connected' | 'failed' | null;
+  lastTestedAt: string | null;
+  lastTestOk: boolean | null;
+  lastTestResult: string | null;
+  lastSuccessAt: string | null;
+  connectedAt: string | null;
+  timezone: string;
+}
+
+export interface WhatsAppTestResult {
+  ok: boolean;
+  message: string;
+  displayPhoneNumber: string | null;
+  verifiedName: string | null;
+  testedAt: string;
+}
+
+export interface WhatsAppTemplate {
+  id: string;
+  displayName: string;
+  metaTemplateName: string;
+  languageCode: string;
+  previewBody: string;
+  isActive: boolean;
+  isDefault: boolean;
+  meta: {
+    status: string | null;
+    category: string | null;
+    parameters: string[];
+    checkedAt: string | null;
+    problem: string | null;
+  };
+  /** Approved by Meta as a Utility template, with variables a reminder can fill. */
+  ready: boolean;
+  updatedAt: string;
+}
+
+export interface WhatsAppTemplateInput {
+  displayName: string;
+  metaTemplateName: string;
+  languageCode: string;
+  previewBody: string;
+  isActive?: boolean;
+  isDefault?: boolean;
+}
+
+export interface ReminderRow {
+  appointmentId: string;
+  patientId: string;
+  patientName: string;
+  whatsappPhone: string | null;
+  startsAt: string;
+  appointmentStatus: string;
+  reminder: { status: WhatsAppSendStatus; at: string | null; failureReason: string | null } | null;
+  exclusion: WhatsAppExclusion | null;
+  exclusionLabel: string | null;
+  values: WhatsAppValues;
+}
+
+export interface ReminderDay {
+  date: string;
+  timezone: string;
+  clinic: { name: string; phone: string | null };
+  connection: { connected: boolean; displayPhoneNumber: string | null };
+  template: WhatsAppTemplate | null;
+  summary: {
+    total: number;
+    eligible: number;
+    alreadyReminded: number;
+    noConsent: number;
+    phoneProblem: number;
+    cancelled: number;
+  };
+  rows: ReminderRow[];
+}
+
+export interface WhatsAppSend {
+  id: string;
+  batchId: string;
+  patientId: string;
+  patientName: string;
+  phone: string | null;
+  appointmentAt: string;
+  templateName: string;
+  sentBy: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  status: WhatsAppSendStatus;
+  live: boolean;
+  failureReason: string | null;
+}
+
+export interface WhatsAppBatch {
+  id: string;
+  date: string;
+  templateName: string;
+  selected: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  startedAt: string;
+  completedAt: string | null;
+  by: string | null;
+}
+
+export const whatsappApi = {
+  connection() {
+    return request<WhatsAppConnection>('/whatsapp/connection');
+  },
+  test(p: { accessToken?: string; phoneNumberId?: string; wabaId?: string }) {
+    return request<WhatsAppTestResult>('/whatsapp/connection/test', { method: 'POST', body: JSON.stringify(p) });
+  },
+  save(p: { accessToken?: string; phoneNumberId: string; wabaId: string }) {
+    return request<WhatsAppConnection>('/whatsapp/connection', { method: 'PUT', body: JSON.stringify(p) });
+  },
+  disconnect() {
+    return request<WhatsAppConnection>('/whatsapp/connection', { method: 'DELETE' });
+  },
+  templates() {
+    return request<WhatsAppTemplate[]>('/whatsapp/templates');
+  },
+  createTemplate(p: WhatsAppTemplateInput) {
+    return request<WhatsAppTemplate>('/whatsapp/templates', { method: 'POST', body: JSON.stringify(p) });
+  },
+  updateTemplate(id: string, p: Partial<WhatsAppTemplateInput>) {
+    return request<WhatsAppTemplate>(`/whatsapp/templates/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+  },
+  deleteTemplate(id: string) {
+    return request<{ deleted: true }>(`/whatsapp/templates/${id}`, { method: 'DELETE' });
+  },
+  checkTemplate(id: string) {
+    return request<WhatsAppTemplate>(`/whatsapp/templates/${id}/check`, { method: 'POST' });
+  },
+  day(date?: string) {
+    return request<ReminderDay>(`/whatsapp/reminders${date ? `?date=${date}` : ''}`);
+  },
+  send(p: { date: string; templateId: string; appointmentIds: string[] }, key: string) {
+    return request<WhatsAppBatch & { sends: WhatsAppSend[] }>('/whatsapp/reminders/send', {
+      method: 'POST',
+      body: JSON.stringify(p),
+      headers: idempotent(key),
+    });
+  },
+  history(q: { batchId?: string; status?: WhatsAppSendStatus | '' } = {}) {
+    const qs = new URLSearchParams();
+    if (q.batchId) qs.set('batchId', q.batchId);
+    if (q.status) qs.set('status', q.status);
+    const s = qs.toString();
+    return request<{ batches: WhatsAppBatch[]; sends: WhatsAppSend[] }>(`/whatsapp/history${s ? `?${s}` : ''}`);
+  },
+};
+/* ── Lab work, labs and suppliers (0020) ─────────────────── */
+
+/** A dental laboratory or a material supplier: someone to call or message. */
+export interface Partner {
+  id: string;
+  kind: 'lab' | 'supplier';
+  name: string;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  isActive: boolean;
+}
+export interface PartnerPayload {
+  name?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+function partnersOf(base: '/labs' | '/suppliers') {
+  return {
+    list(includeRetired = false) {
+      return request<Partner[]>(`${base}${includeRetired ? '?all=1' : ''}`);
+    },
+    create(p: PartnerPayload & { name: string }) {
+      return request<Partner>(base, { method: 'POST', body: JSON.stringify(p) });
+    },
+    update(id: string, p: PartnerPayload) {
+      return request<Partner>(`${base}/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+    },
+  };
+}
+export const labsApi = partnersOf('/labs');
+export const suppliersApi = partnersOf('/suppliers');
+
+export type LabStatus = 'preparing' | 'sent' | 'received' | 'fitted' | 'cancelled';
+
+export interface LabOrder {
+  id: string;
+  patientId: string;
+  patientName: string;
+  patientPhone: string | null;
+  labId: string | null;
+  labName: string | null;
+  labPhone: string | null;
+  dentistId: string | null;
+  dentistName: string | null;
+  planItemId: string | null;
+  planItemDescription: string | null;
+  /** What the lab makes: "E-max crown". */
+  work: string;
+  /** FDI tooth numbers. */
+  teeth: number[];
+  material: string | null;
+  shade: string | null;
+  /** What the lab charges, minor units. */
+  cost: number | null;
+  /** YYYY-MM-DD */
+  dueOn: string | null;
+  status: LabStatus;
+  notes: string | null;
+  sentAt: string | null;
+  receivedAt: string | null;
+  fittedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  /** Still preparing or at the lab, past its due date on the clinic's clock. */
+  overdue: boolean;
+}
+export interface LabOrderPayload {
+  patientId: string;
+  work: string;
+  teeth?: number[];
+  labId?: string | null;
+  dentistId?: string | null;
+  planItemId?: string | null;
+  material?: string | null;
+  shade?: string | null;
+  cost?: number | null;
+  dueOn?: string | null;
+  notes?: string | null;
+}
+export interface LabSummary {
+  open: number;
+  overdue: number;
+  /** Back from the lab, waiting to be fitted. */
+  ready: number;
+  dueSoon: number;
+}
+
+export const labApi = {
+  /** `open` (default): not yet fitted or cancelled. `done`: recently finished. */
+  list(p: { scope?: 'open' | 'done'; patientId?: string } = {}) {
+    const qs = new URLSearchParams();
+    if (p.scope) qs.set('scope', p.scope);
+    if (p.patientId) qs.set('patientId', p.patientId);
+    const s = qs.toString();
+    return request<LabOrder[]>(`/lab-orders${s ? `?${s}` : ''}`);
+  },
+  summary() {
+    return request<LabSummary>('/lab-orders/summary');
+  },
+  create(p: LabOrderPayload) {
+    return request<LabOrder>('/lab-orders', { method: 'POST', body: JSON.stringify(p) });
+  },
+  update(id: string, p: Partial<Omit<LabOrderPayload, 'patientId'>>) {
+    return request<LabOrder>(`/lab-orders/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+  },
+  /** One step along, one back (undo), or cancelled with a reason. */
+  move(id: string, status: LabStatus, reason?: string) {
+    return request<LabOrder>(`/lab-orders/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status, reason }),
+    });
   },
 };

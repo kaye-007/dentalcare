@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { MINOR_UNITS } from '@dentalcare/shared';
 import { formatMoney } from '../lib/format';
 import { dateLocale } from '../lib/strings';
 
@@ -44,10 +45,16 @@ function niceCeiling(v: number): number {
   return Math.ceil(v / mag) * mag;
 }
 
-function shortMoney(v: number): string {
+/**
+ * An axis label: "3.5M", "400k". The series are minor units, and the axis
+ * read them as they came — a month of 3.6 million lek was labelled "400M".
+ * The label is in whole units of the currency, like every amount on screen.
+ */
+function shortMoney(minor: number): string {
+  const v = minor / MINOR_UNITS;
   if (Math.abs(v) >= 1_000_000) return `${Math.round(v / 100_000) / 10}M`;
   if (Math.abs(v) >= 1_000) return `${Math.round(v / 100) / 10}k`;
-  return String(v);
+  return String(Math.round(v));
 }
 
 export default function RevenueChart({

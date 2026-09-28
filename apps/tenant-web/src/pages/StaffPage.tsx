@@ -1,52 +1,67 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Plus, UserCog, Pencil, Lock, Wallet, KeyRound } from 'lucide-react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronRight, KeyRound, Lock, Plus, ShieldCheck, UserCog } from 'lucide-react';
 import {
-  staffApi,
-  settingsApi,
   ApiError,
+  availabilityApi,
+  closuresApi,
+  fiscalApi,
+  staffApi,
+  type AvailabilityEntry,
+  type Closure,
   type StaffFull,
-  type SalaryPayment,
+  humanError,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Avatar, PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
-import { currencySymbol, formatMoney, plural, toDate } from '../lib/format';
-import MoneyInput from '../components/MoneyInput';
-import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, type Role } from '../lib/permissions';
+import { Avatar, EmptyState, Modal, PageHeader, SidePanel, StatusPill, LoadingRows } from '../components/ui';
+import { plural, toDate } from '../lib/format';
+import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS, type Role } from '../lib/permissions';
 import { dateLocale } from '../lib/strings';
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Roles whose people see patients unless the clinic says otherwise. */
+const TREATING: Role[] = ['dentist', 'hygienist'];
+
 function fmtDate(s: string) {
-  return toDate(s).toLocaleDateString(dateLocale(), {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return toDate(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+/**
+ * The team: one list, one profile per person.
+ *
+ *   list     who they are, what they may do (role), whether they see patients,
+ *            whether their sign-in is protected; disabled accounts apart
+ *   profile  details and access · calendar · sign-in and security · fiscal
+ *            operator code — everything about one person in one place
+ *
+ * Role is what someone may do in the app. "Sees patients" is whether they
+ * have a calendar column — the two are separate, so a dentist does not have
+ * to be an administrator to be on the calendar.
+ */
 export default function StaffPage() {
   const { user, can } = useAuth();
   const canManage = can('staff:manage');
-
-  const [tab, setTab] = useState<'team' | 'salary'>('team');
   const [items, setItems] = useState<StaffFull[] | null>(null);
-  const [payrollEnabled, setPayrollEnabled] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<StaffFull | null>(null);
-  const [paying, setPaying] = useState<StaffFull | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [logVersion, setLogVersion] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [showDisabled, setShowDisabled] = useState(false);
 
-  async function load() {
-    setItems(await staffApi.list());
-  }
+  const load = () =>
+    staffApi
+      .list()
+      .then((l) => {
+        setItems(l);
+        setError(null);
+      })
+      .catch((e) => setError(humanError(e)));
+
   useEffect(() => {
-    void load();
-    if (canManage) {
-      settingsApi
-        .get()
-        .then((s) => setPayrollEnabled(s.payrollLoggingEnabled))
-        .catch(() => undefined);
-    }
+    if (canManage) void load();
   }, [canManage]);
+
+  const active = useMemo(() => (items ?? []).filter((s) => s.status === 'active'), [items]);
+  const disabled = useMemo(() => (items ?? []).filter((s) => s.status !== 'active'), [items]);
 
   if (!canManage) {
     return (
@@ -55,239 +70,69 @@ export default function StaffPage() {
           framed
           icon={<Lock size={22} />}
           title="Administrator access only"
-          body="Staff management and payroll are restricted to clinic administrators."
+          body="Staff accounts are managed by the clinic’s administrators."
         />
       </div>
     );
   }
 
-  /**
-   * For a colleague who has lost their phone AND their recovery codes. Signs
-   * them out everywhere; they set two-step sign-in up again next time.
-   */
-  async function resetMfa(s: StaffFull) {
-    if (
-      !window.confirm(
-        `Reset two-step sign-in for ${s.fullName}? They will be signed out on every device and asked to set it up again at their next sign-in.`,
-      )
-    ) {
-      return;
-    }
-    setBusyId(s.id);
-    try {
-      const res = await staffApi.resetMfa(s.id);
-      alert(
-        res.hadFactor
-          ? `Two-step sign-in reset for ${s.fullName}.`
-          : `${s.fullName} had not set up two-step sign-in. They have been signed out everywhere.`,
-      );
-    } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Could not reset two-step sign-in.');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function toggleStatus(s: StaffFull) {
-    setBusyId(s.id);
-    try {
-      await staffApi.update(s.id, {
-        status: s.status === 'active' ? 'disabled' : 'active',
-      });
-      await load();
-    } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Could not update staff member.');
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const open = items?.find((s) => s.id === openId) ?? null;
+  const treating = active.filter((s) => s.seesPatients).length;
 
   return (
     <div className="page">
       <PageHeader
         title="Staff"
-        meta={
-          items
-            ? `${plural(items.length, 'team member')} · ${items.filter((s) => s.status === 'active').length} active`
-            : '…'
-        }
+        meta={items ? `${plural(active.length, 'active member')} · ${treating} see patients` : '…'}
         actions={
-          <button className="btn btn--primary" onClick={() => setCreating(true)}>
+          <button className="btn btn--primary" onClick={() => setAdding(true)}>
             <Plus size={16} /> Add staff
           </button>
         }
       />
+      {error && <p className="formerror">{error}</p>}
 
-      <div className="toolbar">
-        <div className="tabs">
+      <section className="card">
+        {items === null ? (
+          <LoadingRows rows={3} label="Loading" />
+        ) : active.length === 0 ? (
+          <EmptyState icon={<UserCog size={22} />} title="No staff yet" body="Add your first team member." />
+        ) : (
+          <StaffTable rows={active} selfId={user?.id} onOpen={setOpenId} />
+        )}
+      </section>
+
+      {disabled.length > 0 && (
+        <section className="card staff-disabled">
           <button
-            className={`tab${tab === 'team' ? ' tab--active' : ''}`}
-            onClick={() => setTab('team')}
+            type="button"
+            className="staff-disabled__toggle"
+            aria-expanded={showDisabled}
+            onClick={() => setShowDisabled((v) => !v)}
           >
-            Team
+            <span>
+              Disabled accounts <span className="muted">({disabled.length})</span>
+            </span>
+            <ChevronRight size={16} className={showDisabled ? 'is-open' : ''} aria-hidden />
           </button>
-          {payrollEnabled && (
-            <button
-              className={`tab${tab === 'salary' ? ' tab--active' : ''}`}
-              onClick={() => setTab('salary')}
-            >
-              Salary log
-            </button>
-          )}
-        </div>
-      </div>
-
-      {tab === 'salary' && payrollEnabled ? (
-        <SalaryLog key={logVersion} />
-      ) : (
-        <div className="card">
-          {items === null ? (
-            <div className="pad muted">Loading…</div>
-          ) : items.length === 0 ? (
-            <EmptyState
-              icon={<UserCog size={22} />}
-              title="No staff yet"
-              body="Add your first team member."
-            />
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Member</th>
-                  <th>Position</th>
-                  <th>Access</th>
-                  <th>Salary</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((s) => {
-                  const isSelf = s.id === user?.id;
-                  return (
-                    <tr key={s.id}>
-                      <td>
-                        <div className="namecell">
-                          <Avatar name={s.fullName} size={32} />
-                          <span>
-                            <span>
-                              {s.fullName}
-                              {isSelf && (
-                                <span className="muted" style={{ fontWeight: 400 }}>
-                                  {' '}
-                                  (you)
-                                </span>
-                              )}
-                            </span>
-                            <span
-                              className="cell-sub"
-                              style={{ display: 'block', fontWeight: 400 }}
-                            >
-                              {s.email}
-                            </span>
-                          </span>
-                        </div>
-                      </td>
-                      <td className="muted">{s.position ?? '—'}</td>
-                      <td>
-                        <StatusPill
-                          status={s.role === 'admin' ? 'info' : 'neutral'}
-                          label={ROLE_LABELS[s.role]}
-                        />
-                      </td>
-                      <td>
-                        {s.salaryAmount ? (
-                          <span style={{ fontWeight: 600 }}>
-                            {formatMoney(s.salaryAmount)}
-                            <span className="muted" style={{ fontWeight: 400 }}>
-                              {' '}
-                              /mo
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        <StatusPill
-                          status={s.status === 'active' ? 'active' : 'inactive'}
-                          label={s.status === 'active' ? 'Active' : 'Disabled'}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: 6 }}>
-                          {payrollEnabled && s.status === 'active' && (
-                            <button
-                              className="btn btn--ghost btn--sm"
-                              onClick={() => setPaying(s)}
-                              title="Record salary payment"
-                            >
-                              <Wallet size={14} /> Record payment
-                            </button>
-                          )}
-                          <button
-                            className="iconbtn"
-                            style={{ width: 30, height: 30 }}
-                            onClick={() => setEditing(s)}
-                            title="Edit"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          {!isSelf && (
-                            <button
-                              className="iconbtn"
-                              style={{ width: 30, height: 30 }}
-                              disabled={busyId === s.id}
-                              onClick={() => resetMfa(s)}
-                              title="Reset two-step sign-in (lost phone)"
-                              aria-label={`Reset two-step sign-in for ${s.fullName}`}
-                            >
-                              <KeyRound size={14} />
-                            </button>
-                          )}
-                          {!isSelf && (
-                            <button
-                              className={`btn btn--sm ${s.status === 'active' ? 'btn--danger-ghost' : 'btn--ghost'}`}
-                              disabled={busyId === s.id}
-                              onClick={() => toggleStatus(s)}
-                            >
-                              {s.status === 'active' ? 'Disable' : 'Enable'}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+          {showDisabled && <StaffTable rows={disabled} selfId={user?.id} onOpen={setOpenId} />}
+        </section>
       )}
 
-      {(creating || editing) && (
-        <StaffModal
-          member={editing ?? undefined}
-          selfId={user?.id ?? ''}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
-          onSaved={async () => {
-            setCreating(false);
-            setEditing(null);
-            await load();
-          }}
+      {open && (
+        <StaffProfile
+          member={open}
+          isSelf={open.id === user?.id}
+          onClose={() => setOpenId(null)}
+          onChanged={() => void load()}
         />
       )}
-      {paying && (
-        <SalaryPaymentModal
-          member={paying}
-          onClose={() => setPaying(null)}
-          onSaved={() => {
-            setPaying(null);
-            setLogVersion((v) => v + 1);
-            setTab('salary');
+      {adding && (
+        <AddStaffModal
+          onClose={() => setAdding(false)}
+          onSaved={(created) => {
+            setAdding(false);
+            void load().then(() => setOpenId(created.id));
           }}
         />
       )}
@@ -295,295 +140,558 @@ export default function StaffPage() {
   );
 }
 
-/* ── salary log (requires payroll:read) ─────────────────── */
-function SalaryLog() {
-  const [items, setItems] = useState<SalaryPayment[] | null>(null);
-  useEffect(() => {
-    staffApi
-      .salaryPayments()
-      .then(setItems)
-      .catch(() => setItems([]));
-  }, []);
-  const total = (items ?? []).reduce((s, p) => s + p.amount, 0);
+function StaffTable({
+  rows,
+  selfId,
+  onOpen,
+}: {
+  rows: StaffFull[];
+  selfId: string | undefined;
+  onOpen: (id: string) => void;
+}) {
   return (
-    <div className="card">
-      <div className="card__head">
-        <div>
-          <h2>Salary payment log</h2>
-          <p className="card__sub">
-            {items === null
-              ? '…'
-              : `${plural(items.length, 'payment')} · ${formatMoney(total)} recorded`}{' '}
-            · lightweight log for payments made outside the system
-          </p>
-        </div>
-      </div>
-      {items === null ? (
-        <div className="pad muted">Loading…</div>
-      ) : items.length === 0 ? (
-        <p className="pad muted" style={{ fontSize: 13 }}>
-          No salary payments recorded yet. Use “Record payment” on a staff member after
-          paying them.
-        </p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Staff</th>
-              <th>Position</th>
-              <th style={{ textAlign: 'right' }}>Amount</th>
-              <th>Note</th>
+    <div className="table-scroll">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Person</th>
+            <th className="hide-sm">Access</th>
+            <th className="hide-sm hide-md">Sees patients</th>
+            <th className="hide-sm hide-md">Two-step sign-in</th>
+            <th>
+              <span className="sr-only">Open</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((s) => (
+            <tr key={s.id} className="row--click" onClick={() => onOpen(s.id)}>
+              <td>
+                <div className="namecell">
+                  <Avatar name={s.fullName} size={32} />
+                  <span>
+                    <button
+                      type="button"
+                      className="table__link linkbtn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpen(s.id);
+                      }}
+                    >
+                      {s.fullName}
+                    </button>
+                    {s.id === selfId && <span className="muted"> (you)</span>}
+                    <span className="cell-sub cell-sub--block hide-sm">
+                      {s.position ? `${s.position} · ` : ''}
+                      {s.email}
+                    </span>
+                    {/* On a phone: the role and whether sign-in is protected. */}
+                    <span className="cell-sub only-sm">
+                      {ROLE_LABELS[s.role]} · two-step {s.twoStepEnabled ? 'on' : 'off'}
+                    </span>
+                  </span>
+                </div>
+              </td>
+              <td className="hide-sm">
+                <StatusPill status={s.role === 'admin' ? 'info' : 'neutral'} label={ROLE_LABELS[s.role]} />
+              </td>
+              <td className="hide-sm hide-md">
+                {s.seesPatients ? <span className="staff-yes">Yes</span> : <span className="muted">—</span>}
+              </td>
+              <td className="hide-sm hide-md">
+                {s.twoStepEnabled ? (
+                  <span className="staff-yes">
+                    <ShieldCheck size={14} aria-hidden /> On
+                  </span>
+                ) : (
+                  <span className="muted">Off</span>
+                )}
+              </td>
+              <td style={{ textAlign: 'right' }}>
+                <ChevronRight size={16} className="muted" aria-hidden />
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {items.map((p) => (
-              <tr key={p.id}>
-                <td className="muted">{fmtDate(p.paidOn)}</td>
-                <td style={{ fontWeight: 600 }}>{p.staffName}</td>
-                <td className="muted">{p.position ?? '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                  {formatMoney(p.amount)}
-                </td>
-                <td className="muted">{p.note ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-/* ── record salary payment (confirmation flow) ──────────── */
-function SalaryPaymentModal({
+/* ── one person ─────────────────────────────────────────── */
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="panel__section staff-section">
+      <h3 className="panel__section-title">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function StaffProfile({
   member,
+  isSelf,
   onClose,
-  onSaved,
+  onChanged,
 }: {
   member: StaffFull;
+  isSelf: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  onChanged: () => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [amount, setAmount] = useState<number | null>(member.salaryAmount ?? null);
-  const [date, setDate] = useState(today);
-  const [note, setNote] = useState('');
+  const [fullName, setFullName] = useState(member.fullName);
+  const [position, setPosition] = useState(member.position ?? '');
+  const [role, setRole] = useState<Role>(member.role);
+  const [seesPatients, setSeesPatients] = useState(member.seesPatients);
+  const [busy, setBusy] = useState<null | string>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<null | 'mfa' | 'disable'>(null);
+  const [newPassword, setNewPassword] = useState<string | null>(null);
+  const [operatorCode, setOperatorCode] = useState(member.fiscalOperatorCode ?? '');
+  const [hours, setHours] = useState<AvailabilityEntry[] | null>(null);
+  const [timeOff, setTimeOff] = useState<Closure[] | null>(null);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    if (!member.seesPatients) return;
+    availabilityApi.list(member.id).then(setHours).catch(() => setHours([]));
+    const today = new Date().toISOString().slice(0, 10);
+    const inAYear = new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10);
+    closuresApi
+      .list(today, inAYear)
+      .then((all) => setTimeOff(all.filter((c) => c.staffId === member.id)))
+      .catch(() => setTimeOff([]));
+  }, [member.id, member.seesPatients]);
+
+  const dirty =
+    fullName.trim() !== member.fullName ||
+    (position.trim() || null) !== (member.position ?? null) ||
+    role !== member.role ||
+    seesPatients !== member.seesPatients;
+
+  async function run(kind: string, fn: () => Promise<unknown>, done?: string) {
+    setBusy(kind);
     setError(null);
-    setBusy(true);
-    if (!amount) {
-      setError('Enter the amount paid.');
-      setBusy(false);
-      return;
-    }
+    setNotice(null);
     try {
-      await staffApi.recordSalaryPayment(member.id, {
-        amount,
-        paidOn: date,
-        note: note.trim() || undefined,
-      });
-      onSaved();
+      await fn();
+      if (done) setNotice(done);
+      onChanged();
+      return true;
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not record the payment.');
+      setError(err instanceof ApiError ? err.message : 'That did not work.');
+      return false;
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
+  async function saveDetails(e: FormEvent) {
+    e.preventDefault();
+    await run(
+      'details',
+      () =>
+        staffApi.update(member.id, {
+          fullName: fullName.trim(),
+          position: position.trim() || null,
+          seesPatients,
+          ...(isSelf ? {} : { role }),
+        }),
+      role !== member.role
+        ? `Saved. ${member.fullName} is signed out and signs in again with the new access.`
+        : 'Saved.',
+    );
+  }
+
+  const disabled = member.status !== 'active';
+
   return (
-    <Modal
-      title="Record salary payment"
-      subtitle={`Do you want to record that you paid ${member.fullName}${member.position ? ` (${member.position})` : ''}? This only logs the payment — no money moves.`}
-      onClose={onClose}
-    >
-      <form className="modal__body" onSubmit={submit}>
-        <div className="grid2">
-          <label className="field">
-            <span>Amount ({currencySymbol()})</span>
-            <MoneyInput value={amount} onChange={setAmount} placeholder="0.00" required />
-          </label>
-          <label className="field">
-            <span>Date paid</span>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
-            />
-          </label>
-        </div>
-        <label className="field">
-          <span>Note</span>
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Optional — e.g. June salary"
-            maxLength={300}
-          />
-        </label>
+    <SidePanel title={member.fullName} subtitle={`${ROLE_LABELS[member.role]} · ${member.email}`} onClose={onClose} wide>
+      <div className="panel__body staff-profile">
+        {notice && (
+          <p className="channel-note" role="status" style={{ marginTop: 0 }}>
+            {notice}
+          </p>
+        )}
         {error && <p className="formerror">{error}</p>}
-        <div className="modal__foot">
-          <div className="modal__foot-right">
-            <button type="button" className="btn btn--ghost" onClick={onClose}>
-              Cancel
+        {disabled && (
+          <p className="alertbanner alertbanner--muted" role="status">
+            This account is disabled: {member.fullName.split(' ')[0]} cannot sign in.
+          </p>
+        )}
+
+        <Section title="Details and access">
+          <form className="form staff-form" onSubmit={saveDetails}>
+            <div className="grid2">
+              <label className="field">
+                <span>Full name</span>
+                <input value={fullName} onChange={(e) => setFullName(e.target.value)} required minLength={2} />
+              </label>
+              <label className="field">
+                <span>Job title</span>
+                <input
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value)}
+                  placeholder="e.g. Orthodontist, Clinic manager"
+                  maxLength={80}
+                />
+              </label>
+            </div>
+            <label className="field">
+              <span>Access</span>
+              <select value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={isSelf}>
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+              <small className="muted">{isSelf ? 'You cannot change your own access.' : ROLE_DESCRIPTIONS[role]}</small>
+            </label>
+            <label className="checkrow">
+              <input type="checkbox" checked={seesPatients} onChange={(e) => setSeesPatients(e.target.checked)} />
+              <span>
+                <strong>Sees patients.</strong> Has a column on the calendar, working hours, and appointments in their
+                name.
+              </span>
+            </label>
+            <div className="staff-form__foot">
+              <button className="btn btn--primary btn--sm" disabled={!dirty || busy !== null}>
+                {busy === 'details' ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </form>
+        </Section>
+
+        {member.seesPatients && (
+          <Section title="Calendar">
+            <div className="staff-cal">
+              <div>
+                <p className="staff-cal__label">Working hours</p>
+                {hours === null ? (
+                  <p className="muted small">Loading…</p>
+                ) : hours.length === 0 ? (
+                  <p className="muted small">None set — they can be booked at any time the clinic is open.</p>
+                ) : (
+                  <ul className="staff-hours">
+                    {hours
+                      .slice()
+                      .sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7) || a.startsAt.localeCompare(b.startsAt))
+                      .map((h) => (
+                        <li key={h.id}>
+                          <span>{WEEKDAYS[h.weekday]}</span> {h.startsAt.slice(0, 5)}–{h.endsAt.slice(0, 5)}
+                        </li>
+                      ))}
+                  </ul>
+                )}
+                <Link to="/rooms" className="table__link small">
+                  Change working hours
+                </Link>
+              </div>
+              <div>
+                <p className="staff-cal__label">Time off</p>
+                {timeOff === null ? (
+                  <p className="muted small">Loading…</p>
+                ) : timeOff.length === 0 ? (
+                  <p className="muted small">Nothing coming up.</p>
+                ) : (
+                  <ul className="staff-hours">
+                    {timeOff.map((c) => (
+                      <li key={c.id}>
+                        {fmtDate(c.startsOn)}
+                        {c.endsOn !== c.startsOn ? ` – ${fmtDate(c.endsOn)}` : ''}
+                        {c.reason ? <span className="muted"> · {c.reason}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Link to="/settings?tab=schedule" className="table__link small">
+                  Add time off
+                </Link>
+              </div>
+            </div>
+          </Section>
+        )}
+
+        <Section title="Sign-in and security">
+          <ul className="staff-security">
+            <li>
+              <span>
+                <strong>Two-step sign-in</strong>
+                <span className="muted small">
+                  {member.twoStepEnabled ? ' On — a code from their phone at every sign-in.' : ' Not set up yet.'}
+                </span>
+              </span>
+              {!isSelf && member.twoStepEnabled && confirm !== 'mfa' && (
+                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setConfirm('mfa')}>
+                  <KeyRound size={14} aria-hidden /> Reset
+                </button>
+              )}
+            </li>
+            {confirm === 'mfa' && (
+              <li className="staff-confirm">
+                <span className="small">
+                  For a lost phone. {member.fullName} is signed out everywhere and sets two-step sign-in up again next
+                  time.
+                </span>
+                <span className="inline-row" style={{ gap: 6 }}>
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setConfirm(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--danger-ghost btn--sm"
+                    disabled={busy !== null}
+                    onClick={async () => {
+                      if (await run('mfa', () => staffApi.resetMfa(member.id), 'Two-step sign-in reset.')) setConfirm(null);
+                    }}
+                  >
+                    Reset two-step sign-in
+                  </button>
+                </span>
+              </li>
+            )}
+
+            {!isSelf && (
+              <li>
+                <span>
+                  <strong>Password</strong>
+                  <span className="muted small"> Set a temporary password when they cannot sign in.</span>
+                </span>
+                {newPassword === null && (
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setNewPassword('')}>
+                    Set new password
+                  </button>
+                )}
+              </li>
+            )}
+            {newPassword !== null && (
+              <li className="staff-confirm">
+                <form
+                  className="inline-row staff-password"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (
+                      await run(
+                        'password',
+                        () => staffApi.resetPassword(member.id, newPassword),
+                        'Password changed. Give it to them in person; they are signed out everywhere.',
+                      )
+                    ) {
+                      setNewPassword(null);
+                    }
+                  }}
+                >
+                  <input
+                    type="text"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    minLength={8}
+                    required
+                    aria-label="New temporary password"
+                  />
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setNewPassword(null)}>
+                    Cancel
+                  </button>
+                  <button className="btn btn--primary btn--sm" disabled={busy !== null}>
+                    {busy === 'password' ? 'Saving…' : 'Save password'}
+                  </button>
+                </form>
+              </li>
+            )}
+
+            {!isSelf && (
+              <li>
+                <span>
+                  <strong>{disabled ? 'Account disabled' : 'Account'}</strong>
+                  <span className="muted small">
+                    {disabled
+                      ? ' Cannot sign in. History and appointments are kept.'
+                      : ' Disabling signs them out everywhere; nothing is deleted.'}
+                  </span>
+                </span>
+                {disabled ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={busy !== null}
+                    onClick={() => void run('status', () => staffApi.update(member.id, { status: 'active' }), 'Account enabled.')}
+                  >
+                    Enable
+                  </button>
+                ) : (
+                  confirm !== 'disable' && (
+                    <button type="button" className="btn btn--danger-ghost btn--sm" onClick={() => setConfirm('disable')}>
+                      Disable
+                    </button>
+                  )
+                )}
+              </li>
+            )}
+            {confirm === 'disable' && (
+              <li className="staff-confirm">
+                <span className="small">Disable {member.fullName}? They are signed out now and cannot sign in again.</span>
+                <span className="inline-row" style={{ gap: 6 }}>
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setConfirm(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--danger-ghost btn--sm"
+                    disabled={busy !== null}
+                    onClick={async () => {
+                      if (await run('status', () => staffApi.update(member.id, { status: 'disabled' }), 'Account disabled.')) {
+                        setConfirm(null);
+                      }
+                    }}
+                  >
+                    Disable account
+                  </button>
+                </span>
+              </li>
+            )}
+          </ul>
+        </Section>
+
+        <Section title="Fiscal receipts">
+          <form
+            className="inline-row staff-fiscal"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const code = operatorCode.trim().toLowerCase();
+              if (code && !/^[a-z]{2}\d{3}[a-z]{2}\d{3}$/.test(code)) {
+                setError('Operator codes look like ab123ab123: two letters, three digits, two letters, three digits.');
+                return;
+              }
+              void run('fiscal', () => fiscalApi.setOperatorCode(member.id, code || null), 'Operator code saved.');
+            }}
+          >
+            <label className="field" style={{ flex: 1 }}>
+              <span>Operator code</span>
+              <input
+                className="wa-mono"
+                value={operatorCode}
+                onChange={(e) => setOperatorCode(e.target.value)}
+                placeholder="ab123ab123"
+                maxLength={10}
+              />
+              <small className="muted">From the tax authority, for anyone who issues fiscal receipts.</small>
+            </label>
+            <button
+              className="btn btn--ghost btn--sm"
+              disabled={busy !== null || operatorCode.trim().toLowerCase() === (member.fiscalOperatorCode ?? '')}
+            >
+              {busy === 'fiscal' ? 'Saving…' : 'Save'}
             </button>
-            <button className="btn btn--primary" disabled={busy}>
-              {busy ? 'Recording…' : `Yes, record ${formatMoney(amount || 0)}`}
-            </button>
-          </div>
-        </div>
-      </form>
-    </Modal>
+          </form>
+        </Section>
+      </div>
+    </SidePanel>
   );
 }
 
-/* ── add / edit staff ───────────────────────────────────── */
-function StaffModal({
-  member,
-  selfId,
-  onClose,
-  onSaved,
-}: {
-  member?: StaffFull;
-  selfId: string;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const editing = Boolean(member);
-  const isSelf = member?.id === selfId;
-  const [fullName, setFullName] = useState(member?.fullName ?? '');
-  const [email, setEmail] = useState(member?.email ?? '');
+/* ── add someone ────────────────────────────────────────── */
+
+function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: (s: StaffFull) => void }) {
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<Role>(member?.role ?? 'receptionist');
-  const [position, setPosition] = useState(member?.position ?? '');
-  const [salaryAmount, setSalaryAmount] = useState<number | null>(member?.salaryAmount ?? null);
-  const [salaryNote, setSalaryNote] = useState(member?.salaryNote ?? '');
+  const [role, setRole] = useState<Role>('dentist');
+  const [position, setPosition] = useState('');
+  const [seesPatients, setSeesPatients] = useState(true);
+  const [touchedSees, setTouchedSees] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  function pickRole(r: Role) {
+    setRole(r);
+    // Follows the role until someone decides otherwise.
+    if (!touchedSees) setSeesPatients(TREATING.includes(r));
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     setBusy(true);
+    setError(null);
     try {
-      if (editing) {
-        await staffApi.update(member!.id, {
-          fullName,
-          ...(isSelf ? {} : { role }),
-          position: position.trim() || null,
-          salaryAmount: salaryAmount || null,
-          salaryNote: salaryNote.trim() || null,
-        });
-      } else {
+      onSaved(
         await staffApi.create({
-          fullName,
-          email,
+          fullName: fullName.trim(),
+          email: email.trim(),
           password,
           role,
           position: position.trim() || undefined,
-          salaryAmount: salaryAmount || undefined,
-          salaryNote: salaryNote.trim() || undefined,
-        });
-      }
-      onSaved();
+          seesPatients,
+        }),
+      );
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save staff member.');
-    } finally {
+      setError(err instanceof ApiError ? err.message : 'Could not add the staff member.');
       setBusy(false);
     }
   }
 
   return (
-    <Modal
-      wide
-      title={editing ? 'Edit staff member' : 'Add staff member'}
-      subtitle={
-        editing ? member!.email : 'They sign in with the temporary password you set here.'
-      }
-      onClose={onClose}
-    >
+    <Modal wide title="Add staff member" subtitle="They sign in with the temporary password you set here." onClose={onClose}>
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           <label className="field">
             <span>Full name</span>
-            <input
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-              minLength={2}
-            />
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} required minLength={2} autoFocus />
           </label>
           <label className="field">
-            <span>Position / job title</span>
+            <span>Job title</span>
             <input
               value={position}
               onChange={(e) => setPosition(e.target.value)}
-              placeholder="e.g. Dentist, Assistant, Manager"
+              placeholder="e.g. Orthodontist, Clinic manager"
               maxLength={80}
             />
           </label>
         </div>
-        {!editing && (
-          <div className="grid2">
-            <label className="field">
-              <span>Email</span>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@clinic.com"
-                required
-              />
-            </label>
-            <label className="field">
-              <span>Temporary password</span>
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="min 8 characters"
-                required
-                minLength={8}
-              />
-            </label>
-          </div>
-        )}
+        <div className="grid2">
+          <label className="field">
+            <span>Email</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@clinic.com" required />
+          </label>
+          <label className="field">
+            <span>Temporary password</span>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              autoComplete="new-password"
+              required
+              minLength={8}
+            />
+          </label>
+        </div>
         <label className="field">
-          <span>Access role</span>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-            disabled={isSelf}
-          >
+          <span>Access</span>
+          <select value={role} onChange={(e) => pickRole(e.target.value as Role)}>
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABELS[r]}
               </option>
             ))}
           </select>
-          <span className="muted" style={{ fontSize: 12 }}>
-            {isSelf ? 'You cannot change your own access role.' : ROLE_DESCRIPTIONS[role]}
+          <small className="muted">{ROLE_DESCRIPTIONS[role]}</small>
+        </label>
+        <label className="checkrow">
+          <input
+            type="checkbox"
+            checked={seesPatients}
+            onChange={(e) => {
+              setTouchedSees(true);
+              setSeesPatients(e.target.checked);
+            }}
+          />
+          <span>
+            <strong>Sees patients.</strong> Gets a column on the calendar and can have appointments.
           </span>
         </label>
-        <div className="grid2">
-          <label className="field">
-            <span>Salary ({currencySymbol()} / month)</span>
-            <MoneyInput value={salaryAmount} onChange={setSalaryAmount} placeholder="Optional" />
-          </label>
-          <label className="field">
-            <span>Salary note</span>
-            <input
-              value={salaryNote}
-              onChange={(e) => setSalaryNote(e.target.value)}
-              placeholder="Optional — e.g. net, paid on the 5th"
-              maxLength={300}
-            />
-          </label>
-        </div>
         {error && <p className="formerror">{error}</p>}
         <div className="modal__foot">
           <div className="modal__foot-right">
@@ -591,7 +699,7 @@ function StaffModal({
               Cancel
             </button>
             <button className="btn btn--primary" disabled={busy}>
-              {busy ? 'Saving…' : editing ? 'Save changes' : 'Add staff member'}
+              {busy ? 'Adding…' : 'Add staff member'}
             </button>
           </div>
         </div>
@@ -599,3 +707,4 @@ function StaffModal({
     </Modal>
   );
 }
+

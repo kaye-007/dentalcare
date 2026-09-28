@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Laptop, ShieldCheck, ShieldAlert } from 'lucide-react';
-import {
-  ApiError,
-  securityApi,
-  type ActiveSession,
-  type MfaStatus,
-} from '../lib/api';
+import { ApiError, securityApi, type ActiveSession, type MfaStatus } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { dateLocale } from '../lib/strings';
-import { Modal } from './ui';
+import { Modal, LoadingRows } from './ui';
 import { RecoveryCodes, TotpEnrollment } from './TwoStepSetup';
 
 /**
@@ -96,7 +91,7 @@ function TwoStepSection() {
       </h3>
       {error && <p className="formerror">{error}</p>}
       {!status ? (
-        !error && <p className="muted">Loading…</p>
+        !error && <LoadingRows rows={3} label="Loading" />
       ) : mode === 'enrolling' ? (
         <TotpEnrollment
           start={() => securityApi.setupTotp()}
@@ -116,7 +111,9 @@ function TwoStepSection() {
         <CodeForm
           label="Generate new recovery codes"
           hint="Your old codes stop working as soon as the new ones are issued."
-          submit={async (code) => showCodes((await securityApi.regenerateRecoveryCodes(code)).recoveryCodes)}
+          submit={async (code) =>
+            showCodes((await securityApi.regenerateRecoveryCodes(code)).recoveryCodes)
+          }
           onCancel={() => setMode('idle')}
         />
       ) : mode === 'disable' ? (
@@ -142,40 +139,52 @@ function TwoStepSection() {
           </p>
           {status.recoveryCodesRemaining <= 3 && (
             <p className="formhint">
-              You are running low on recovery codes. Generate new ones before you need them.
+              You are running low on recovery codes. Generate new ones before you need
+              them.
             </p>
           )}
           <div className="security__actions">
-            <button className="btn btn--ghost btn--sm" onClick={() => setMode('regenerate')}>
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => setMode('regenerate')}
+            >
               New recovery codes
             </button>
             {!status.required && (
-              <button className="btn btn--danger-ghost btn--sm" onClick={() => setMode('disable')}>
+              <button
+                className="btn btn--danger-ghost btn--sm"
+                onClick={() => setMode('disable')}
+              >
                 Turn off
               </button>
             )}
           </div>
           {status.required && (
             <p className="muted" style={{ fontSize: 12.5 }}>
-              Required for your role at this clinic, so it cannot be turned off. If you lose
-              your phone and your recovery codes, an administrator can reset it.
+              Required for your role at this clinic, so it cannot be turned off. If you
+              lose your phone and your recovery codes, an administrator can reset it.
             </p>
           )}
         </>
       ) : (
         <>
-          <p className={`security__state${status.required ? ' security__state--warn' : ''}`}>
+          <p
+            className={`security__state${status.required ? ' security__state--warn' : ''}`}
+          >
             {status.required ? (
               <>
-                <ShieldAlert size={14} aria-hidden /> Required for your account, and not set up
-                yet. You will be asked to set it up at your next sign-in.
+                <ShieldAlert size={14} aria-hidden /> Required for your account, and not
+                set up yet. You will be asked to set it up at your next sign-in.
               </>
             ) : (
               'Off. A code from your phone at sign-in keeps your account safe even if your password leaks.'
             )}
           </p>
           <div className="security__actions">
-            <button className="btn btn--primary btn--sm" onClick={() => setMode('enrolling')}>
+            <button
+              className="btn btn--primary btn--sm"
+              onClick={() => setMode('enrolling')}
+            >
               Set up two-step sign-in
             </button>
           </div>
@@ -323,7 +332,7 @@ function SessionsSection() {
       </h3>
       {error && <p className="formerror">{error}</p>}
       {sessions === null ? (
-        !error && <p className="muted">Loading…</p>
+        !error && <LoadingRows rows={3} label="Loading" />
       ) : (
         <>
           <ul className="list">
@@ -332,7 +341,11 @@ function SessionsSection() {
                 <span className="row__main">
                   <span className="row__title">
                     {deviceLabel(x.userAgent)}
-                    {x.current && <span className="pill pill--info" style={{ marginLeft: 8 }}>This device</span>}
+                    {x.current && (
+                      <span className="pill pill--info" style={{ marginLeft: 8 }}>
+                        This device
+                      </span>
+                    )}
                   </span>
                   <span className="row__sub">
                     Signed in {fmt(x.startedAt)} · last active {fmt(x.lastSeenAt)}
@@ -364,7 +377,8 @@ function SessionsSection() {
             </div>
           )}
           <p className="muted" style={{ fontSize: 12.5 }}>
-            A device you sign out stops working within 15 minutes, when its access expires.
+            A device you sign out stops working within 15 minutes, when its access
+            expires.
           </p>
         </>
       )}

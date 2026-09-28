@@ -32,14 +32,6 @@
   gap: 8px;
 }
 
-.drawer-choices {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
-}
-
 .drawer-choice {
   display: flex;
   align-items: center;
@@ -189,56 +181,6 @@
   color: var(--muted);
 }
 
-/* the close wizard */
-.wizard-steps {
-  display: flex;
-  gap: 4px;
-  list-style: none;
-  margin: 0;
-  padding: 12px 24px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-}
-
-.wizard-steps__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.wizard-steps__num {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.wizard-steps__item.is-current {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.wizard-steps__item.is-current .wizard-steps__num {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
-}
-
-.wizard-steps__item.is-done .wizard-steps__num {
-  background: var(--ok-bg, var(--surface));
-  border-color: var(--ok-fg);
-  color: var(--ok-fg);
-}
-
 .variance {
   display: grid;
   gap: 8px;
@@ -286,11 +228,6 @@
   font-size: 15px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-.float-row {
-  display: grid;
-  gap: 8px;
 }
 
 .chain {
@@ -539,4 +476,81 @@
   .switch__track::after {
     transition: none;
   }
+}
+
+/* Start the day: the closed drawer, with the cash to start from filled in. */
+.startday {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.startday__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--primary-050);
+  color: var(--ink);
+}
+
+.startday__body {
+  display: grid;
+  gap: 10px;
+  flex: 1;
+  max-width: 360px;
+}
+
+.startday__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.startday__body .muted {
+  margin: -6px 0 0;
+}
+
+.startday__body .btn {
+  justify-self: start;
+  min-height: 44px;
+}
+
+/* End the day: one total per currency, note by note only when asked for. */
+.endday-count {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.endday-count .linkbtn {
+  justify-self: start;
+}
+
+/* Settings folded away until someone needs them. */
+.advanced__summary,
+.advanced__inline > summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style-position: inside;
+}
+
+.advanced__summary {
+  padding: 16px var(--gutter);
+}
+
+.advanced[open] .advanced__summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.advanced__inline {
+  display: grid;
+  gap: 12px;
+}
+
+.advanced__inline > summary {
+  color: var(--muted);
+  font-size: 13.5px;
 }

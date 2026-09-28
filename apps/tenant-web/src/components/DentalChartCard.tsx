@@ -4,6 +4,7 @@ import {
   Ban,
   CalendarClock,
   Check,
+  ChevronDown,
   Clock,
   Hourglass,
   Plus,
@@ -24,6 +25,7 @@ import {
   type Surface,
   type ToothCondition,
   type ToothConditionRecord,
+  humanError,
 } from '../lib/api';
 // Anatomy — the same module the API validates against.
 import {
@@ -47,6 +49,7 @@ import Odontogram, { ConditionSwatch } from './Odontogram';
 import ArchView, { ArchLegend } from './ArchView';
 import { dateLocale } from '../lib/strings';
 import { t } from '../lib/strings';
+import { LoadingRows } from './ui';
 
 type ChartMode = 'arch' | 'surfaces';
 type RecState = 'pending' | 'done' | 'neutral' | 'planned' | 'progress';
@@ -105,6 +108,10 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
   const [chart, setChart] = useState<DentalChart | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ChartMode>('arch');
+  // The header shows the one switch used every visit; dentition and
+  // numbering are set once per patient, and wait behind "View options",
+  // which names the current choice so nothing is hidden by surprise.
+  const [viewOptions, setViewOptions] = useState(false);
   const [dentition, setDentition] = useState<Dentition>('permanent');
   const [notation, setNotation] = useState<Notation>('fdi');
   const [selected, setSelected] = useState<number | null>(null);
@@ -119,7 +126,7 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
         setChart(c);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
     // The treatment history beside the chart. Secondary to the chart itself:
     // if it cannot load, the tooth record says so and the chart still works.
     proceduresApi
@@ -151,7 +158,7 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
   if (!chart) {
     return (
       <section className="card card--record span-12">
-        <p className="muted">Loading dental chart…</p>
+        <LoadingRows rows={3} label="Loading dental chart" />
       </section>
     );
   }
@@ -174,7 +181,9 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
   const byId = new Map((procedures ?? []).map((p) => [p.id, p]));
   const linked = new Set<string>();
   const records: RecordItem[] = findings.map((f) => {
-    const treatment = f.resolvedByProcedureId ? (byId.get(f.resolvedByProcedureId) ?? null) : null;
+    const treatment = f.resolvedByProcedureId
+      ? (byId.get(f.resolvedByProcedureId) ?? null)
+      : null;
     if (treatment) linked.add(treatment.id);
     return { kind: 'finding', key: f.id, at: f.recordedAt, finding: f, treatment };
   });
@@ -219,30 +228,54 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
             mode,
             [
               { key: 'arch', label: 'Arch', title: 'The whole mouth, tooth by tooth' },
-              { key: 'surfaces', label: 'Surfaces', title: 'Chart findings surface by surface' },
+              {
+                key: 'surfaces',
+                label: 'Surfaces',
+                title: 'Chart findings surface by surface',
+              },
             ],
             setMode,
           )}
-          {segmented<Dentition>(
-            'Dentition',
-            dentition,
-            [
-              { key: 'permanent', label: 'Adult' },
-              { key: 'primary', label: 'Pediatric' },
-            ],
-            (d) => {
-              setDentition(d);
-              setSelected(null);
-            },
-          )}
-          {segmented<Notation>(
-            'Numbering',
-            notation,
-            [
-              { key: 'fdi', label: 'FDI', title: 'FDI / ISO 3950 numbering' },
-              { key: 'universal', label: 'Universal', title: 'Universal numbering (1–32 / A–T)' },
-            ],
-            setNotation,
+          {!viewOptions ? (
+            <button
+              type="button"
+              className="btn btn--quiet btn--sm"
+              aria-expanded={false}
+              aria-label={`View options: ${dentition === 'primary' ? 'pediatric' : 'adult'}, ${notation === 'fdi' ? 'FDI' : 'Universal'} numbering`}
+              onClick={() => setViewOptions(true)}
+            >
+              {dentition === 'primary' ? 'Pediatric' : 'Adult'} ·{' '}
+              {notation === 'fdi' ? 'FDI' : 'Universal'}
+              <ChevronDown size={14} aria-hidden />
+            </button>
+          ) : (
+            <>
+              {segmented<Dentition>(
+                'Dentition',
+                dentition,
+                [
+                  { key: 'permanent', label: 'Adult' },
+                  { key: 'primary', label: 'Pediatric' },
+                ],
+                (d) => {
+                  setDentition(d);
+                  setSelected(null);
+                },
+              )}
+              {segmented<Notation>(
+                'Numbering',
+                notation,
+                [
+                  { key: 'fdi', label: 'FDI', title: 'FDI / ISO 3950 numbering' },
+                  {
+                    key: 'universal',
+                    label: 'Universal',
+                    title: 'Universal numbering (1–32 / A–T)',
+                  },
+                ],
+                setNotation,
+              )}
+            </>
           )}
         </div>
       </header>
@@ -309,7 +342,9 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
                         <span className="toothpick__num">
                           {formatTooth(x.tooth, notation)}
                         </span>
-                        {x.activeConditions.map((c) => t(`tooth.condition.${c}`)).join(', ')}
+                        {x.activeConditions
+                          .map((c) => t(`tooth.condition.${c}`))
+                          .join(', ')}
                       </button>
                     ))}
                   </div>
@@ -317,9 +352,11 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
               )}
             </div>
           ) : (
-            <>
+            <div className="toothhistory__swap" key={selected}>
               <div className="toothhistory__head">
-                <span className="toothhistory__badge">{formatTooth(selected, notation)}</span>
+                <span className="toothhistory__badge">
+                  {formatTooth(selected, notation)}
+                </span>
                 <div className="toothhistory__heading">
                   <h4 className="toothhistory__title">{anatomicalName(selected)}</h4>
                   <p className="toothhistory__sub">
@@ -390,7 +427,7 @@ export default function DentalChartCard({ patientId }: { patientId: string }) {
               {procedures === null && (
                 <p className="toothhistory__none">Loading treatment history…</p>
               )}
-            </>
+            </div>
           )}
         </aside>
       </div>
@@ -443,7 +480,9 @@ function DateBlock({ at }: { at: string }) {
         year: 'numeric',
       })}
     >
-      <span className="rec__month">{d.toLocaleDateString(dateLocale(), { month: 'short' })}</span>
+      <span className="rec__month">
+        {d.toLocaleDateString(dateLocale(), { month: 'short' })}
+      </span>
       <span className="rec__day">{d.getDate()}</span>
       {!sameYear && <span className="rec__year">{d.getFullYear()}</span>}
     </time>
@@ -600,7 +639,9 @@ function FindingItem({
                 <ConditionSwatch condition={finding.condition} size={14} />
                 <span>
                   {t(`tooth.condition.${finding.condition}`)}
-                  {finding.surface ? ` · ${surfaceName(finding.tooth, finding.surface)}` : ''}
+                  {finding.surface
+                    ? ` · ${surfaceName(finding.tooth, finding.surface)}`
+                    : ''}
                 </span>
               </dd>
             </div>
@@ -616,7 +657,11 @@ function FindingItem({
             </div>
             <div>
               <dt>Dentist</dt>
-              <dd className={treatment?.clinicianName || finding.dentistName ? undefined : 'muted'}>
+              <dd
+                className={
+                  treatment?.clinicianName || finding.dentistName ? undefined : 'muted'
+                }
+              >
                 {treatment?.clinicianName ?? finding.dentistName ?? '—'}
               </dd>
             </div>
@@ -730,7 +775,9 @@ function ProcedureItem({
             </div>
             <div>
               <dt>Dentist</dt>
-              <dd className={p.clinicianName ? undefined : 'muted'}>{p.clinicianName ?? '—'}</dd>
+              <dd className={p.clinicianName ? undefined : 'muted'}>
+                {p.clinicianName ?? '—'}
+              </dd>
             </div>
           </dl>
           <StateBadge meta={meta} />

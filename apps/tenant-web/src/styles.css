@@ -35,7 +35,7 @@
   --ink: #17171a;
   --ink-2: #3a3a40;
   --muted: #6a6a72;
-  --muted-2: #7b7b84;
+  --muted-2: #6c6c74; /* ≥4.5:1 on white and on the canvas */
   --canvas: #f2efea;
   --surface: #ffffff;
   --surface-2: #faf8f5;
@@ -118,6 +118,17 @@
   --row-pad-y: 9px;
   --row-pad-x: 14px; /* unified row/table density */
   --gutter: 16px; /* card edge padding, shared by heads, bodies and tables */
+  --input-h: 40px;
+
+  /* ── motion ──────────────────────────────────────────────
+     Short and decelerating. Motion answers "where did it come from, where
+     did it go, what changed" — never decoration. All of it switches off
+     under prefers-reduced-motion (the a11y block below). */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 260ms;
 
   /* ── type ────────────────────────────────────────────────
      One family. Hierarchy comes from size and weight, not from a second
@@ -367,6 +378,7 @@ input[type='radio'] {
 .nav__item {
   border-radius: var(--radius-pill);
 }
+
 
 .sidebar__foot {
   display: flex;
@@ -836,6 +848,15 @@ a.crumbs__here:hover {
   border-color: #c2c8d4;
   color: var(--ink);
 }
+/* Text-weight action, for the third-and-later things on a screen. */
+.btn--quiet {
+  background: transparent;
+  color: var(--ink-2);
+}
+.btn--quiet:hover:not(:disabled) {
+  background: var(--primary-tint);
+  color: var(--ink);
+}
 .btn--danger-ghost {
   background: var(--surface);
   border-color: #efc6cb;
@@ -1284,7 +1305,7 @@ a.crumbs__here:hover {
 .field select,
 .field textarea {
   width: 100%;
-  min-height: 40px;
+  min-height: var(--input-h);
   padding: 8px 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -1331,6 +1352,23 @@ a.crumbs__here:hover {
   background: var(--danger-bg);
   color: var(--danger-fg);
   font-size: 13.5px;
+}
+/* A warning is not an error: something to notice, and the save still works. */
+.formwarn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn-fg) 18%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  font-size: 13.5px;
+}
+.formwarn svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 /* ── empty states (one pattern) ───────────────────────────── */
@@ -2849,6 +2887,13 @@ button.cal__daycol-head:focus-visible {
   padding: 10px 12px;
   border-left: 1px solid var(--border);
 }
+.cal__roomdot {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--muted);
+  flex-shrink: 0;
+}
 .cal__staffmeta {
   display: flex;
   flex-direction: column;
@@ -3349,8 +3394,9 @@ button.cal__daycol-head:focus-visible {
     gap: 8px;
     padding: 0 12px;
   }
-  .crumbs__clinic,
-  .crumbs__sep {
+  /* On a phone the topbar is all buttons, and the page's own heading already
+     says where you are; the squeezed crumb only showed "Reservati". */
+  .crumbs {
     display: none;
   }
   .content {
@@ -4236,6 +4282,49 @@ button.cal__daycol-head:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.schedule__tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.schedule__room {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.schedule__room select {
+  min-height: 30px;
+  font-size: 13px;
+}
+
+/* Room picker in the booking panel: every room at once, free or taken. */
+.roompick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.roompick .chip {
+  gap: 6px;
+}
+.roompick__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.roompick__busy {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--danger-fg);
+}
+.chip--busy {
+  border-style: dashed;
+  color: var(--muted);
 }
 
 .shifts {

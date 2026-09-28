@@ -14,12 +14,13 @@ import {
   type Surface,
   type Treatment,
   type TreatmentPlan,
+  humanError,
 } from '../lib/api';
 import { formatMoney as money } from '../lib/format';
 import MoneyInput from './MoneyInput';
 import { surfaceName, surfacesFor, toothLabel } from '@dentalcare/shared';
 import { useAuth } from '../lib/auth';
-import { EmptyState, StatusPill } from './ui';
+import { EmptyState, StatusPill, LoadingRows } from './ui';
 
 /**
  * Treatment plan builder.
@@ -45,7 +46,7 @@ export default function TreatmentPlanCard({ patientId }: { patientId: string }) 
         setPlans(p);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
   }, [patientId]);
 
   useEffect(load, [load]);
@@ -82,7 +83,7 @@ export default function TreatmentPlanCard({ patientId }: { patientId: string }) 
       )}
 
       {plans === null ? (
-        <p className="muted">Loading treatment plans…</p>
+        <LoadingRows rows={3} label="Loading treatment plans" />
       ) : plans.length === 0 && !creating ? (
         <EmptyState
           icon={<ClipboardList size={20} />}
@@ -283,7 +284,11 @@ function PlanBlock({
           </div>
 
           {plan.items.length > 0 && (
-            <Link to={`/treatment-plans/${plan.id}/estimate`} className="btn btn--ghost btn--sm" style={{ alignSelf: 'flex-start' }}>
+            <Link
+              to={`/treatment-plans/${plan.id}/estimate`}
+              className="btn btn--ghost btn--sm"
+              style={{ alignSelf: 'flex-start' }}
+            >
               <Printer size={14} aria-hidden /> Printable estimate
             </Link>
           )}
@@ -646,11 +651,19 @@ function PlanItemForm({
         </label>
         <label className="field">
           <span>Fee each</span>
-          <MoneyInput value={unitFee} onChange={(v) => setUnitFee(v ?? 0)} placeholder="0.00" />
+          <MoneyInput
+            value={unitFee}
+            onChange={(v) => setUnitFee(v ?? 0)}
+            placeholder="0.00"
+          />
         </label>
         <label className="field">
           <span>Discount</span>
-          <MoneyInput value={discount} onChange={(v) => setDiscount(v ?? 0)} placeholder="0.00" />
+          <MoneyInput
+            value={discount}
+            onChange={(v) => setDiscount(v ?? 0)}
+            placeholder="0.00"
+          />
         </label>
       </div>
 

@@ -1,37 +1,46 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownToLine, Banknote, Coins, DoorOpen, Lock, PackageOpen, Wallet } from 'lucide-react';
-import { countTotal, formatMoney, type CurrencyCode } from '@dentalcare/shared';
+import { ArrowUpFromLine, Banknote, Lock } from 'lucide-react';
+import { formatMoney, type CurrencyCode } from '@dentalcare/shared';
 import {
-  ApiError,
   drawerApi,
+  humanError,
   newIdempotencyKey,
-  type DenominationCounts,
   type DrawerCurrent,
   type DrawerSession,
   type DrawerSessionRow,
   type FiscalDeclaration,
-  type PinApproval,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { DRAWER_CHANGED_EVENT, announceDrawerChange, useFeatures } from '../lib/features';
-import { EmptyState, Modal, PageHeader, StatusPill } from '../components/ui';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingRows,
+  Modal,
+  PageHeader,
+  PageLoading,
+  StatusPill,
+} from '../components/ui';
 import MoneyInput from '../components/MoneyInput';
-import CountGrid from '../components/drawer/CountGrid';
-import ApprovalFields from '../components/drawer/ApprovalFields';
-import CloseDrawerPanel from '../components/drawer/CloseDrawerPanel';
+import EndDayModal from '../components/drawer/EndDayModal';
 import SessionDetailPanel from '../components/drawer/SessionDetailPanel';
 import { BAND_PILL, SESSION_STATUS, dateOf, timeOf, varianceLabel } from '../components/drawer/drawer-text';
 
 /**
- * The cash drawer: the receptionist's own drawer, what needs a manager, and
- * the shift reports — each shown to whoever holds the permission for it.
+ * The cash drawer: one for the desk. Start the day with the cash in it, take
+ * cash payments into it, end the day by counting it. Managers also see what
+ * needs them and the past days.
  */
 export default function CashDrawerPage() {
   const { can } = useAuth();
   const { enabled, features } = useFeatures();
 
-  if (features !== null && !enabled('cash_drawer')) {
+  // Wait for the clinic's switches: rendering the manager view first would
+  // ask for sessions a switched-off drawer refuses.
+  if (features === null) return <PageLoading label="Loading the cash drawer" />;
+
+  if (!enabled('cash_drawer')) {
     return (
       <div className="page page--narrow">
         <PageHeader title="Cash drawer" />
@@ -39,7 +48,7 @@ export default function CashDrawerPage() {
           framed
           icon={<Lock size={22} />}
           title="The cash drawer is turned off"
-          body="Each receptionist opens a drawer with a float and counts it at the end of the shift."
+          body="Start the day with the cash in the drawer, take cash payments into it, and count it at the end of the day."
           action={
             can('settings:manage') ? (
               <Link to="/settings?tab=features" className="btn btn--primary btn--sm">
@@ -54,24 +63,22 @@ export default function CashDrawerPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Cash drawer" meta="Floats, counts and differences, one person per drawer" />
+      <PageHeader title="Cash drawer" />
       <div className="drawer-page">
-        {can('drawer:operate') && <MyDrawer />}
+        {can('drawer:operate') && <TodayDrawer />}
         {can('drawer:read') && <Oversight />}
       </div>
     </div>
   );
 }
 
-/* ── the signed-in person's drawer ─────────────────────────── */
+/* ── today's drawer, shared by the desk ─────────────────────── */
 
-function MyDrawer() {
-  const { can } = useAuth();
+function TodayDrawer() {
   const [current, setCurrent] = useState<DrawerCurrent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<null | 'open' | 'drop' | 'payout' | 'float' | 'no_sale' | 'close'>(null);
-  const [chosenDrawer, setChosenDrawer] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<null | 'cash_out' | 'end'>(null);
 
   const load = useCallback(() => {
     drawerApi
@@ -80,7 +87,7 @@ function MyDrawer() {
         setCurrent(c);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e, 'The drawer could not be loaded.')));
   }, []);
 
   useEffect(() => {
@@ -89,157 +96,113 @@ function MyDrawer() {
     return () => window.removeEventListener(DRAWER_CHANGED_EVENT, load);
   }, [load]);
 
-  const session = current?.session ?? null;
-
-  const afterChange = (s?: DrawerSession & { fiscalDeclaration?: FiscalDeclaration }) => {
+  const afterChange = (s?: { fiscalDeclaration?: FiscalDeclaration }) => {
     setDialog(null);
-    if (s?.fiscalDeclaration) setNotice(declarationNotice(s.fiscalDeclaration));
+    setNotice(s?.fiscalDeclaration ? declarationNotice(s.fiscalDeclaration) : null);
     announceDrawerChange();
     load();
   };
 
-  if (error) return <p className="formerror">{error}</p>;
-  if (!current) return <p className="muted">Loading your drawer…</p>;
+  if (error)
+    return (
+      <section className="card">
+        <ErrorState body={error} onRetry={load} />
+      </section>
+    );
+  if (!current)
+    return (
+      <section className="card">
+        <LoadingRows rows={2} label="Loading the drawer" />
+      </section>
+    );
+
+  const session = current.session;
 
   return (
-    <section className="card" aria-labelledby="my-drawer">
-      <div className="card__head">
-        <div>
-          <h2 id="my-drawer">Your drawer</h2>
-          {session && (
-            <p className="card__sub">
-              {session.drawer.name} · opened {timeOf(session.openedAt)} · {session.cashPayments} cash payment
-              {session.cashPayments === 1 ? '' : 's'}
-            </p>
+    <section className={`card till${session ? ` till--${session.status}` : ' till--closed'}`} aria-labelledby="today-drawer">
+      <h2 id="today-drawer" className="sr-only">
+        Today’s drawer
+      </h2>
+      {notice && (
+        <p className="channel-note till__notice" role="status">
+          {notice}
+        </p>
+      )}
+
+      {!session && <StartDay current={current} onStarted={afterChange} />}
+
+      {session && (
+        <div className="till__open">
+          <div className="till__state">
+            <StatusPill status={SESSION_STATUS[session.status].kind} label={SESSION_STATUS[session.status].label} />
+            <span className="till__since">
+              Started by {session.openedBy.name} at {timeOf(session.openedAt)} ·{' '}
+              {session.cashPayments === 1 ? '1 cash payment' : `${session.cashPayments} cash payments`}
+            </span>
+          </div>
+
+          {/* The one number the drawer is about. A blind count keeps it back
+              from the person counting — that is the point of a blind count. */}
+          <div className="till__figures">
+            {session.currencies.map((c) => (
+              <div className="till__figure" key={c}>
+                <span className="till__label">
+                  <Banknote size={15} aria-hidden />{' '}
+                  {session.currencies.length > 1 ? `Expected ${c}` : 'Expected cash'}
+                </span>
+                {session.expected ? (
+                  <span className="till__amount">{formatMoney(session.expected[c] ?? 0, c)}</span>
+                ) : (
+                  <span className="till__amount till__amount--blind">Revealed after you count</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {session.status === 'open' && (
+            <div className="drawer-actions">
+              <button type="button" className="btn btn--primary" onClick={() => setDialog('end')}>
+                <Lock size={15} aria-hidden /> Close drawer
+              </button>
+              <button type="button" className="btn btn--ghost" onClick={() => setDialog('cash_out')}>
+                <ArrowUpFromLine size={15} aria-hidden /> Take cash out
+              </button>
+            </div>
+          )}
+          {session.status === 'counting' && (
+            <div className="drawer-actions">
+              <button type="button" className="btn btn--primary" onClick={() => setDialog('end')}>
+                Continue closing
+              </button>
+            </div>
+          )}
+          {session.status === 'pending_approval' && (
+            <>
+              <p className="formwarn">
+                The count differs by more than the clinic accepts without a manager. A manager approves it
+                before the next day can start.
+              </p>
+              <div className="drawer-actions">
+                <button type="button" className="btn btn--primary" onClick={() => setDialog('end')}>
+                  Approve with a manager’s PIN
+                </button>
+              </div>
+            </>
           )}
         </div>
-        {session && <StatusPill status={SESSION_STATUS[session.status].kind} label={SESSION_STATUS[session.status].label} />}
-      </div>
-
-      <div className="pad">
-        {notice && (
-          <p className="channel-note" role="status" style={{ marginTop: 0 }}>
-            {notice}
-          </p>
-        )}
-
-        {!session &&
-          (current.drawers.length === 0 ? (
-            <EmptyState
-              icon={<PackageOpen size={22} />}
-              title="No drawers set up yet"
-              body={can('settings:manage') ? 'Add a drawer in Settings → Features.' : 'Ask an administrator to add one.'}
-            />
-          ) : (
-            <ul className="drawer-choices">
-              {current.drawers.map((d) => (
-                <li key={d.id} className="drawer-choice">
-                  <span>
-                    <strong>{d.name}</strong>
-                    <span className="small muted"> · {d.currencies.join(', ')}</span>
-                    {d.heldBy && <span className="small muted"> · held by {d.heldBy}</span>}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
-                    disabled={Boolean(d.heldBy)}
-                    onClick={() => {
-                      setChosenDrawer(d.id);
-                      setDialog('open');
-                    }}
-                  >
-                    <DoorOpen size={15} aria-hidden /> Open
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ))}
-
-        {session && (
-          <>
-            <div className="stats">
-              {session.currencies.map((c) => (
-                <div className="stat" key={c}>
-                  <span className="stat__label">
-                    <Banknote size={14} aria-hidden /> {c} in the drawer
-                  </span>
-                  {session.expected ? (
-                    <span className="stat__value">{formatMoney(session.expected[c] ?? 0, c)}</span>
-                  ) : (
-                    <>
-                      <span className="stat__value stat__value--quiet">Hidden until you count</span>
-                      <span className="stat__sub">Blind count</span>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {session.status === 'open' && (
-              <div className="drawer-actions">
-                <button type="button" className="btn btn--primary" onClick={() => setDialog('close')}>
-                  <Lock size={15} aria-hidden /> Close drawer
-                </button>
-                <button type="button" className="btn btn--ghost" onClick={() => setDialog('drop')}>
-                  <ArrowDownToLine size={15} aria-hidden /> To the safe
-                </button>
-                <button type="button" className="btn btn--ghost" onClick={() => setDialog('payout')}>
-                  <Wallet size={15} aria-hidden /> Pay out
-                </button>
-                <button type="button" className="btn btn--ghost" onClick={() => setDialog('float')}>
-                  <Coins size={15} aria-hidden /> Add cash
-                </button>
-                <button type="button" className="btn btn--ghost" onClick={() => setDialog('no_sale')}>
-                  Opened without a sale
-                </button>
-              </div>
-            )}
-            {session.status === 'counting' && (
-              <div className="drawer-actions">
-                <button type="button" className="btn btn--primary" onClick={() => setDialog('close')}>
-                  Continue closing
-                </button>
-              </div>
-            )}
-            {session.status === 'pending_approval' && (
-              <>
-                <p className="channel-note" style={{ marginTop: 0 }}>
-                  Waiting for a manager to approve the difference. Cash cannot be taken until a new drawer is opened.
-                </p>
-                <div className="drawer-actions">
-                  <button type="button" className="btn btn--primary" onClick={() => setDialog('close')}>
-                    Approve with a manager’s PIN
-                  </button>
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </div>
-
-      {dialog === 'open' && (
-        <OpenDrawerModal
-          current={current}
-          initialDrawerId={chosenDrawer}
-          onClose={() => setDialog(null)}
-          onOpened={afterChange}
-        />
       )}
-      {session && dialog === 'close' && (
-        <CloseDrawerPanel
+
+      {session && dialog === 'end' && (
+        <EndDayModal
           session={session}
           onClose={() => {
             setDialog(null);
             load();
           }}
-          onChanged={() => load()}
         />
       )}
-      {session && (dialog === 'drop' || dialog === 'payout' || dialog === 'float') && (
-        <MovementModal kind={dialog} session={session} onClose={() => setDialog(null)} onDone={afterChange} />
-      )}
-      {session && dialog === 'no_sale' && (
-        <NoSaleModal session={session} onClose={() => setDialog(null)} onDone={afterChange} />
+      {session && dialog === 'cash_out' && (
+        <CashOutModal session={session} onClose={() => setDialog(null)} onDone={afterChange} />
       )}
     </section>
   );
@@ -259,136 +222,93 @@ function declarationNotice(d: FiscalDeclaration): string | null {
   }
 }
 
-function OpenDrawerModal({
+/**
+ * The drawer is closed: start the day with the cash that is in it, filled in
+ * from last night's count. A clinic with no drawer yet gets one here.
+ */
+export function StartDay({
   current,
-  initialDrawerId,
-  onClose,
-  onOpened,
+  onStarted,
+  submitLabel = 'Start drawer',
 }: {
   current: DrawerCurrent;
-  initialDrawerId: string | null;
-  onClose: () => void;
-  onOpened: (s: DrawerSession & { fiscalDeclaration: FiscalDeclaration }) => void;
+  onStarted: (s: DrawerSession & { fiscalDeclaration: FiscalDeclaration }) => void;
+  submitLabel?: string;
 }) {
-  const free = current.drawers.filter((d) => !d.heldBy);
+  // A clinic that still runs several drawers picks one; everyone else never sees this.
   const [drawerId, setDrawerId] = useState(
-    free.find((d) => d.id === initialDrawerId)?.id ?? free[0]?.id ?? '',
+    current.drawers.length > 1 ? (current.drawers.find((d) => !d.heldBy)?.id ?? '') : '',
   );
-  const drawer = current.drawers.find((d) => d.id === drawerId);
-  const [floats, setFloats] = useState<Partial<Record<CurrencyCode, number | null>>>({});
-  const [counting, setCounting] = useState<CurrencyCode | null>(null);
-  const [counts, setCounts] = useState<Partial<Record<CurrencyCode, DenominationCounts>>>({});
+  const [amount, setAmount] = useState<number | null>(current.suggestedFloat);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const key = useMemo(newIdempotencyKey, []);
+  const currency: CurrencyCode = current.currency;
 
-  const amountOf = (c: CurrencyCode) =>
-    counts[c] ? (countTotal(c, counts[c]!) ?? 0) : (floats[c] ?? drawer?.defaultFloat[c] ?? 0);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!drawer) return;
+  // Not a form: it also appears inside the payment form, and forms cannot nest.
+  async function submit() {
     setBusy(true);
     setError(null);
     try {
       const s = await drawerApi.open(
-        {
-          drawerId: drawer.id,
-          floats: drawer.currencies.map((c) => ({
-            currency: c,
-            amount: amountOf(c),
-            ...(counts[c] ? { denominations: counts[c] } : {}),
-          })),
-        },
+        { ...(drawerId ? { drawerId } : {}), floats: [{ currency, amount: amount ?? 0 }] },
         key,
       );
-      onOpened(s);
+      onStarted(s);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not open the drawer.');
+      setError(humanError(err, 'The drawer could not be started.'));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal title="Open a drawer" subtitle="Check the float before taking any cash" onClose={onClose} wide>
-      <form className="modal__body" onSubmit={submit}>
-        {free.length > 1 && (
+    <div className="startday">
+      <div className="startday__body">
+        <p className="startday__title">Drawer closed</p>
+        <p className="muted small">Count the cash in it now. Cash payments go in once it is started.</p>
+        {current.drawers.length > 1 && (
           <label className="field">
             <span>Drawer</span>
-            <select value={drawerId} onChange={(e) => setDrawerId(e.target.value)}>
-              {free.map((d) => (
-                <option key={d.id} value={d.id}>
+            <select value={drawerId} onChange={(e) => setDrawerId(e.target.value)} required>
+              {current.drawers.map((d) => (
+                <option key={d.id} value={d.id} disabled={Boolean(d.heldBy)}>
                   {d.name}
+                  {d.heldBy ? ` (open, ${d.heldBy})` : ''}
                 </option>
               ))}
             </select>
           </label>
         )}
-        {drawer?.currencies.map((c) => (
-          <div key={c} className="float-row">
-            <label className="field">
-              <span>Float in {c}</span>
-              {counts[c] ? (
-                <input value={formatMoney(amountOf(c), c)} readOnly aria-readonly />
-              ) : (
-                <MoneyInput value={amountOf(c)} onChange={(v) => setFloats((f) => ({ ...f, [c]: v }))} />
-              )}
-            </label>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              aria-expanded={counting === c}
-              onClick={() => {
-                setCounting(counting === c ? null : c);
-                setCounts((all) => ({ ...all, [c]: all[c] ?? {} }));
-              }}
-            >
-              {counting === c ? 'Done counting' : 'Count notes'}
-            </button>
-            {counting === c && (
-              <CountGrid currency={c} value={counts[c] ?? {}} onChange={(next) => setCounts((all) => ({ ...all, [c]: next }))} />
-            )}
-          </div>
-        ))}
+        <label className="startday__amount">
+          <span className="till__label">Opening cash · {currency}</span>
+          <MoneyInput value={amount} onChange={setAmount} placeholder="0" aria-label="Opening cash" />
+        </label>
         {error && <p className="formerror">{error}</p>}
-        <div className="modal__foot">
-          <div className="modal__foot-right">
-            <button type="button" className="btn btn--ghost" onClick={onClose}>
-              Cancel
-            </button>
-            <button className="btn btn--primary" disabled={busy || !drawer}>
-              {busy ? 'Opening…' : 'Open drawer'}
-            </button>
-          </div>
-        </div>
-      </form>
-    </Modal>
+        <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>
+          {busy ? 'Starting…' : `${submitLabel} with ${formatMoney(amount ?? 0, currency)}`}
+        </button>
+      </div>
+    </div>
   );
 }
 
-function MovementModal({
-  kind,
+/** Cash leaving the drawer — to the safe, the bank, a courier — always with what it was for. */
+function CashOutModal({
   session,
   onClose,
   onDone,
 }: {
-  kind: 'drop' | 'payout' | 'float';
   session: DrawerSession;
   onClose: () => void;
   onDone: (s: DrawerSession & { fiscalDeclaration?: FiscalDeclaration }) => void;
 }) {
-  const { can } = useAuth();
   const [currency, setCurrency] = useState<CurrencyCode>(session.currencies[0]!);
   const [amount, setAmount] = useState<number | null>(null);
   const [reason, setReason] = useState('');
-  const [approval, setApproval] = useState<PinApproval | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const key = useMemo(newIdempotencyKey, []);
-  const needsApproval = kind !== 'drop' && !can('drawer:approve');
-
-  const title = kind === 'drop' ? 'Move cash to the safe' : kind === 'payout' ? 'Pay out cash' : 'Add cash from the safe';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -396,25 +316,16 @@ function MovementModal({
     setBusy(true);
     setError(null);
     try {
-      const s =
-        kind === 'drop'
-          ? await drawerApi.drop(session.id, { currency, amount, reason: reason.trim() || undefined }, key)
-          : await drawerApi.approvedMovement(
-              kind,
-              session.id,
-              { currency, amount, reason, approval: approval ?? undefined },
-              key,
-            );
-      onDone(s);
+      onDone(await drawerApi.drop(session.id, { currency, amount, reason: reason.trim() }, key));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not record that.');
+      setError(humanError(err, 'That could not be recorded.'));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title="Take cash out" subtitle="Recorded against today’s drawer" onClose={onClose}>
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           {session.currencies.length > 1 && (
@@ -429,68 +340,19 @@ function MovementModal({
           )}
           <label className="field">
             <span>Amount</span>
-            <MoneyInput value={amount} onChange={setAmount} required />
+            <MoneyInput value={amount} onChange={setAmount} required autoFocus />
           </label>
         </div>
         <label className="field">
-          <span>{kind === 'drop' ? 'Note (optional)' : 'What it is for'}</span>
+          <span>What it is for</span>
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            minLength={kind === 'drop' ? undefined : 3}
+            minLength={3}
             maxLength={300}
-            required={kind !== 'drop'}
-            placeholder={kind === 'payout' ? 'e.g. courier for the lab' : undefined}
+            required
+            placeholder="e.g. to the safe, courier for the lab"
           />
-        </label>
-        {needsApproval && <ApprovalFields value={approval} onChange={setApproval} />}
-        {error && <p className="formerror">{error}</p>}
-        <div className="modal__foot">
-          <div className="modal__foot-right">
-            <button type="button" className="btn btn--ghost" onClick={onClose}>
-              Cancel
-            </button>
-            <button className="btn btn--primary" disabled={busy || (needsApproval && !approval)}>
-              {busy ? 'Saving…' : amount ? `${title.split(' ')[0]} ${formatMoney(amount, currency)}` : title}
-            </button>
-          </div>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function NoSaleModal({
-  session,
-  onClose,
-  onDone,
-}: {
-  session: DrawerSession;
-  onClose: () => void;
-  onDone: (s: DrawerSession) => void;
-}) {
-  const [reason, setReason] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      onDone(await drawerApi.noSale(session.id, reason));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not record that.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal title="Opened without a sale" subtitle="Recorded against your drawer with the reason" onClose={onClose}>
-      <form className="modal__body" onSubmit={submit}>
-        <label className="field">
-          <span>Why the drawer was opened</span>
-          <input value={reason} onChange={(e) => setReason(e.target.value)} minLength={3} maxLength={300} required />
         </label>
         {error && <p className="formerror">{error}</p>}
         <div className="modal__foot">
@@ -499,7 +361,7 @@ function NoSaleModal({
               Cancel
             </button>
             <button className="btn btn--primary" disabled={busy}>
-              Record
+              {busy ? 'Saving…' : amount ? `Take out ${formatMoney(amount, currency)}` : 'Take cash out'}
             </button>
           </div>
         </div>
@@ -508,7 +370,7 @@ function NoSaleModal({
   );
 }
 
-/* ── oversight: what needs a manager, and the shift reports ───── */
+/* ── oversight: what needs a manager, and the past days ───── */
 
 function isoDaysAgo(days: number): string {
   const d = new Date();
@@ -516,11 +378,23 @@ function isoDaysAgo(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** A past day's flags in words, or '' when it has none. */
+function flagsOf(r: DrawerSessionRow): string {
+  return [
+    r.recounted && 'Recounted',
+    r.selfApproved && 'Self-approved',
+    r.voidedAfterClose && 'Void after close',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function Oversight() {
   const [from, setFrom] = useState(isoDaysAgo(7));
   const [to, setTo] = useState(isoDaysAgo(0));
   const [varianceOnly, setVarianceOnly] = useState(false);
   const [rows, setRows] = useState<DrawerSessionRow[] | null>(null);
+  const showFlags = (rows ?? []).some((r) => flagsOf(r) !== '');
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -528,7 +402,7 @@ function Oversight() {
     drawerApi
       .sessions({ from, to, varianceOnly })
       .then(setRows)
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e, 'Past days could not be loaded.')));
   }, [from, to, varianceOnly]);
 
   useEffect(load, [load]);
@@ -566,9 +440,9 @@ function Oversight() {
 
       <section className="card" aria-labelledby="drawer-reports">
         <div className="card__head">
-          <h2 id="drawer-reports">Shift reports</h2>
+          <h2 id="drawer-reports">Past days</h2>
         </div>
-        <div className="toolbar toolbar--filters pad">
+        <div className="toolbar toolbar--filters pad drawerrange">
           <label className="field">
             <span>From</span>
             <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
@@ -584,7 +458,7 @@ function Oversight() {
         </div>
         {error && <p className="formerror pad">{error}</p>}
         {rows === null ? (
-          <p className="muted pad">Loading…</p>
+          <LoadingRows rows={3} label="Loading past days" />
         ) : rows.length === 0 ? (
           <div className="pad">
             <EmptyState icon={<Banknote size={22} />} title="No drawer sessions in these dates" />
@@ -594,12 +468,13 @@ function Oversight() {
             <table className="table">
               <thead>
                 <tr>
+                  {/* Flags only earn a column on the days that have one. */}
                   <th>Day</th>
-                  <th>Drawer</th>
-                  <th>Held by</th>
-                  <th>Status</th>
+                  <th className="hide-sm hide-md">Drawer</th>
+                  <th className="hide-sm">Started by</th>
+                  <th className="hide-sm">Status</th>
                   <th>Result</th>
-                  <th>Flags</th>
+                  {showFlags && <th className="hide-sm">Flags</th>}
                 </tr>
               </thead>
               <tbody>
@@ -609,26 +484,41 @@ function Oversight() {
                       <button type="button" className="table__link linkbtn" onClick={() => setOpenId(r.id)}>
                         {dateOf(r.businessDate)}
                       </button>
+                      {/* On a phone: who ran the drawer, under the day. */}
+                      <span className="cell-sub only-sm">{r.openedBy.name}</span>
                     </td>
-                    <td>{r.drawer.name}</td>
-                    <td>{r.openedBy.name}</td>
-                    <td>
+                    <td className="hide-sm hide-md">{r.drawer.name}</td>
+                    <td className="hide-sm">{r.openedBy.name}</td>
+                    <td className="hide-sm">
                       <StatusPill status={SESSION_STATUS[r.status].kind} label={SESSION_STATUS[r.status].label} />
                     </td>
                     <td>
-                      {r.reviews.length === 0
-                        ? '—'
-                        : r.reviews.map((v) => (
-                            <span key={v.currency} className="result-chip">
-                              <StatusPill status={BAND_PILL[v.band].kind} label={varianceLabel(v.variance, v.currency)} />
-                            </span>
-                          ))}
+                      {r.reviews.length === 0 ? (
+                        <>
+                          <span className="hide-sm">—</span>
+                          {/* A day not yet counted says where it is instead. */}
+                          <span className="only-sm">
+                            <StatusPill
+                              status={SESSION_STATUS[r.status].kind}
+                              label={SESSION_STATUS[r.status].label}
+                            />
+                          </span>
+                        </>
+                      ) : (
+                        r.reviews.map((v) => (
+                          <span key={v.currency} className="result-chip">
+                            <StatusPill status={BAND_PILL[v.band].kind} label={varianceLabel(v.variance, v.currency)} />
+                          </span>
+                        ))
+                      )}
+                      {/* On a phone a day's flags ride under its result. */}
+                      {flagsOf(r) && (
+                        <span className="cell-sub only-sm">{flagsOf(r)}</span>
+                      )}
                     </td>
-                    <td className="small muted">
-                      {[r.recounted && 'Recounted', r.selfApproved && 'Self-approved', r.voidedAfterClose && 'Void after close']
-                        .filter(Boolean)
-                        .join(' · ') || '—'}
-                    </td>
+                    {showFlags && (
+                      <td className="small muted hide-sm">{flagsOf(r) || '—'}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>

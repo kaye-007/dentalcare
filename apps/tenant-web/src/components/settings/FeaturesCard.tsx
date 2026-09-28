@@ -3,7 +3,7 @@ import { FEATURE_GROUPS, type FeatureGroup } from '@dentalcare/shared';
 import { ApiError, featuresApi, type ClinicFeature } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useFeatures } from '../../lib/features';
-import { StatusPill } from '../ui';
+import { StatusPill, LoadingRows } from '../ui';
 
 const GROUP_LABEL: Record<FeatureGroup, string> = {
   front_desk: 'Front desk',
@@ -13,7 +13,10 @@ const GROUP_LABEL: Record<FeatureGroup, string> = {
   finance: 'Finance',
 };
 
-function stateOf(f: ClinicFeature): { kind: 'ok' | 'info' | 'warn' | 'danger' | 'neutral'; label: string } {
+function stateOf(f: ClinicFeature): {
+  kind: 'ok' | 'info' | 'warn' | 'danger' | 'neutral';
+  label: string;
+} {
   if (f.alwaysOn) return { kind: 'ok', label: 'Always on' };
   switch (f.state) {
     case 'enabled':
@@ -38,7 +41,7 @@ export default function FeaturesCard() {
   const [error, setError] = useState<string | null>(null);
   const mayChange = can('settings:manage');
 
-  if (!features) return <p className="muted">Loading…</p>;
+  if (!features) return <LoadingRows rows={3} label="Loading" />;
 
   async function toggle(f: ClinicFeature, on: boolean) {
     setBusyKey(f.key);
@@ -57,7 +60,9 @@ export default function FeaturesCard() {
       <div className="card__head">
         <div>
           <h2>Features</h2>
-          <p className="card__sub">Modules this clinic can use. Turning one off keeps everything it recorded.</p>
+          <p className="card__sub">
+            Modules this clinic can use. Turning one off keeps everything it recorded.
+          </p>
         </div>
       </div>
       {error && <p className="formerror pad">{error}</p>}
@@ -82,12 +87,14 @@ export default function FeaturesCard() {
                       <span className="small muted">{f.description}</span>
                       {f.entitledBy === 'override' && f.overrideExpiresAt && (
                         <span className="small">
-                          Trial access until {new Date(f.overrideExpiresAt).toLocaleDateString('en-GB')}
+                          Trial access until{' '}
+                          {new Date(f.overrideExpiresAt).toLocaleDateString('en-GB')}
                         </span>
                       )}
                       {f.changedBy && f.changedAt && !f.alwaysOn && (
                         <span className="small muted">
-                          Changed by {f.changedBy}, {new Date(f.changedAt).toLocaleDateString('en-GB')}
+                          Changed by {f.changedBy},{' '}
+                          {new Date(f.changedAt).toLocaleDateString('en-GB')}
                         </span>
                       )}
                     </div>

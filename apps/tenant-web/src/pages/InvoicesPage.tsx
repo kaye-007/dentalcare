@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Search, ReceiptText, Trash2 } from 'lucide-react';
+import { Plus, Search, ReceiptText, Trash2, Stethoscope } from 'lucide-react';
 import ServicePicker from '../components/ServicePicker';
 import {
   financeApi,
@@ -10,13 +10,26 @@ import {
   type LineItemPayload,
   type Treatment,
 } from '../lib/api';
-import { PageHeader, StatusPill, EmptyState, Modal, Avatar } from '../components/ui';
+import {
+  PageHeader,
+  StatusPill,
+  EmptyState,
+  Modal,
+  Avatar,
+  LoadingRows,
+  Disclosure,
+} from '../components/ui';
 import PatientPicker from '../components/PatientPicker';
 import { useAuth } from '../lib/auth';
 import { currencySymbol, formatMoney, toDate } from '../lib/format';
 import MoneyInput from '../components/MoneyInput';
 import { dateLocale, t, type StringKey } from '../lib/strings';
-import { VAT_CATEGORIES, vatCategoryLabel, vatRateFor, type VatCategory } from '@dentalcare/shared';
+import {
+  VAT_CATEGORIES,
+  vatCategoryLabel,
+  vatRateFor,
+  type VatCategory,
+} from '@dentalcare/shared';
 import { useClinicVatRate } from '../lib/vat';
 
 const TABS: { key: string; label: StringKey }[] = [
@@ -36,23 +49,29 @@ function fmtDate(s: string) {
 
 export default function InvoicesPage() {
   const navigate = useNavigate();
-  const { readOnly } = useAuth();
+  const { readOnly, can } = useAuth();
   const [status, setStatus] = useState<string>('all');
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [items, setItems] = useState<InvoiceSummaryRow[] | null>(null);
   const [creating, setCreating] = useState(false);
+  // A bill started from a visit ("Bill" on the dashboard) arrives with its patient.
+  const [forPatient, setForPatient] = useState<{ id: string; name: string } | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // "New invoice" from the topbar menu lands here with ?new=1. Open the form
   // once, then drop the flag so a reload does not open it again.
   useEffect(() => {
     if (searchParams.get('new') !== '1') return;
+    const pid = searchParams.get('patient');
+    setForPatient(pid ? { id: pid, name: searchParams.get('name') ?? '' } : null);
     setCreating(true);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete('new');
+        next.delete('patient');
+        next.delete('name');
         return next;
       },
       { replace: true },
@@ -73,18 +92,26 @@ export default function InvoicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, debouncedQ]);
 
-  const outstanding = (items ?? [])
-    .filter((i) => i.status === 'unpaid' || i.status === 'partially_paid')
-    .reduce((s, i) => s + i.balance, 0);
+  // The clinic's outstanding, from the server — not the sum of the rows that
+  // happen to be loaded, which read as the whole clinic's figure but were not.
+  const [outstanding, setOutstanding] = useState<number | null>(null);
+  useEffect(() => {
+    financeApi
+      .summary('month')
+      .then((s) => setOutstanding(s.outstanding))
+      .catch(() => setOutstanding(null));
+  }, []);
 
   return (
     <div className="page">
       <PageHeader
         title="Invoices"
         meta={
-          items
-            ? `${items.length} in view · ${formatMoney(outstanding)} outstanding`
-            : '…'
+          outstanding === null
+            ? undefined
+            : outstanding > 0
+              ? `${formatMoney(outstanding)} outstanding across the clinic`
+              : 'Nothing outstanding'
         }
         actions={
           <button className="btn btn--primary" onClick={() => setCreating(true)}>
@@ -120,7 +147,7 @@ export default function InvoicesPage() {
           </label>
         </div>
         {items === null ? (
-          <div className="pad muted">Loading…</div>
+          <LoadingRows rows={3} label="Loading" />
         ) : items.length === 0 ? (
           <EmptyState
             icon={<ReceiptText size={22} />}
@@ -135,16 +162,16 @@ export default function InvoicesPage() {
             }
           />
         ) : (
-          <table className="table">
+          <table className="table table--money">
             <thead>
               <tr>
                 <th>{t('invoice.col.invoice')}</th>
                 <th>{t('invoice.col.patient')}</th>
-                <th>{t('invoice.col.date')}</th>
-                <th>{t('invoice.col.total')}</th>
-                <th>{t('invoice.col.paid')}</th>
+                <th className="hide-sm hide-md">{t('invoice.col.date')}</th>
+                <th className="hide-sm">{t('invoice.col.total')}</th>
+                <th className="hide-sm hide-md">{t('invoice.col.paid')}</th>
                 <th>{t('invoice.col.balance')}</th>
-                <th>{t('invoice.col.status')}</th>
+                <th className="hide-sm">{t('invoice.col.status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -163,13 +190,26 @@ export default function InvoicesPage() {
                       <span>{i.patientName}</span>
                     </div>
                   </td>
-                  <td className="muted">{fmtDate(i.issuedAt)}</td>
-                  <td>{formatMoney(i.total)}</td>
-                  <td className="muted">{formatMoney(i.paid)}</td>
-                  <td style={{ fontWeight: i.balance > 0 ? 600 : 400 }}>
-                    {formatMoney(i.balance)}
-                  </td>
+                  <td className="muted hide-sm hide-md">{fmtDate(i.issuedAt)}</td>
+                  <td className="hide-sm">{formatMoney(i.total)}</td>
+                  <td className="muted hide-sm hide-md">{formatMoney(i.paid)}</td>
                   <td>
+                    {i.balance > 0 ? (
+                      <strong className="owes">{formatMoney(i.balance)}</strong>
+                    ) : (
+                      <span className="muted" aria-label="Nothing owed">
+                        —
+                      </span>
+                    )}
+                    {/* On a phone the status rides under the balance. */}
+                    <span className="only-sm">
+                      <StatusPill
+                        status={i.status}
+                        label={i.status === 'partially_paid' ? 'Partial' : undefined}
+                      />
+                    </span>
+                  </td>
+                  <td className="hide-sm">
                     <StatusPill
                       status={i.status}
                       label={i.status === 'partially_paid' ? 'Partial' : undefined}
@@ -184,10 +224,12 @@ export default function InvoicesPage() {
 
       {creating && (
         <NewInvoiceModal
+          initialPatient={forPatient}
           onClose={() => setCreating(false)}
           onCreated={async (id) => {
             setCreating(false);
-            navigate(`/invoices/${id}`);
+            // Straight on to taking the money: one flow, not two screens.
+            navigate(can('payments:write') ? `/invoices/${id}?pay=1` : `/invoices/${id}`);
           }}
         />
       )}
@@ -198,6 +240,8 @@ export default function InvoicesPage() {
 interface DraftItem extends LineItemPayload {
   key: number;
   vatCategory: VatCategory;
+  /** For a line from the chart: tooth, date and dentist, shown under it. */
+  chartNote?: string;
 }
 
 /** The server's arithmetic (billing-engine calculateInvoiceLine), for the preview only. */
@@ -207,19 +251,63 @@ function lineTax(it: DraftItem, clinicRateBp: number): number {
 }
 
 function NewInvoiceModal({
+  initialPatient,
   onClose,
   onCreated,
 }: {
+  initialPatient?: { id: string; name: string } | null;
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
-  const [patientId, setPatientId] = useState('');
-  const [patientName, setPatientName] = useState('');
+  const [patientId, setPatientId] = useState(initialPatient?.id ?? '');
+  const [patientName, setPatientName] = useState(initialPatient?.name ?? '');
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [items, setItems] = useState<DraftItem[]>([]);
   const vatRate = useClinicVatRate() ?? 0;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // How many lines came from the chart, for the note above them.
+  const [fromChart, setFromChart] = useState(0);
+  // Read when the chart's answer arrives: were lines added in the meantime?
+  const itemCount = useRef(0);
+  itemCount.current = items.length;
+
+  // What the dentist charted and nobody has billed yet becomes the invoice.
+  // Only onto an empty invoice: lines someone already added are theirs.
+  useEffect(() => {
+    setFromChart(0);
+    if (!patientId) return;
+    let live = true;
+    financeApi
+      .unbilled(patientId)
+      .then((rows) => {
+        if (!live || rows.length === 0 || itemCount.current > 0) return;
+        setFromChart(rows.length);
+        setItems(
+          rows.map((r, i) => ({
+            key: Date.now() + i,
+            treatmentId: r.treatmentId ?? undefined,
+            procedureId: r.procedureId,
+            description: r.description,
+            quantity: 1,
+            unitPrice: r.fee,
+            vatCategory: r.vatCategory,
+            chartNote: [
+              r.tooth ? `Tooth ${r.tooth}` : null,
+              fmtDate(r.performedOn),
+              r.clinicianName,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          })),
+        );
+      })
+      // Advisory: without it, the services are picked by hand as before.
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [patientId]);
 
   useEffect(() => {
     treatmentsApi
@@ -242,7 +330,10 @@ function NewInvoiceModal({
    */
   const addService = (t: Treatment) =>
     setItems((arr) => {
-      const at = arr.findIndex((it) => it.treatmentId === t.id && it.unitPrice === t.price);
+      // A charted line is one procedure; a second one is a new line.
+      const at = arr.findIndex(
+        (it) => !it.procedureId && it.treatmentId === t.id && it.unitPrice === t.price,
+      );
       if (at >= 0) {
         return arr.map((it, i) => (i === at ? { ...it, quantity: it.quantity + 1 } : it));
       }
@@ -262,8 +353,18 @@ function NewInvoiceModal({
   const addCustom = () =>
     setItems((arr) => [
       ...arr,
-      { key: Date.now() + arr.length, description: '', quantity: 1, unitPrice: 0, vatCategory: 'medical' },
+      {
+        key: Date.now() + arr.length,
+        description: '',
+        quantity: 1,
+        unitPrice: 0,
+        vatCategory: 'medical',
+      },
     ]);
+
+  const servicePicker = (
+    <ServicePicker treatments={treatments} onAdd={addService} onAddCustom={addCustom} />
+  );
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -284,7 +385,7 @@ function NewInvoiceModal({
     try {
       const created = await financeApi.createInvoice({
         patientId,
-        items: items.map(({ key: _k, ...rest }) => ({
+        items: items.map(({ key: _k, chartNote: _n, ...rest }) => ({
           ...rest,
           description: rest.description.trim(),
         })),
@@ -301,7 +402,11 @@ function NewInvoiceModal({
     <Modal
       wide
       title="New invoice"
-      subtitle="Choose what was done from the clinic's services, or add a custom line."
+      subtitle={
+        fromChart > 0
+          ? 'What the dentist charted is already on it.'
+          : "Choose what was done from the clinic's services, or add a custom line."
+      }
       onClose={onClose}
     >
       <form className="modal__body" onSubmit={submit}>
@@ -314,14 +419,29 @@ function NewInvoiceModal({
           onClear={() => {
             setPatientId('');
             setPatientName('');
+            // Chart lines belong to the patient they came from.
+            setItems((arr) => arr.filter((it) => !it.procedureId));
           }}
         />
 
-        <ServicePicker treatments={treatments} onAdd={addService} onAddCustom={addCustom} />
+        {/* With the chart's lines already on it, the catalogue is the
+            exception: it folds away under the lines instead of leading. */}
+        {fromChart === 0 && servicePicker}
 
         <div className="lineitems">
           <p className="lineitems__title">On this invoice</p>
-          {items.length === 0 && <p className="muted">Choose the services that were done.</p>}
+          {fromChart > 0 && items.some((it) => it.procedureId) && (
+            <p className="lineitems__from-chart">
+              <Stethoscope size={14} aria-hidden />
+              {fromChart === 1
+                ? 'The treatment charted for this patient is already here.'
+                : `The ${fromChart} treatments charted for this patient are already here.`}{' '}
+              Check the prices, then create the invoice.
+            </p>
+          )}
+          {items.length === 0 && (
+            <p className="muted">Choose the services that were done.</p>
+          )}
           {items.map((it) => (
             <div className="lineitem" key={it.key}>
               <input
@@ -359,24 +479,39 @@ function NewInvoiceModal({
                 <Trash2 size={13} />
               </button>
               <div className="lineitem__vat">
+                {it.chartNote && (
+                  <span className="lineitem__chart">From the chart · {it.chartNote}</span>
+                )}
                 <select
                   value={it.vatCategory}
-                  onChange={(e) => setItem(it.key, { vatCategory: e.target.value as VatCategory })}
+                  onChange={(e) =>
+                    setItem(it.key, { vatCategory: e.target.value as VatCategory })
+                  }
                   aria-label="TVSH category"
                 >
                   {VAT_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{vatCategoryLabel(c, vatRate)}</option>
+                    <option key={c} value={c}>
+                      {vatCategoryLabel(c, vatRate)}
+                    </option>
                   ))}
                 </select>
-                {lineTax(it, vatRate) > 0 && <span>TVSH {formatMoney(lineTax(it, vatRate))}</span>}
+                {lineTax(it, vatRate) > 0 && (
+                  <span>TVSH {formatMoney(lineTax(it, vatRate))}</span>
+                )}
               </div>
             </div>
           ))}
         </div>
 
+        {fromChart > 0 && (
+          <Disclosure summary="Add another service">{servicePicker}</Disclosure>
+        )}
+
         {tax > 0 && (
           <div className="invoice-total invoice-total--sub">
-            <span>Before TVSH {formatMoney(net)} · TVSH {formatMoney(tax)}</span>
+            <span>
+              Before TVSH {formatMoney(net)} · TVSH {formatMoney(tax)}
+            </span>
           </div>
         )}
         <div className="invoice-total">

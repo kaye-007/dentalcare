@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { drawerApi, type PinApproval } from '../../lib/api';
+import { LoadingRows } from '../ui';
 
 /**
  * A manager approving at this desk: who they are, and their own PIN.
@@ -30,16 +31,18 @@ export default function ApprovalFields({
   }, []);
 
   useEffect(() => {
-    onChange(approverId && /^\d{4,8}$/.test(pin) ? { approverUserId: approverId, pin } : null);
+    onChange(
+      approverId && /^\d{4,8}$/.test(pin) ? { approverUserId: approverId, pin } : null,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approverId, pin]);
 
-  if (approvers === null) return <p className="muted">Loading managers…</p>;
+  if (approvers === null) return <LoadingRows rows={3} label="Loading managers" />;
   if (approvers.length === 0) {
     return (
       <p className="channel-note" style={{ margin: 0 }}>
-        No manager has set an approval PIN yet. An administrator can set one in Settings → Features, or
-        approve from their own device.
+        No manager has set an approval PIN yet. An administrator can set one in Settings →
+        Features, or approve from their own device.
       </p>
     );
   }
@@ -48,7 +51,11 @@ export default function ApprovalFields({
     <div className="grid2">
       <label className="field">
         <span>Approving manager</span>
-        <select value={approverId} onChange={(e) => setApproverId(e.target.value)} required>
+        <select
+          value={approverId}
+          onChange={(e) => setApproverId(e.target.value)}
+          required
+        >
           <option value="" disabled>
             Choose…
           </option>

@@ -7,9 +7,10 @@ import {
   type Condition,
   type Medication,
   type MedicalHistory,
+  humanError,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { EmptyState, StatusPill } from './ui';
+import { StatusPill, LoadingRows } from './ui';
 import { WithdrawModal } from './VoidModal';
 
 /**
@@ -44,7 +45,9 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
 
   const [data, setData] = useState<MedicalHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState<'allergy' | 'condition' | 'medication' | null>(null);
+  const [adding, setAdding] = useState<'allergy' | 'condition' | 'medication' | null>(
+    null,
+  );
 
   const load = useCallback(() => {
     historyApi
@@ -53,7 +56,7 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
         setData(d);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
   }, [patientId]);
 
   useEffect(load, [load]);
@@ -68,7 +71,7 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
   if (!data) {
     return (
       <section className="card card--record">
-        <p className="muted">Loading medical history…</p>
+        <LoadingRows rows={3} label="Loading medical history" />
       </section>
     );
   }
@@ -90,9 +93,7 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
         <div className="alertbanner" role="alert">
           <AlertTriangle size={20} aria-hidden />
           <div>
-            <strong>
-              Severe allergy — {severe.map((a) => a.substance).join(', ')}
-            </strong>
+            <strong>Severe allergy — {severe.map((a) => a.substance).join(', ')}</strong>
             {severe.some((a) => a.reaction) && (
               <p>
                 {severe
@@ -105,124 +106,147 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
         </div>
       )}
 
-      {/* ── allergies ── */}
-      <section className="card card--record">
+      {/* One card, three short sections: an empty history is three quiet
+          lines, not three boxes each announcing that nothing is there. */}
+      <section className="card card--record medhistory" aria-labelledby="medhistory-head">
         <header className="card__head">
-          <h3><AlertTriangle size={16} aria-hidden /> Allergies</h3>
-          {canEdit && adding !== 'allergy' && (
-            <button className="btn btn--ghost btn--sm" onClick={() => setAdding('allergy')}>
-              <Plus size={14} aria-hidden /> Add
-            </button>
-          )}
+          <h3 id="medhistory-head">Medical history</h3>
         </header>
 
-        {adding === 'allergy' && (
-          <AllergyForm
-            patientId={patientId}
-            onDone={() => { setAdding(null); load(); }}
-            onCancel={() => setAdding(null)}
-          />
-        )}
+        {/* ── allergies ── */}
+        <div className="medsec">
+          <header className="medsec__head">
+            <h4>
+              <AlertTriangle size={15} aria-hidden /> Allergies
+            </h4>
+            {canEdit && adding !== 'allergy' && (
+              <button
+                className="btn btn--quiet btn--sm"
+                onClick={() => setAdding('allergy')}
+                aria-label="Add an allergy"
+              >
+                <Plus size={14} aria-hidden /> Add
+              </button>
+            )}
+          </header>
 
-        {sortedAllergies.length === 0 && adding !== 'allergy' ? (
-          <EmptyState
-            icon={<AlertTriangle size={20} />}
-            title="No known allergies"
-            body="Nothing recorded yet."
-          />
-        ) : (
-          <ul className="recordlist">
-            {sortedAllergies.map((a) => (
-              <AllergyRow
-                key={a.id}
-                allergy={a}
-                patientId={patientId}
-                canEdit={canEdit}
-                onChange={load}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* ── conditions ── */}
-      <section className="card card--record">
-        <header className="card__head">
-          <h3><Activity size={16} aria-hidden /> Medical conditions</h3>
-          {canEdit && adding !== 'condition' && (
-            <button className="btn btn--ghost btn--sm" onClick={() => setAdding('condition')}>
-              <Plus size={14} aria-hidden /> Add
-            </button>
+          {adding === 'allergy' && (
+            <AllergyForm
+              patientId={patientId}
+              onDone={() => {
+                setAdding(null);
+                load();
+              }}
+              onCancel={() => setAdding(null)}
+            />
           )}
-        </header>
 
-        {adding === 'condition' && (
-          <ConditionForm
-            patientId={patientId}
-            onDone={() => { setAdding(null); load(); }}
-            onCancel={() => setAdding(null)}
-          />
-        )}
-
-        {data.conditions.length === 0 && adding !== 'condition' ? (
-          <EmptyState
-            icon={<Activity size={20} />}
-            title="No conditions recorded"
-            body="Nothing recorded yet."
-          />
-        ) : (
-          <ul className="recordlist">
-            {[...activeConditions, ...resolvedConditions].map((c) => (
-              <ConditionRow
-                key={c.id}
-                condition={c}
-                patientId={patientId}
-                canEdit={canEdit}
-                onChange={load}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* ── medications ── */}
-      <section className="card card--record">
-        <header className="card__head">
-          <h3><Pill size={16} aria-hidden /> Medications</h3>
-          {canEdit && adding !== 'medication' && (
-            <button className="btn btn--ghost btn--sm" onClick={() => setAdding('medication')}>
-              <Plus size={14} aria-hidden /> Add
-            </button>
+          {sortedAllergies.length === 0 && adding !== 'allergy' ? (
+            <p className="medsec__none">No known allergies</p>
+          ) : (
+            <ul className="recordlist">
+              {sortedAllergies.map((a) => (
+                <AllergyRow
+                  key={a.id}
+                  allergy={a}
+                  patientId={patientId}
+                  canEdit={canEdit}
+                  onChange={load}
+                />
+              ))}
+            </ul>
           )}
-        </header>
+        </div>
 
-        {adding === 'medication' && (
-          <MedicationForm
-            patientId={patientId}
-            onDone={() => { setAdding(null); load(); }}
-            onCancel={() => setAdding(null)}
-          />
-        )}
+        {/* ── conditions ── */}
+        <div className="medsec">
+          <header className="medsec__head">
+            <h4>
+              <Activity size={15} aria-hidden /> Conditions
+            </h4>
+            {canEdit && adding !== 'condition' && (
+              <button
+                className="btn btn--quiet btn--sm"
+                onClick={() => setAdding('condition')}
+                aria-label="Add a condition"
+              >
+                <Plus size={14} aria-hidden /> Add
+              </button>
+            )}
+          </header>
 
-        {data.medications.length === 0 && adding !== 'medication' ? (
-          <EmptyState
-            icon={<Pill size={20} />}
-            title="No medications recorded"
-            body="Nothing recorded yet."
-          />
-        ) : (
-          <ul className="recordlist">
-            {[...current, ...past].map((m) => (
-              <MedicationRow
-                key={m.id}
-                medication={m}
-                patientId={patientId}
-                canEdit={canEdit}
-                onChange={load}
-              />
-            ))}
-          </ul>
-        )}
+          {adding === 'condition' && (
+            <ConditionForm
+              patientId={patientId}
+              onDone={() => {
+                setAdding(null);
+                load();
+              }}
+              onCancel={() => setAdding(null)}
+            />
+          )}
+
+          {data.conditions.length === 0 && adding !== 'condition' ? (
+            <p className="medsec__none">None recorded</p>
+          ) : (
+            <ul className="recordlist">
+              {[...activeConditions, ...resolvedConditions].map((c) => (
+                <ConditionRow
+                  key={c.id}
+                  condition={c}
+                  patientId={patientId}
+                  canEdit={canEdit}
+                  onChange={load}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* ── medications ── */}
+        <div className="medsec">
+          <header className="medsec__head">
+            <h4>
+              <Pill size={15} aria-hidden /> Medications
+            </h4>
+            {canEdit && adding !== 'medication' && (
+              <button
+                className="btn btn--quiet btn--sm"
+                onClick={() => setAdding('medication')}
+                aria-label="Add a medication"
+              >
+                <Plus size={14} aria-hidden /> Add
+              </button>
+            )}
+          </header>
+
+          {adding === 'medication' && (
+            <MedicationForm
+              patientId={patientId}
+              onDone={() => {
+                setAdding(null);
+                load();
+              }}
+              onCancel={() => setAdding(null)}
+            />
+          )}
+
+          {data.medications.length === 0 && adding !== 'medication' ? (
+            <p className="medsec__none">None recorded</p>
+          ) : (
+            <ul className="recordlist">
+              {[...current, ...past].map((m) => (
+                <MedicationRow
+                  key={m.id}
+                  medication={m}
+                  patientId={patientId}
+                  canEdit={canEdit}
+                  onChange={load}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
     </>
   );
@@ -231,9 +255,15 @@ export default function MedicalHistoryCard({ patientId }: { patientId: string })
 /* ══════════════════════════ rows ══════════════════════════ */
 
 function AllergyRow({
-  allergy, patientId, canEdit, onChange,
+  allergy,
+  patientId,
+  canEdit,
+  onChange,
 }: {
-  allergy: Allergy; patientId: string; canEdit: boolean; onChange: () => void;
+  allergy: Allergy;
+  patientId: string;
+  canEdit: boolean;
+  onChange: () => void;
 }) {
   const [withdrawing, setWithdrawing] = useState(false);
 
@@ -271,9 +301,15 @@ function AllergyRow({
 }
 
 function ConditionRow({
-  condition, patientId, canEdit, onChange,
+  condition,
+  patientId,
+  canEdit,
+  onChange,
 }: {
-  condition: Condition; patientId: string; canEdit: boolean; onChange: () => void;
+  condition: Condition;
+  patientId: string;
+  canEdit: boolean;
+  onChange: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -285,13 +321,15 @@ function ConditionRow({
       await fn();
       onChange();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(humanError(e));
       setBusy(false);
     }
   };
 
   return (
-    <li className={`recordrow${condition.status === 'resolved' ? ' recordrow--muted' : ''}`}>
+    <li
+      className={`recordrow${condition.status === 'resolved' ? ' recordrow--muted' : ''}`}
+    >
       <div className="recordrow__main">
         <span className="recordrow__title">{condition.name}</span>
         <StatusPill status={condition.status} />
@@ -346,9 +384,15 @@ function ConditionRow({
 }
 
 function MedicationRow({
-  medication, patientId, canEdit, onChange,
+  medication,
+  patientId,
+  canEdit,
+  onChange,
 }: {
-  medication: Medication; patientId: string; canEdit: boolean; onChange: () => void;
+  medication: Medication;
+  patientId: string;
+  canEdit: boolean;
+  onChange: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -360,14 +404,12 @@ function MedicationRow({
       await fn();
       onChange();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(humanError(e));
       setBusy(false);
     }
   };
 
-  const detail = [medication.dosage, medication.frequency]
-    .filter(Boolean)
-    .join(' · ');
+  const detail = [medication.dosage, medication.frequency].filter(Boolean).join(' · ');
 
   return (
     <li className={`recordrow${medication.isCurrent ? '' : ' recordrow--muted'}`}>
@@ -430,9 +472,13 @@ function MedicationRow({
 /* ══════════════════════════ forms ══════════════════════════ */
 
 function AllergyForm({
-  patientId, onDone, onCancel,
+  patientId,
+  onDone,
+  onCancel,
 }: {
-  patientId: string; onDone: () => void; onCancel: () => void;
+  patientId: string;
+  onDone: () => void;
+  onCancel: () => void;
 }) {
   const [substance, setSubstance] = useState('');
   const [severity, setSeverity] = useState<AllergySeverity>('moderate');
@@ -455,7 +501,7 @@ function AllergyForm({
       });
       onDone();
     } catch (e2) {
-      setErr((e2 as Error).message);
+      setErr(humanError(e2));
       setBusy(false);
     }
   };
@@ -463,32 +509,45 @@ function AllergyForm({
   return (
     <form className="inlineform" onSubmit={submit}>
       <div className="grid2">
-        <label className="field"><span>Substance</span>
+        <label className="field">
+          <span>Substance</span>
           <input
             value={substance}
             onChange={(e) => setSubstance(e.target.value)}
             placeholder="Penicillin, latex, local anaesthetic…"
             autoFocus
             required
-          /></label>
-        <label className="field"><span>Severity</span>
-          <select value={severity} onChange={(e) => setSeverity(e.target.value as AllergySeverity)}>
+          />
+        </label>
+        <label className="field">
+          <span>Severity</span>
+          <select
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value as AllergySeverity)}
+          >
             <option value="mild">Mild</option>
             <option value="moderate">Moderate</option>
             <option value="severe">Severe</option>
-          </select></label>
+          </select>
+        </label>
       </div>
-      <label className="field"><span>Reaction</span>
+      <label className="field">
+        <span>Reaction</span>
         <input
           value={reaction}
           onChange={(e) => setReaction(e.target.value)}
           placeholder="Anaphylaxis, rash, swelling…"
-        /></label>
-      <label className="field"><span>Notes</span>
-        <input value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+        />
+      </label>
+      <label className="field">
+        <span>Notes</span>
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
       {err && <p className="formerror">{err}</p>}
       <div className="inlineform__foot">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
         <button className="btn btn--primary btn--sm" disabled={busy}>
           {busy ? 'Saving…' : 'Add allergy'}
         </button>
@@ -498,9 +557,13 @@ function AllergyForm({
 }
 
 function ConditionForm({
-  patientId, onDone, onCancel,
+  patientId,
+  onDone,
+  onCancel,
 }: {
-  patientId: string; onDone: () => void; onCancel: () => void;
+  patientId: string;
+  onDone: () => void;
+  onCancel: () => void;
 }) {
   const [name, setName] = useState('');
   const [diagnosedOn, setDiagnosedOn] = useState('');
@@ -522,7 +585,7 @@ function ConditionForm({
       });
       onDone();
     } catch (e2) {
-      setErr((e2 as Error).message);
+      setErr(humanError(e2));
       setBusy(false);
     }
   };
@@ -530,22 +593,34 @@ function ConditionForm({
   return (
     <form className="inlineform" onSubmit={submit}>
       <div className="grid2">
-        <label className="field"><span>Condition</span>
+        <label className="field">
+          <span>Condition</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Diabetes, hypertension, epilepsy…"
             autoFocus
             required
-          /></label>
-        <label className="field"><span>Diagnosed on</span>
-          <input type="date" value={diagnosedOn} onChange={(e) => setDiagnosedOn(e.target.value)} /></label>
+          />
+        </label>
+        <label className="field">
+          <span>Diagnosed on</span>
+          <input
+            type="date"
+            value={diagnosedOn}
+            onChange={(e) => setDiagnosedOn(e.target.value)}
+          />
+        </label>
       </div>
-      <label className="field"><span>Notes</span>
-        <input value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+      <label className="field">
+        <span>Notes</span>
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
       {err && <p className="formerror">{err}</p>}
       <div className="inlineform__foot">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
         <button className="btn btn--primary btn--sm" disabled={busy}>
           {busy ? 'Saving…' : 'Add condition'}
         </button>
@@ -555,9 +630,13 @@ function ConditionForm({
 }
 
 function MedicationForm({
-  patientId, onDone, onCancel,
+  patientId,
+  onDone,
+  onCancel,
 }: {
-  patientId: string; onDone: () => void; onCancel: () => void;
+  patientId: string;
+  onDone: () => void;
+  onCancel: () => void;
 }) {
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
@@ -580,7 +659,7 @@ function MedicationForm({
       });
       onDone();
     } catch (e2) {
-      setErr((e2 as Error).message);
+      setErr(humanError(e2));
       setBusy(false);
     }
   };
@@ -588,30 +667,48 @@ function MedicationForm({
   return (
     <form className="inlineform" onSubmit={submit}>
       <div className="grid2">
-        <label className="field"><span>Medication</span>
+        <label className="field">
+          <span>Medication</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Warfarin, bisphosphonate…"
             autoFocus
             required
-          /></label>
-        <label className="field"><span>Dosage</span>
-          <input value={dosage} onChange={(e) => setDosage(e.target.value)} placeholder="5 mg" /></label>
+          />
+        </label>
+        <label className="field">
+          <span>Dosage</span>
+          <input
+            value={dosage}
+            onChange={(e) => setDosage(e.target.value)}
+            placeholder="5 mg"
+          />
+        </label>
       </div>
       <div className="grid2">
-        <label className="field"><span>Frequency</span>
+        <label className="field">
+          <span>Frequency</span>
           <input
             value={frequency}
             onChange={(e) => setFrequency(e.target.value)}
             placeholder="Once daily"
-          /></label>
-        <label className="field"><span>Started on</span>
-          <input type="date" value={startedOn} onChange={(e) => setStartedOn(e.target.value)} /></label>
+          />
+        </label>
+        <label className="field">
+          <span>Started on</span>
+          <input
+            type="date"
+            value={startedOn}
+            onChange={(e) => setStartedOn(e.target.value)}
+          />
+        </label>
       </div>
       {err && <p className="formerror">{err}</p>}
       <div className="inlineform__foot">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
         <button className="btn btn--primary btn--sm" disabled={busy}>
           {busy ? 'Saving…' : 'Add medication'}
         </button>

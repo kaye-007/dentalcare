@@ -31,17 +31,17 @@ export const ROLE_LABELS: Record<Role, string> = {
 /** One-line description of each role, shown when assigning one. */
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   admin:
-    'Runs the clinic. Everything the other roles can do, plus salaries, financial reports, pricing, clinic settings, staff accounts and the activity trail.',
+    'Runs the clinic. Everything the other roles can do, plus financial reports, pricing, clinic settings, staff accounts and the activity trail.',
   dentist:
-    'Treats and signs: the chart, procedures, perio exams, treatment plans and documents, and invoices for their own work. Cannot take payments, see salaries or financial reports, or change prices, settings or accounts.',
+    'Treats and signs: the chart, procedures, perio exams, treatment plans and documents, and invoices for their own work. Cannot take payments, see financial reports, or change prices, settings or accounts.',
   hygienist:
     'Treats and signs periodontal exams and cleanings, and keeps the chart and documents. No access to invoices, payments or financial reports.',
   assistant:
     'Charts on a clinician’s behalf and files documents, but cannot sign — a clinician signs what an assistant records. Can book appointments. No access to money.',
   receptionist:
-    'Runs the day: booking, patients, the medical history at intake, invoices, fiscal invoices, payments, expenses and documents. Runs a cash drawer when the clinic uses one. Can read the chart and treatment plans but not change them. Can void a mistaken payment with a reason — never delete one. Cannot see salaries or financial reports, and cannot change prices, settings or accounts.',
+    'Runs the day: booking, patients, the medical history at intake, invoices, fiscal invoices, payments, expenses and documents. Runs a cash drawer when the clinic uses one. Can read the chart and treatment plans but not change them. Can void a mistaken payment with a reason — never delete one. Cannot see financial reports, and cannot change prices, settings or accounts.',
   accountant:
-    'Reads the money: invoices, payments, expenses, cash drawer reports, financial reports and payroll. Changes nothing, and never sees patient records, the chart or documents.',
+    'Reads the money: invoices, payments, expenses, cash drawer reports and financial reports. Changes nothing, and never sees patient records, the chart or documents.',
 };
 
 /**

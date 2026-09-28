@@ -1,6 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
-  Camera, Columns2, Download, FileText, IdCard, Image as ImageIcon, Paperclip, Trash2, Upload,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react';
+import {
+  Camera,
+  Columns2,
+  Download,
+  FileText,
+  IdCard,
+  Image as ImageIcon,
+  Paperclip,
+  Trash2,
+  Upload,
 } from 'lucide-react';
 import {
   documentsApi,
@@ -12,9 +28,10 @@ import {
   type DocumentKind,
   type PatientDocument,
   type PhotoTag,
+  humanError,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { EmptyState, Modal, StatusPill } from './ui';
+import { EmptyState, Modal, StatusPill, LoadingRows, useConfirm } from './ui';
 import CameraCaptureModal from './CameraCaptureModal';
 
 /**
@@ -36,15 +53,20 @@ function formatBytes(n: number): string {
 
 /** What a picked file most likely is, before a person says otherwise. */
 function guessKind(file: File): DocumentKind {
+  // The name says which radiograph before the extension says it is one.
+  if (/cbct|cone.?beam/i.test(file.name)) return 'cbct';
+  if (/pano|opg|ortopan/i.test(file.name)) return 'panoramic';
   if (/\.dcm$/i.test(file.name)) return 'xray';
-  if (/pano|opg|rtg|x-?ray|bitewing|cbct/i.test(file.name)) return 'xray';
+  if (/rtg|x-?ray|bitewing|periapi|rvg/i.test(file.name)) return 'xray';
   if (/^image\//.test(file.type) && !/tiff/.test(file.type)) return 'photo';
   if (/consent|pelqim/i.test(file.name)) return 'consent';
-  if (/passport|pasaport|id[-_ ]?card|karta|leternjoftim|letërnjoftim/i.test(file.name)) return 'id_document';
+  if (/passport|pasaport|id[-_ ]?card|karta|leternjoftim|letërnjoftim/i.test(file.name))
+    return 'id_document';
   return 'other';
 }
 
 export default function DocumentsCard({ patientId }: { patientId: string }) {
+  const confirm = useConfirm();
   const { can, readOnly } = useAuth();
   const canUpload = can('documents:write') && !readOnly;
   const canDelete = can('documents:delete') && !readOnly;
@@ -54,9 +76,14 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
   const [filter, setFilter] = useState<DocumentKind | 'all'>('all');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [pending, setPending] = useState<{ files: File[]; defaults?: UploadDefaults } | null>(null);
+  const [pending, setPending] = useState<{
+    files: File[];
+    defaults?: UploadDefaults;
+  } | null>(null);
   const [camera, setCamera] = useState<'clinical' | 'id' | null>(null);
-  const [preview, setPreview] = useState<{ doc: PatientDocument; url: string } | null>(null);
+  const [preview, setPreview] = useState<{ doc: PatientDocument; url: string } | null>(
+    null,
+  );
   const [comparing, setComparing] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
@@ -73,7 +100,7 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
             .catch(() => setThumbs({}));
         }
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
   }, [patientId]);
 
   useEffect(load, [load]);
@@ -91,7 +118,7 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
       const link = await documentsApi.viewUrl(doc.id);
       setPreview({ doc, url: link.url });
     } catch (err) {
-      setError((err as Error).message);
+      setError(humanError(err));
     }
   };
 
@@ -102,44 +129,60 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
       // The signed URL already carries Content-Disposition: attachment.
       window.open(link.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      setError((err as Error).message);
+      setError(humanError(err));
     }
   };
 
   const remove = async (doc: PatientDocument) => {
-    if (!window.confirm(`Delete "${doc.fileName}"? The deletion is recorded in the activity trail.`)) return;
+    const ok = await confirm({
+      title: `Delete ${doc.fileName}?`,
+      body: 'The deletion is recorded in the activity trail.',
+      confirmLabel: 'Delete document',
+      danger: true,
+    });
+    if (!ok) return;
     setError(null);
     try {
       await documentsApi.remove(doc.id);
       setNotice(`"${doc.fileName}" removed.`);
       load();
     } catch (err) {
-      setError((err as Error).message);
+      setError(humanError(err));
     }
   };
 
-  const change = async (doc: PatientDocument, patch: { kind?: DocumentKind; photoTag?: PhotoTag | null }) => {
+  const change = async (
+    doc: PatientDocument,
+    patch: { kind?: DocumentKind; photoTag?: PhotoTag | null },
+  ) => {
     setError(null);
     try {
       await documentsApi.update(doc.id, patch);
       load();
     } catch (err) {
-      setError((err as Error).message);
+      setError(humanError(err));
     }
   };
 
   const visible = (docs ?? []).filter((d) => filter === 'all' || d.kind === filter);
   const kindsPresent = new Set((docs ?? []).map((d) => d.kind));
   const tagged = useMemo(
-    () => (docs ?? []).filter((d) => d.isPreviewable && (d.photoTag === 'before' || d.photoTag === 'after')),
+    () =>
+      (docs ?? []).filter(
+        (d) => d.isPreviewable && (d.photoTag === 'before' || d.photoTag === 'after'),
+      ),
     [docs],
   );
-  const canCompare = tagged.some((d) => d.photoTag === 'before') && tagged.some((d) => d.photoTag === 'after');
+  const canCompare =
+    tagged.some((d) => d.photoTag === 'before') &&
+    tagged.some((d) => d.photoTag === 'after');
 
   return (
     <section className="card card--record">
       <header className="card__head">
-        <h3><Paperclip size={16} aria-hidden /> Documents, photos &amp; X-rays</h3>
+        <h3>
+          <Paperclip size={16} aria-hidden /> Documents, photos &amp; X-rays
+        </h3>
         <div className="inline-row">
           {canCompare && (
             <button className="btn btn--ghost btn--sm" onClick={() => setComparing(true)}>
@@ -148,14 +191,27 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
           )}
           {canUpload && (
             <>
-              <input ref={fileInput} type="file" accept={ACCEPT} multiple onChange={onPick} hidden />
-              <button className="btn btn--ghost btn--sm" onClick={() => setCamera('clinical')}>
+              <input
+                ref={fileInput}
+                type="file"
+                accept={ACCEPT}
+                multiple
+                onChange={onPick}
+                hidden
+              />
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => setCamera('clinical')}
+              >
                 <Camera size={14} aria-hidden /> Take photo
               </button>
               <button className="btn btn--ghost btn--sm" onClick={() => setCamera('id')}>
                 <IdCard size={14} aria-hidden /> Scan ID
               </button>
-              <button className="btn btn--ghost btn--sm" onClick={() => fileInput.current?.click()}>
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => fileInput.current?.click()}
+              >
                 <Upload size={14} aria-hidden /> Upload
               </button>
             </>
@@ -164,15 +220,26 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
       </header>
 
       {error && <p className="formerror">{error}</p>}
-      {notice && <p className="muted" style={{ fontSize: 13 }}>{notice}</p>}
+      {notice && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          {notice}
+        </p>
+      )}
 
       {docs && docs.length > 0 && (
         <div className="tabs tabs--sm">
-          <button className={`tab${filter === 'all' ? ' tab--active' : ''}`} onClick={() => setFilter('all')}>
+          <button
+            className={`tab${filter === 'all' ? ' tab--active' : ''}`}
+            onClick={() => setFilter('all')}
+          >
             All ({docs.length})
           </button>
           {DOCUMENT_KINDS.filter((k) => kindsPresent.has(k)).map((k) => (
-            <button key={k} className={`tab${filter === k ? ' tab--active' : ''}`} onClick={() => setFilter(k)}>
+            <button
+              key={k}
+              className={`tab${filter === k ? ' tab--active' : ''}`}
+              onClick={() => setFilter(k)}
+            >
               {DOCUMENT_KIND_LABELS[k]} ({docs.filter((d) => d.kind === k).length})
             </button>
           ))}
@@ -180,7 +247,7 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
       )}
 
       {!docs ? (
-        <p className="muted">Loading documents…</p>
+        <LoadingRows rows={3} label="Loading documents" />
       ) : visible.length === 0 ? (
         <EmptyState
           icon={<Paperclip size={20} />}
@@ -197,7 +264,11 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
         <ul className="doclist">
           {visible.map((doc) => (
             <li key={doc.id} className="doccard">
-              <button className="doccard__thumb" onClick={() => openPreview(doc)} aria-label={`Preview ${doc.fileName}`}>
+              <button
+                className="doccard__thumb"
+                onClick={() => openPreview(doc)}
+                aria-label={`Preview ${doc.fileName}`}
+              >
                 {thumbs[doc.id] ? (
                   <img src={thumbs[doc.id]} alt="" loading="lazy" />
                 ) : doc.isImage ? (
@@ -208,10 +279,14 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
               </button>
 
               <div className="doccard__body">
-                <span className="doccard__name" title={doc.fileName}>{doc.fileName}</span>
+                <span className="doccard__name" title={doc.fileName}>
+                  {doc.fileName}
+                </span>
                 <div className="doccard__meta">
                   <StatusPill status="neutral" label={DOCUMENT_KIND_LABELS[doc.kind]} />
-                  {doc.photoTag && <StatusPill status="info" label={PHOTO_TAG_LABELS[doc.photoTag]} />}
+                  {doc.photoTag && (
+                    <StatusPill status="info" label={PHOTO_TAG_LABELS[doc.photoTag]} />
+                  )}
                   <span className="cell-sub">{formatBytes(doc.byteSize)}</span>
                   {doc.tooth && <span className="cell-sub">Tooth {doc.tooth}</span>}
                   {doc.takenOn && <span className="cell-sub">Taken {doc.takenOn}</span>}
@@ -229,11 +304,15 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
                   <select
                     className="select--bare"
                     value={doc.kind}
-                    onChange={(e) => change(doc, { kind: e.target.value as DocumentKind })}
+                    onChange={(e) =>
+                      change(doc, { kind: e.target.value as DocumentKind })
+                    }
                     aria-label={`Change type of ${doc.fileName}`}
                   >
                     {DOCUMENT_KINDS.map((k) => (
-                      <option key={k} value={k}>{DOCUMENT_KIND_LABELS[k]}</option>
+                      <option key={k} value={k}>
+                        {DOCUMENT_KIND_LABELS[k]}
+                      </option>
                     ))}
                   </select>
                 )}
@@ -241,20 +320,34 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
                   <select
                     className="select--bare"
                     value={doc.photoTag ?? ''}
-                    onChange={(e) => change(doc, { photoTag: (e.target.value || null) as PhotoTag | null })}
+                    onChange={(e) =>
+                      change(doc, {
+                        photoTag: (e.target.value || null) as PhotoTag | null,
+                      })
+                    }
                     aria-label={`Tag ${doc.fileName}`}
                   >
                     <option value="">No tag</option>
                     {PHOTO_TAGS.map((t) => (
-                      <option key={t} value={t}>{PHOTO_TAG_LABELS[t]}</option>
+                      <option key={t} value={t}>
+                        {PHOTO_TAG_LABELS[t]}
+                      </option>
                     ))}
                   </select>
                 )}
-                <button className="iconbtn" onClick={() => download(doc)} aria-label={`Download ${doc.fileName}`}>
+                <button
+                  className="iconbtn"
+                  onClick={() => download(doc)}
+                  aria-label={`Download ${doc.fileName}`}
+                >
                   <Download size={15} />
                 </button>
                 {canDelete && (
-                  <button className="iconbtn" onClick={() => remove(doc)} aria-label={`Delete ${doc.fileName}`}>
+                  <button
+                    className="iconbtn"
+                    onClick={() => remove(doc)}
+                    aria-label={`Delete ${doc.fileName}`}
+                  >
                     <Trash2 size={15} />
                   </button>
                 )}
@@ -277,7 +370,10 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
           onCapture={(file) => {
             setPending({
               files: [file],
-              defaults: camera === 'id' ? { kind: 'id_document' } : { kind: 'photo', photoTag: 'progress' },
+              defaults:
+                camera === 'id'
+                  ? { kind: 'id_document' }
+                  : { kind: 'photo', photoTag: 'progress' },
             });
             setCamera(null);
           }}
@@ -299,7 +395,11 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
       )}
 
       {comparing && (
-        <CompareModal photos={tagged} thumbs={thumbs} onClose={() => setComparing(false)} />
+        <CompareModal
+          photos={tagged}
+          thumbs={thumbs}
+          onClose={() => setComparing(false)}
+        />
       )}
 
       {preview && (
@@ -315,7 +415,10 @@ export default function DocumentsCard({ patientId }: { patientId: string }) {
                 title="No inline preview"
                 body={`${preview.doc.contentType} cannot be shown in the browser. Download it to view.`}
                 action={
-                  <button className="btn btn--primary btn--sm" onClick={() => download(preview.doc)}>
+                  <button
+                    className="btn btn--primary btn--sm"
+                    onClick={() => download(preview.doc)}
+                  >
                     <Download size={14} aria-hidden /> Download
                   </button>
                 }
@@ -360,7 +463,9 @@ function UploadModal({
   const [error, setError] = useState<string | null>(null);
 
   const toothNumber = tooth.trim() ? Number(tooth) : undefined;
-  const toothValid = toothNumber === undefined || (Number.isInteger(toothNumber) && toothNumber >= 11 && toothNumber <= 85);
+  const toothValid =
+    toothNumber === undefined ||
+    (Number.isInteger(toothNumber) && toothNumber >= 11 && toothNumber <= 85);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -394,26 +499,38 @@ function UploadModal({
 
   return (
     <Modal
-      title={files.length === 1 ? `Upload ${files[0]!.name}` : `Upload ${files.length} files`}
+      title={
+        files.length === 1 ? `Upload ${files[0]!.name}` : `Upload ${files.length} files`
+      }
       onClose={() => !progress && onClose()}
     >
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           <label className="field">
             <span>Type</span>
-            <select value={kind} onChange={(e) => setKind(e.target.value as DocumentKind)}>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as DocumentKind)}
+            >
               {DOCUMENT_KINDS.map((k) => (
-                <option key={k} value={k}>{DOCUMENT_KIND_LABELS[k]}</option>
+                <option key={k} value={k}>
+                  {DOCUMENT_KIND_LABELS[k]}
+                </option>
               ))}
             </select>
           </label>
           {kind === 'photo' ? (
             <label className="field">
               <span>Clinical stage</span>
-              <select value={photoTag} onChange={(e) => setPhotoTag(e.target.value as PhotoTag | '')}>
+              <select
+                value={photoTag}
+                onChange={(e) => setPhotoTag(e.target.value as PhotoTag | '')}
+              >
                 <option value="">Not tagged</option>
                 {PHOTO_TAGS.map((t) => (
-                  <option key={t} value={t}>{PHOTO_TAG_LABELS[t]}</option>
+                  <option key={t} value={t}>
+                    {PHOTO_TAG_LABELS[t]}
+                  </option>
                 ))}
               </select>
             </label>
@@ -424,24 +541,53 @@ function UploadModal({
         <div className="grid2">
           <label className="field">
             <span>Taken on</span>
-            <input type="date" value={takenOn} onChange={(e) => setTakenOn(e.target.value)} />
+            <input
+              type="date"
+              value={takenOn}
+              onChange={(e) => setTakenOn(e.target.value)}
+            />
           </label>
           <label className="field">
             <span>Tooth (FDI, optional)</span>
-            <input inputMode="numeric" value={tooth} onChange={(e) => setTooth(e.target.value.replace(/\D/g, ''))} maxLength={2} placeholder="e.g. 36" />
+            <input
+              inputMode="numeric"
+              value={tooth}
+              onChange={(e) => setTooth(e.target.value.replace(/\D/g, ''))}
+              maxLength={2}
+              placeholder="e.g. 36"
+            />
             {!toothValid && <span className="row-issue">An FDI tooth number, 11–85</span>}
           </label>
         </div>
         <label className="field">
           <span>Caption</span>
-          <input value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={300} placeholder="Optional" />
+          <input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            maxLength={300}
+            placeholder="Optional"
+          />
         </label>
-        {progress && <p className="muted" role="status">{progress}</p>}
+        {progress && (
+          <p className="muted" role="status">
+            {progress}
+          </p>
+        )}
         {error && <p className="formerror">{error}</p>}
         <div className="modal__foot">
           <div className="modal__foot-right">
-            <button type="button" className="btn btn--ghost" onClick={onClose} disabled={Boolean(progress)}>Cancel</button>
-            <button className="btn btn--primary" disabled={Boolean(progress) || !toothValid}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={onClose}
+              disabled={Boolean(progress)}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn--primary"
+              disabled={Boolean(progress) || !toothValid}
+            >
               {progress ? 'Uploading…' : 'Upload'}
             </button>
           </div>
@@ -478,17 +624,30 @@ function CompareModal({
     }
   }, [beforeId, afterId, urls]);
 
-  const describe = (p: PatientDocument) => `${p.takenOn ?? new Date(p.createdAt).toLocaleDateString()}${p.caption ? ` · ${p.caption}` : ''}`;
-  const side = (label: string, list: PatientDocument[], id: string, set: (v: string) => void) => {
+  const describe = (p: PatientDocument) =>
+    `${p.takenOn ?? new Date(p.createdAt).toLocaleDateString()}${p.caption ? ` · ${p.caption}` : ''}`;
+  const side = (
+    label: string,
+    list: PatientDocument[],
+    id: string,
+    set: (v: string) => void,
+  ) => {
     const doc = list.find((p) => p.id === id);
     return (
       <figure>
-        <select value={id} onChange={(e) => set(e.target.value)} aria-label={`${label} photo`} style={{ width: '100%', marginBottom: 8 }}>
+        <select
+          value={id}
+          onChange={(e) => set(e.target.value)}
+          aria-label={`${label} photo`}
+          style={{ width: '100%', marginBottom: 8 }}
+        >
           {list.map((p) => (
             <option key={p.id} value={p.id}>{`${label}: ${describe(p)}`}</option>
           ))}
         </select>
-        {doc && <img src={urls[doc.id] ?? thumbs[doc.id]} alt={`${label}: ${doc.fileName}`} />}
+        {doc && (
+          <img src={urls[doc.id] ?? thumbs[doc.id]} alt={`${label}: ${doc.fileName}`} />
+        )}
         {doc && <figcaption>{describe(doc)}</figcaption>}
       </figure>
     );

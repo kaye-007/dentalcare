@@ -13,9 +13,10 @@ import {
   Package,
 } from 'lucide-react';
 import { auditApi, type AuditEntry } from '../lib/api';
-import { PageHeader, EmptyState, StatusPill } from '../components/ui';
+import { PageHeader, EmptyState, StatusPill, LoadingRows } from '../components/ui';
 import { ROLE_LABELS, type Role } from '../lib/permissions';
 import { dateLocale } from '../lib/strings';
+import { inClinicZone, toWall, wallNow } from '../lib/clinic-time';
 
 /**
  * The clinic's activity trail — doctor-only.
@@ -186,8 +187,9 @@ const REVERSALS = new Set([
 ]);
 
 function dayLabel(iso: string) {
-  const d = new Date(iso);
-  const today = new Date();
+  // Days on the clinic's clock: an entry at 00:30 in Tirana is "today" there.
+  const d = toWall(iso);
+  const today = wallNow();
   today.setHours(0, 0, 0, 0);
   const that = new Date(d);
   that.setHours(0, 0, 0, 0);
@@ -203,10 +205,10 @@ function dayLabel(iso: string) {
 }
 
 function timeLabel(iso: string) {
-  return new Date(iso).toLocaleTimeString(dateLocale(), {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return new Date(iso).toLocaleTimeString(
+    dateLocale(),
+    inClinicZone({ hour: '2-digit', minute: '2-digit' }),
+  );
 }
 
 const PAGE_SIZE = 100;
@@ -308,7 +310,7 @@ export default function ActivityPage() {
         {error ? (
           <p className="pad muted">{error}</p>
         ) : data === null ? (
-          <div className="pad muted">Loading…</div>
+          <LoadingRows rows={3} label="Loading" />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={<History size={22} />}

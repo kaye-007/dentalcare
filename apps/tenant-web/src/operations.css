@@ -176,7 +176,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.steps {
+/* Not `.steps`: that name belongs to the booking drawer's numbered sections,
+   and these pill rules were painting grey blobs behind them. */
+.import-steps {
   display: flex;
   gap: 8px;
   margin: 0 0 16px;
@@ -184,7 +186,7 @@
   list-style: none;
   flex-wrap: wrap;
 }
-.steps li {
+.import-steps li {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--muted);
@@ -192,7 +194,7 @@
   border-radius: var(--radius-pill);
   background: var(--neutral-bg);
 }
-.steps li[aria-current='step'] {
+.import-steps li[aria-current='step'] {
   background: var(--primary-tint);
   color: var(--primary-600);
 }

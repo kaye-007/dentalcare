@@ -22,6 +22,7 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatMoney, plural } from '../lib/format';
+import { readXlsx } from '../lib/xlsx';
 import { EmptyState, PageHeader, StatusPill } from '../components/ui';
 
 /** A spreadsheet with more rows than this is a data migration, not an upload. */
@@ -43,11 +44,17 @@ interface Parsed {
 }
 
 /**
- * Bulk patient import from a CSV exported by a spreadsheet or a legacy system.
+ * Bring a clinic's patients into DentalCare from Excel, CSV or another system.
  *
- * Upload → map the columns → review what would happen → import. The review is
- * produced by the API with the same rules the import applies, and the import
- * checks everything again, in batches that each land whole or not at all.
+ * Upload, and DentalCare reads the file: when it recognises the name columns
+ * it checks every row straight away and opens on what it found — how many
+ * patients, how many are ready, which are already here, which need a look —
+ * with Import as the one button. Matching the columns by hand is the step
+ * for files it cannot read on its own ("Adjust columns").
+ *
+ * The review is produced by the API with the same rules the import applies,
+ * and the import checks everything again, in batches that each land whole or
+ * not at all.
  */
 export default function PatientImportPage() {
   const { can } = useAuth();
@@ -65,6 +72,10 @@ export default function PatientImportPage() {
   const [result, setResult] = useState<{ imported: number; skipped: number; balances: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  // Set when a new file's columns were recognised: it is checked at once,
+  // and the columns step is only shown if the person asks for it.
+  const autoReview = useRef(false);
+  const [reading, setReading] = useState(false);
 
   useEffect(() => {
     settingsApi
@@ -83,6 +94,15 @@ export default function PatientImportPage() {
       });
       return out;
     });
+  }, [parsed, mapping]);
+
+  // A recognised file is checked as soon as its columns are set.
+  useEffect(() => {
+    if (!autoReview.current || !parsed) return;
+    autoReview.current = false;
+    void runReview();
+    // runReview reads the parsed file and mapping this effect waits for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsed, mapping]);
 
   /** Repeats across the whole file, which the API only sees batch by batch. */
@@ -105,11 +125,23 @@ export default function PatientImportPage() {
 
   async function readFile(file: File) {
     setError(null);
-    if (!/\.(csv|txt)$/i.test(file.name)) {
-      setError('Save the spreadsheet as CSV first (File → Save as → CSV UTF-8), then upload that file.');
+    let rows: string[][];
+    if (/\.xlsx$/i.test(file.name)) {
+      try {
+        rows = await readXlsx(file);
+      } catch {
+        setError('This Excel file could not be read. Open it in Excel, save it again as .xlsx, and try once more.');
+        return;
+      }
+    } else if (/\.(csv|txt)$/i.test(file.name)) {
+      rows = parseCsv(await file.text()).rows;
+    } else if (/\.xls$/i.test(file.name)) {
+      setError('This is the older Excel format (.xls). Open it in Excel and save it as .xlsx, then upload that.');
+      return;
+    } else {
+      setError('Choose an Excel (.xlsx) or CSV file.');
       return;
     }
-    const { rows } = parseCsv(await file.text());
     if (rows.length < 2) {
       setError('The file needs a header row and at least one patient.');
       return;
@@ -119,8 +151,14 @@ export default function PatientImportPage() {
       return;
     }
     const headers = rows[0]!.map((h) => h.trim());
+    const guessed = guessMapping(headers);
+    const names =
+      (guessed.includes('firstName') && guessed.includes('lastName')) ||
+      guessed.includes('fullName');
+    autoReview.current = names;
+    setReading(names);
     setParsed({ fileName: file.name, headers, rows: rows.slice(1) });
-    setMapping(guessMapping(headers));
+    setMapping(guessed);
     setReview(null);
     setStep('map');
   }
@@ -133,7 +171,10 @@ export default function PatientImportPage() {
   }
 
   const mapped = new Set(mapping.filter(Boolean));
-  const missingNames = !mapped.has('firstName') || !mapped.has('lastName');
+  const missingNames = !(
+    (mapped.has('firstName') && mapped.has('lastName')) ||
+    mapped.has('fullName')
+  );
 
   function batches(): ImportBatch[] {
     const out: ImportBatch[] = [];
@@ -175,6 +216,7 @@ export default function PatientImportPage() {
       setError(err instanceof ApiError ? err.message : 'The file could not be checked.');
     } finally {
       setProgress(null);
+      setReading(false);
     }
   }
 
@@ -219,6 +261,8 @@ export default function PatientImportPage() {
     duplicate: review?.filter((r) => r.status === 'duplicate').length ?? 0,
   };
   const phoneDuplicates = review?.filter((r) => r.duplicateOf?.kind === 'patient' && r.duplicateOf.match === 'phone').length ?? 0;
+  const alreadyHere = review?.filter((r) => r.duplicateOf?.kind === 'patient').length ?? 0;
+  const repeated = counts.duplicate - alreadyHere;
   const willImport = counts.valid + (skipDuplicates ? 0 : phoneDuplicates);
   const visible = (review ?? []).filter((r) => filter === 'all' || r.status === filter).slice(0, 500);
 
@@ -231,12 +275,12 @@ export default function PatientImportPage() {
           </Link>
         }
         title="Import patients"
-        meta="From a spreadsheet or another practice system, as CSV"
+        meta="From Excel, CSV or another practice system"
       />
-      <ol className="steps" aria-label="Import steps">
+      <ol className="import-steps" aria-label="Import steps">
         {(['upload', 'map', 'review', 'done'] as Step[]).map((s, i) => (
           <li key={s} aria-current={step === s ? 'step' : undefined}>
-            {i + 1}. {{ upload: 'Upload', map: 'Map columns', review: 'Review', done: 'Done' }[s]}
+            {i + 1}. {{ upload: 'Upload', map: 'Columns', review: 'Review', done: 'Done' }[s]}
           </li>
         ))}
       </ol>
@@ -246,7 +290,7 @@ export default function PatientImportPage() {
 
       {step === 'upload' && (
         <section className="card pad">
-          <input ref={fileInput} type="file" accept=".csv,text/csv,.txt" hidden onChange={(e) => {
+          <input ref={fileInput} type="file" accept=".xlsx,.csv,text/csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = '';
             if (f) void readFile(f);
@@ -265,13 +309,26 @@ export default function PatientImportPage() {
             onKeyDown={(e) => e.key === 'Enter' && fileInput.current?.click()}
           >
             <FileSpreadsheet size={28} aria-hidden />
-            <strong>Drop a CSV file here, or click to choose one</strong>
-            <span>The first row must name the columns. Commas and semicolons are both understood.</span>
+            <strong>Drop an Excel or CSV file here, or click to choose one</strong>
+            <span>The first row should name the columns (Emri, Mbiemri, Telefoni…). DentalCare matches them for you.</span>
           </div>
         </section>
       )}
 
-      {step === 'map' && parsed && (
+      {step === 'map' && parsed && reading && (
+        <section className="card pad import-reading" role="status">
+          <FileSpreadsheet size={22} aria-hidden />
+          <div>
+            <strong>Reading {parsed.fileName}</strong>
+            <p className="muted">
+              Checking {plural(parsed.rows.length, 'row')}: names, phone numbers, dates, and who is
+              already in DentalCare.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {step === 'map' && parsed && !reading && (
         <section className="card">
           <div className="card__head">
             <div>
@@ -317,7 +374,11 @@ export default function PatientImportPage() {
               A matching national ID is always skipped. Phone matches can be families sharing one number, so they
               can be imported deliberately.
             </span>
-            {missingNames && <p className="formerror">Map both the first-name and last-name columns to continue.</p>}
+            {missingNames && (
+              <p className="formerror">
+                Say which column holds the names (first and last name, or one full-name column) to continue.
+              </p>
+            )}
             <div className="form__foot">
               <button type="button" className="btn btn--ghost" onClick={() => setStep('upload')}>Choose another file</button>
               <button type="button" className="btn btn--primary" disabled={missingNames || Boolean(progress)} onClick={runReview}>
@@ -328,14 +389,66 @@ export default function PatientImportPage() {
         </section>
       )}
 
+      {step === 'review' && review && parsed && (
+        <section className="card import-summary" aria-labelledby="import-found">
+          <div className="import-summary__head">
+            <FileSpreadsheet size={22} aria-hidden />
+            <div>
+              <h2 id="import-found">
+                {plural(review.length, 'patient')} found in {parsed.fileName}
+              </h2>
+              <p className="card__sub">Nothing is saved until you press Import.</p>
+            </div>
+          </div>
+          <dl className="sumstrip import-summary__counts">
+            <div>
+              <dt>Ready</dt>
+              <dd>
+                <strong>{counts.valid}</strong>
+              </dd>
+            </div>
+            <div>
+              <dt>Already in DentalCare</dt>
+              <dd>
+                <strong>{alreadyHere}</strong>
+                {repeated > 0 && <span className="import-summary__sub">+{repeated} repeated in the file</span>}
+              </dd>
+            </div>
+            <div>
+              <dt>Need a look</dt>
+              <dd>
+                <strong className={counts.invalid ? 'sumstrip__due' : undefined}>{counts.invalid}</strong>
+              </dd>
+            </div>
+          </dl>
+          {phoneDuplicates > 0 && (
+            <label className="import-summary__opt">
+              <input type="checkbox" checked={!skipDuplicates} onChange={(e) => setSkipDuplicates(!e.target.checked)} />
+              <span>
+                Also import the {plural(phoneDuplicates, 'patient')} whose phone matches someone already here.
+                Families often share one number.
+              </span>
+            </label>
+          )}
+          <div className="import-summary__do">
+            <button type="button" className="btn btn--primary" disabled={willImport === 0 || Boolean(progress)} onClick={runImport}>
+              <Upload size={15} aria-hidden /> Import {plural(willImport, 'patient')}
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={() => setStep('map')}>
+              Adjust columns
+            </button>
+          </div>
+        </section>
+      )}
+
       {step === 'review' && review && (
         <section className="card">
           <div className="card__head">
             <div>
-              <h2>Review</h2>
+              <h2>Check the list</h2>
               <p className="card__sub">
-                {counts.valid} ready · {counts.invalid} with problems · {counts.duplicate} duplicates. Nothing has been
-                saved yet.
+                Rows that need a look say why. Most are fixed with Adjust columns: the date format, or a
+                column read as the wrong thing.
               </p>
             </div>
           </div>
@@ -346,7 +459,8 @@ export default function PatientImportPage() {
               </button>
             ))}
           </div>
-          <div className="import-table-wrap">
+          {/* It scrolls sideways on a phone: a keyboard reaches it too. */}
+          <div className="import-table-wrap" role="region" aria-label="Rows in the file" tabIndex={0}>
             <table className="table table--compact">
               <thead>
                 <tr>
@@ -387,7 +501,7 @@ export default function PatientImportPage() {
           <div className="form" style={{ paddingTop: 12 }}>
             {review.length > 500 && <span className="field-hint">Showing the first 500 matching rows.</span>}
             <div className="form__foot">
-              <button type="button" className="btn btn--ghost" onClick={() => setStep('map')}>Back to mapping</button>
+              <button type="button" className="btn btn--ghost" onClick={() => setStep('map')}>Adjust columns</button>
               <button type="button" className="btn btn--primary" disabled={willImport === 0 || Boolean(progress)} onClick={runImport}>
                 <Upload size={15} aria-hidden /> Import {plural(willImport, 'patient')}
               </button>

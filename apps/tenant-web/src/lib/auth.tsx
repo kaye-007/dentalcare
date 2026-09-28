@@ -16,6 +16,7 @@ import {
 } from './api';
 import { roleCan, type Permission } from './permissions';
 import { setCurrency } from './format';
+import { setClinicZone } from './clinic-time';
 
 /**
  * Where a password sign-in lands: done, or at a second factor. The challenge
@@ -150,6 +151,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // that first screen would flash in euros before correcting itself. Setting
   // a module value to the same code twice is harmless.
   if (user?.currency) setCurrency(user.currency);
+  // Likewise the clock: appointments are shown and booked in the clinic's zone.
+  if (user?.timezone) setClinicZone(user.timezone);
 
   const granted = useMemo(
     () => (user?.permissions?.length ? new Set(user.permissions) : null),

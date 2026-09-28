@@ -11,14 +11,17 @@ import {
 import {
   analyticsApi,
   billingApi,
+  financeApi,
+  type FinanceSummary,
   type AgeingBucket,
   type AnalyticsDashboard,
   type BreakdownRow,
   type ReceivablesReport,
   type RevenueReport,
+  humanError,
 } from '../lib/api';
 import { formatMoney, toDate } from '../lib/format';
-import { PageHeader, EmptyState, StatusPill } from '../components/ui';
+import { PageHeader, EmptyState, StatusPill, LoadingRows } from '../components/ui';
 import RevenueChart from '../components/RevenueChart';
 import BarBreakdown, { type BarRow } from '../components/BarBreakdown';
 import { dateLocale } from '../lib/strings';
@@ -77,6 +80,15 @@ export default function FinancialsPage() {
   const [byProcedure, setByProcedure] = useState<BreakdownRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Today first: what came in, what went out, what is still owed. The range
+  // below is the detail for whoever wants it.
+  const [today, setToday] = useState<FinanceSummary | null>(null);
+  useEffect(() => {
+    financeApi
+      .summary('today')
+      .then(setToday)
+      .catch(() => setToday(null));
+  }, []);
 
   const load = useCallback(async () => {
     const { from, to, granularity } = rangeFor(range);
@@ -98,7 +110,7 @@ export default function FinancialsPage() {
       setByProcedure(proc.rows);
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      setError(humanError(e));
     } finally {
       setLoading(false);
     }
@@ -131,6 +143,38 @@ export default function FinancialsPage() {
       />
 
       {error && <p className="formerror">{error}</p>}
+
+      <h2 className="fin__label">Today</h2>
+      <div className="sumstrip sumstrip--4" aria-label="Today">
+        <div>
+          <span>Collected</span>
+          <strong>{today ? formatMoney(today.totalCollected ?? 0) : '…'}</strong>
+        </div>
+        <div>
+          <span>Spent</span>
+          <strong>{today ? formatMoney(today.totalExpenses ?? 0) : '…'}</strong>
+        </div>
+        <div>
+          <span>Net</span>
+          <strong
+            className={
+              today && (today.totalCollected ?? 0) - (today.totalExpenses ?? 0) < 0
+                ? 'sumstrip__due'
+                : undefined
+            }
+          >
+            {today
+              ? formatMoney((today.totalCollected ?? 0) - (today.totalExpenses ?? 0))
+              : '…'}
+          </strong>
+        </div>
+        <div>
+          <span>Outstanding</span>
+          <strong>{today ? formatMoney(today.outstanding) : '…'}</strong>
+        </div>
+      </div>
+
+      <h2 className="fin__label">{RANGE_LABELS[range]}</h2>
 
       {/* Headline figures are a stat row, not a chart: six single numbers have
           no shape to plot, and a chart of them would be decoration. */}
@@ -185,7 +229,7 @@ export default function FinancialsPage() {
             </div>
           </header>
           {loading && !revenue ? (
-            <p className="muted">Loading…</p>
+            <LoadingRows rows={3} label="Loading" />
           ) : revenue ? (
             <RevenueChart data={revenue.series} granularity={granularity} />
           ) : null}
@@ -198,7 +242,7 @@ export default function FinancialsPage() {
             </h3>
           </header>
           {receivables === null ? (
-            <p className="muted">Loading…</p>
+            <LoadingRows rows={3} label="Loading" />
           ) : receivables.invoiceCount === 0 ? (
             <EmptyState
               icon={<Wallet size={20} />}
@@ -285,11 +329,11 @@ export default function FinancialsPage() {
             <table className="table table--compact">
               <thead>
                 <tr>
-                  <th>Invoice</th>
+                  <th className="hide-sm">Invoice</th>
                   <th>Patient</th>
-                  <th>Issued</th>
-                  <th className="num">Total</th>
-                  <th className="num">Paid</th>
+                  <th className="hide-sm hide-md">Issued</th>
+                  <th className="num hide-sm">Total</th>
+                  <th className="num hide-sm hide-md">Paid</th>
                   <th className="num">Balance</th>
                   <th>Age</th>
                 </tr>
@@ -297,27 +341,33 @@ export default function FinancialsPage() {
               <tbody>
                 {receivables.invoices.map((i) => (
                   <tr key={i.invoiceId}>
-                    <td style={{ fontWeight: 600 }}>{i.invoiceNumber}</td>
-                    <td>{i.patientName}</td>
-                    <td className="muted">
+                    <td className="hide-sm" style={{ fontWeight: 600 }}>
+                      {i.invoiceNumber}
+                    </td>
+                    <td>
+                      {i.patientName}
+                      {/* On a phone the invoice number rides under the name. */}
+                      <span className="cell-sub only-sm">{i.invoiceNumber}</span>
+                    </td>
+                    <td className="muted hide-sm hide-md">
                       {toDate(i.issuedAt).toLocaleDateString(dateLocale())}
                     </td>
-                    <td className="num">{formatMoney(i.total)}</td>
-                    <td className="num">{formatMoney(i.paid)}</td>
+                    <td className="num hide-sm">{formatMoney(i.total)}</td>
+                    <td className="num hide-sm hide-md">{formatMoney(i.paid)}</td>
                     <td className="num" style={{ fontWeight: 600 }}>
                       {formatMoney(i.balance)}
                     </td>
                     <td>
-                      <StatusPill
-                        status={
-                          i.bucket === 'over_90'
-                            ? 'severe'
-                            : i.bucket === 'd61_90'
-                              ? 'moderate'
-                              : 'scheduled'
-                        }
-                        label={`${i.daysOutstanding}d`}
-                      />
+                      {/* Colour only once an invoice is past 60 days; a young
+                          one is the normal case and reads as plain text. */}
+                      {i.bucket === 'over_90' || i.bucket === 'd61_90' ? (
+                        <StatusPill
+                          status={i.bucket === 'over_90' ? 'severe' : 'moderate'}
+                          label={`${i.daysOutstanding}d`}
+                        />
+                      ) : (
+                        <span className="muted">{i.daysOutstanding}d</span>
+                      )}
                     </td>
                   </tr>
                 ))}

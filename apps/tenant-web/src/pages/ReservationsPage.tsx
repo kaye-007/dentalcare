@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  BellRing,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -12,25 +11,25 @@ import {
 import {
   appointmentsApi,
   operatoriesApi,
-  remindersApi,
   settingsApi,
   APPT_STATUSES,
   APPT_ACTIVE_STATUSES,
-  type Reminder,
   type Appointment,
   type ApptStatus,
   type Operatory,
   type StaffMember,
   type WorkingDay,
 } from '../lib/api';
-import { Avatar, PageHeader, EmptyState, StatusPill } from '../components/ui';
+import { Avatar, PageHeader } from '../components/ui';
 import AppointmentModal from '../components/AppointmentModal';
+import DayList from '../components/DayList';
 import { useAuth } from '../lib/auth';
+import { loadPractitioners } from '../lib/practitioners';
 import { dateLocale } from '../lib/strings';
 import { t } from '../lib/strings';
 import { plural } from '../lib/format';
 import { useMinute } from '../lib/useMinute';
-import { channelLabel as sharedChannelLabel } from '../lib/reminders';
+import { fromWall, fromWallString, toWall, toWallString, wallNow } from '../lib/clinic-time';
 
 /* ── calendar constants ─────────────────────────────────── */
 /** Drawn when the clinic's opening hours are unknown. */
@@ -44,21 +43,37 @@ const DEFAULT_END = 20;
 const HOUR_PX = 72;
 const COMPACT_PX = 44;
 
-type View = 'day' | 'week' | 'month' | 'reminders';
+type View = 'list' | 'day' | 'week' | 'month';
 
-/** One column of the day view: a practitioner, or the unassigned bookings. */
+/**
+ * One column of the day view: a practitioner or a room, or the bookings that
+ * have neither.
+ */
 interface DentistColumn {
   key: string;
   staffId?: string;
+  operatoryId?: string;
+  color?: string | null;
   name: string;
   sub: string | null;
 }
 
+/** How the day view splits into columns. */
+type GroupBy = 'staff' | 'room';
+const GROUP_KEY = 'dc.calendar.groupBy';
+function savedGroupBy(): GroupBy {
+  try {
+    return localStorage.getItem(GROUP_KEY) === 'room' ? 'room' : 'staff';
+  } catch {
+    return 'staff';
+  }
+}
+
 const VIEWS: { key: View; label: string }[] = [
+  { key: 'list', label: 'List' },
   { key: 'day', label: 'Day' },
   { key: 'week', label: 'Week' },
   { key: 'month', label: 'Month' },
-  { key: 'reminders', label: 'Reminders' },
 ];
 
 /* ── date helpers ───────────────────────────────────────── */
@@ -229,28 +244,41 @@ function rangeLabel(view: View, anchor: Date, days: Date[]) {
  * starting point rather than a guess at intent.
  */
 function nextBookableSlot(): Date {
-  const d = new Date();
+  const d = wallNow();
   d.setMinutes(0, 0, 0);
   d.setHours(d.getHours() + 1);
   return d;
 }
 
-/** A seven-column week is unreadable at phone width, so a phone starts on today. */
+/**
+ * A seven-column week is unreadable at phone width, and a day of practitioner
+ * columns scrolls sideways there — so a phone starts on today, as a list.
+ */
 function defaultCalendarView(): View {
-  return window.matchMedia?.('(max-width: 760px)').matches ? 'day' : 'week';
+  return window.matchMedia?.('(max-width: 760px)').matches ? 'list' : 'week';
 }
 
 export default function ReservationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { can, readOnly } = useAuth();
   const canWrite = can('appointments:write');
   const canReadSettings = can('settings:read');
-  const now = useMinute();
+  // The calendar works in wall Dates on the clinic's clock (lib/clinic-time):
+  // appointments are converted as they arrive, and so is "now".
+  const now = toWall(useMinute()).getTime();
 
-  const [view, setView] = useState<View>(() =>
-    searchParams.get('view') === 'reminders' ? 'reminders' : defaultCalendarView(),
-  );
-  const [anchor, setAnchor] = useState(() => new Date());
+  const [view, setView] = useState<View>(defaultCalendarView);
+  const [groupBy, setGroupByState] = useState<GroupBy>(savedGroupBy);
+  const setGroupBy = (g: GroupBy) => {
+    setGroupByState(g);
+    try {
+      localStorage.setItem(GROUP_KEY, g);
+    } catch {
+      /* remembered for this visit only */
+    }
+  };
+  const [anchor, setAnchor] = useState(wallNow);
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Appointment | null>(null);
@@ -259,6 +287,8 @@ export default function ReservationsPage() {
     operatoryId?: string;
     patientId?: string;
     staffId?: string;
+    /** The start is only a suggestion (the New button), not a slot someone clicked. */
+    suggested?: boolean;
   } | null>(null);
   // The clinic's opening hours. Unknown (null) is a normal state — the grid
   // then draws the default day with nothing shaded.
@@ -275,9 +305,9 @@ export default function ReservationsPage() {
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    appointmentsApi
-      .staff()
-      .then((list) => setStaff(list.filter((s) => s.status === 'active')))
+    // Practitioners: active people who see patients (Staff → Sees patients).
+    loadPractitioners()
+      .then(setStaff)
       .catch(() => setStaff([]));
     operatoriesApi
       .list()
@@ -293,22 +323,40 @@ export default function ReservationsPage() {
       .catch(() => setHours(null));
   }, [canReadSettings]);
 
-  // Links from elsewhere in the app land here: the topbar's reminder log, and
-  // "New appointment" / "Book appointment" from the dashboard and a patient's
+  // Links from elsewhere in the app land here: an old link to the reminder
+  // log (now Messages → Send history), and "New appointment" / "Book appointment" from the dashboard and a patient's
   // record. Each is acted on once and then taken out of the URL, so a reload
   // or Back does not open the panel a second time.
   useEffect(() => {
     const wantsReminders = searchParams.get('view') === 'reminders';
     const wantsNew = searchParams.get('new') === '1';
+    // "?date=2026-09-28" (the dashboard's Coming up strip) opens that day.
+    const wantsDate = searchParams.get('date');
+    if (wantsDate && /^\d{4}-\d{2}-\d{2}$/.test(wantsDate)) {
+      const [y, m, d] = wantsDate.split('-').map(Number);
+      setAnchor(new Date(y!, m! - 1, d!, 12));
+      setView(defaultCalendarView() === 'list' ? 'list' : 'day');
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('date');
+          return next;
+        },
+        { replace: true },
+      );
+    }
     if (!wantsReminders && !wantsNew) return;
 
-    if (wantsReminders) setView('reminders');
+    if (wantsReminders) {
+      navigate('/messages/history', { replace: true });
+      return;
+    }
     if (wantsNew) {
-      setView((v) => (v === 'reminders' ? defaultCalendarView() : v));
       if (canWrite && !readOnly) {
         setEditing(null);
         setCreating({
           start: nextBookableSlot(),
+          suggested: true,
           patientId: searchParams.get('patient') ?? undefined,
         });
       }
@@ -323,10 +371,10 @@ export default function ReservationsPage() {
       },
       { replace: true },
     );
-  }, [searchParams, setSearchParams, canWrite, readOnly]);
+  }, [searchParams, setSearchParams, canWrite, readOnly, navigate]);
 
   const days = useMemo(() => {
-    if (view === 'day') {
+    if (view === 'day' || view === 'list') {
       const d = new Date(anchor);
       d.setHours(0, 0, 0, 0);
       return [d];
@@ -336,22 +384,22 @@ export default function ReservationsPage() {
   }, [view, anchor]);
 
   const load = useCallback(async () => {
-    if (view === 'reminders' || days.length === 0) return;
+    if (days.length === 0) return;
     setLoading(true);
     try {
-      setAppts(
-        await appointmentsApi.list({
-          from: days[0]!.toISOString(),
-          to: addDays(days[days.length - 1]!, 1).toISOString(),
-          staffId: filterStaff || undefined,
-          operatoryId: filterRoom || undefined,
-          status: filterStatus.length ? filterStatus : undefined,
-        }),
-      );
+      const list = await appointmentsApi.list({
+        // The range is the clinic's days, from its midnight to its midnight.
+        from: fromWall(days[0]!).toISOString(),
+        to: fromWall(addDays(days[days.length - 1]!, 1)).toISOString(),
+        staffId: filterStaff || undefined,
+        operatoryId: filterRoom || undefined,
+        status: filterStatus.length ? filterStatus : undefined,
+      });
+      setAppts(list.map((a) => ({ ...a, startsAt: toWallString(a.startsAt), endsAt: toWallString(a.endsAt) })));
     } finally {
       setLoading(false);
     }
-  }, [view, days, filterStaff, filterRoom, filterStatus]);
+  }, [days, filterStaff, filterRoom, filterStatus]);
 
   useEffect(() => {
     void load();
@@ -372,7 +420,7 @@ export default function ReservationsPage() {
     const el = scrollRef.current;
     if (!el) return;
     scrolledFor.current = key;
-    const current = new Date();
+    const current = wallNow();
     const earliest = (list: Appointment[]) =>
       list.length ? Math.min(...list.map((a) => hoursOf(new Date(a.startsAt)))) : null;
     const live = appts.filter((a) => a.status !== 'cancelled');
@@ -388,7 +436,7 @@ export default function ReservationsPage() {
     el.scrollTop = Math.max(0, (line - startHour) * HOUR_PX);
   }, [loading, view, days, appts, startHour]);
 
-  const step = view === 'day' ? 1 : 7;
+  const step = view === 'day' || view === 'list' ? 1 : 7;
   const shift = (dir: 1 | -1) => {
     if (view === 'month') {
       setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + dir, 1));
@@ -415,11 +463,11 @@ export default function ReservationsPage() {
     setAnchor(d);
     setView('day');
   };
+  // The panel takes the appointment as the API has it: instants.
   const openAppointment = (a: Appointment) => {
     setCreating(null);
-    setEditing(a);
+    setEditing({ ...a, startsAt: fromWallString(a.startsAt), endsAt: fromWallString(a.endsAt) });
   };
-  const calendarView = view !== 'reminders';
 
   // What the range holds, in words a receptionist uses. "0 active in view"
   // on a week of finished visits said nothing true about that week.
@@ -435,18 +483,32 @@ export default function ReservationsPage() {
     };
   }, [appts, now]);
 
-  // The day view splits into one column per practitioner: everyone in a
-  // treating role (administrator, dentist, hygienist — see
-  // PRACTITIONER_ROLES), anyone else holding a booking that day, and
+  // The day view splits into one column per practitioner: everyone who sees
+  // patients, anyone else holding a booking that day, and
   // "Unassigned" when a booking has nobody yet. With no one to split by, it
   // stays a single column.
+  const byRoom = view === 'day' && groupBy === 'room' && rooms.length > 0;
   const dentistColumns = useMemo<DentistColumn[] | null>(() => {
     if (view !== 'day') return null;
+    if (byRoom) {
+      // One column per room, in the clinic's order, and "No room" for
+      // bookings not yet placed in one.
+      let list: DentistColumn[] = rooms.map((r) => ({
+        key: r.id,
+        operatoryId: r.id,
+        color: r.color,
+        name: r.name,
+        sub: null,
+      }));
+      if (filterRoom) list = list.filter((c) => c.operatoryId === filterRoom);
+      if (appts.some((a) => !a.operatoryId)) {
+        list.push({ key: 'no-room', name: 'No room', sub: null });
+      }
+      return list;
+    }
     const byId = new Map<string, DentistColumn>();
     for (const s of staff) {
-      if (s.role === 'admin' || s.role === 'dentist' || s.role === 'hygienist') {
-        byId.set(s.id, { key: s.id, staffId: s.id, name: s.fullName, sub: s.position });
-      }
+      byId.set(s.id, { key: s.id, staffId: s.id, name: s.fullName, sub: s.position });
     }
     for (const a of appts) {
       if (a.staffId && !byId.has(a.staffId)) {
@@ -464,12 +526,19 @@ export default function ReservationsPage() {
       list.push({ key: 'unassigned', name: 'Unassigned', sub: null });
     }
     return list.some((c) => c.staffId) ? list : null;
-  }, [view, staff, appts, filterStaff]);
+  }, [view, byRoom, rooms, staff, appts, filterStaff, filterRoom]);
+
+  // A week of everyone's bookings is read as a list per day: three dentists
+  // sharing a time-grid day column left each block a third of it wide
+  // ("Lo… 09:…"). One dentist's week keeps the time grid, blocks full width.
+  const weekAgenda = view === 'week' && !filterStaff && staff.length > 1;
 
   const columnCount = dentistColumns ? dentistColumns.length : days.length;
   const gridCols = `var(--cal-gutter) repeat(${columnCount}, minmax(0, 1fr))`;
   const apptsFor = (c: DentistColumn) =>
-    appts.filter((a) => (c.staffId ? a.staffId === c.staffId : !a.staffId));
+    byRoom
+      ? appts.filter((a) => (c.operatoryId ? a.operatoryId === c.operatoryId : !a.operatoryId))
+      : appts.filter((a) => (c.staffId ? a.staffId === c.staffId : !a.staffId));
   const bookedOn = (d: Date) =>
     appts.filter((a) => a.status !== 'cancelled' && sameDay(new Date(a.startsAt), d)).length;
 
@@ -483,9 +552,15 @@ export default function ReservationsPage() {
     </div>
   );
 
-  const slotHandler = (staffId?: string) => (startAt: Date) => {
+  // A click in a room's column books that room; in a practitioner's column,
+  // that practitioner (whose home room the form then fills in).
+  const slotHandler = (c?: DentistColumn) => (startAt: Date) => {
     setEditing(null);
-    setCreating({ start: startAt, operatoryId: filterRoom || undefined, staffId });
+    setCreating({
+      start: startAt,
+      operatoryId: c?.operatoryId ?? (filterRoom || undefined),
+      staffId: c?.staffId ?? (filterStaff || undefined),
+    });
   };
 
   return (
@@ -493,9 +568,7 @@ export default function ReservationsPage() {
       <PageHeader
         title={t('nav.reservations')}
         meta={
-          view === 'reminders'
-            ? 'Reminders handed to patients for this clinic'
-            : loading && appts.length === 0
+          loading && appts.length === 0
               ? 'Loading…'
               : `${plural(summary.booked, 'booking')} · ${summary.upcoming} still to come · ${summary.completed} completed${
                   summary.cancelled ? ` · ${summary.cancelled} cancelled` : ''
@@ -510,22 +583,21 @@ export default function ReservationsPage() {
                 const d = new Date(anchor);
                 d.setHours(9, 0, 0, 0);
                 setEditing(null);
-                setCreating({ start: d });
+                setCreating({ start: d, suggested: true });
               }}
             >
-              <Plus size={16} aria-hidden /> New appointment
+              <Plus size={16} aria-hidden /> Book appointment
             </button>
           )
         }
       />
 
       <div className="calbar">
-        {calendarView ? (
           <div className="calbar__nav">
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              onClick={() => setAnchor(new Date())}
+              onClick={() => setAnchor(wallNow())}
             >
               Today
             </button>
@@ -534,7 +606,7 @@ export default function ReservationsPage() {
                 type="button"
                 className="iconbtn"
                 onClick={() => shift(-1)}
-                aria-label={`Previous ${view}`}
+                aria-label={`Previous ${view === 'list' ? 'day' : view}`}
                 title="Previous"
               >
                 <ChevronLeft size={16} />
@@ -543,7 +615,7 @@ export default function ReservationsPage() {
                 type="button"
                 className="iconbtn"
                 onClick={() => shift(1)}
-                aria-label={`Next ${view}`}
+                aria-label={`Next ${view === 'list' ? 'day' : view}`}
                 title="Next"
               >
                 <ChevronRight size={16} />
@@ -554,9 +626,6 @@ export default function ReservationsPage() {
             </h2>
             {loading && <span className="calbar__loading">Loading…</span>}
           </div>
-        ) : (
-          <h2 className="calbar__label">Reminder history</h2>
-        )}
 
         <div className="toolbar__group">
           <div className="tabs" role="group" aria-label="Calendar view">
@@ -572,7 +641,23 @@ export default function ReservationsPage() {
               </button>
             ))}
           </div>
-          {calendarView && (
+          {/* Only a clinic with rooms has a second way to split the day. */}
+          {view === 'day' && rooms.length > 0 && (
+            <div className="tabs" role="group" aria-label="Columns">
+              {(['staff', 'room'] as const).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  className={`tab${groupBy === g ? ' tab--active' : ''}`}
+                  aria-pressed={groupBy === g}
+                  onClick={() => setGroupBy(g)}
+                >
+                  {g === 'staff' ? 'By dentist' : 'By room'}
+                </button>
+              ))}
+            </div>
+          )}
+          {(
             <button
               type="button"
               className={`btn btn--ghost btn--sm${activeFilters ? ' btn--active' : ''}`}
@@ -589,7 +674,7 @@ export default function ReservationsPage() {
         </div>
       </div>
 
-      {showFilters && calendarView && (
+      {showFilters && (
         <div className="filterbar" id="calendar-filters">
           <label className="field field--inline">
             <span>Practitioner</span>
@@ -638,7 +723,7 @@ export default function ReservationsPage() {
       {/* An empty range keeps its grid. The time slots are the fastest way to
           book, so they stay on screen; this line says what is going on and
           offers the button for anyone who has not found them yet. */}
-      {calendarView && !loading && appts.length === 0 && (
+      {!loading && appts.length === 0 && view !== 'list' && (
         <div className="calnotice" role="status">
           <CalendarDays size={16} aria-hidden />
           <span className="calnotice__text">
@@ -646,9 +731,9 @@ export default function ReservationsPage() {
               ? 'Nothing matches these filters.'
               : view === 'day' && workdayFor(hours, days[0]!)?.closed
                 ? `The clinic is closed on ${days[0]!.toLocaleDateString(dateLocale(), { weekday: 'long' })}s.${
-                    canWrite ? ' “Book an appointment” still takes any day and time.' : ''
+                    canWrite ? ' “Book appointment” still takes any day and time.' : ''
                   }`
-                : canWrite
+                : canWrite && !weekAgenda
                   ? 'No appointments in this view. Click any open time slot to book one.'
                   : 'No appointments in this view.'}
           </span>
@@ -662,17 +747,69 @@ export default function ReservationsPage() {
               className="btn btn--ghost btn--sm"
               onClick={() => {
                 setEditing(null);
-                setCreating({ start: nextBookableSlot() });
+                setCreating({ start: nextBookableSlot(), suggested: true });
               }}
             >
-              <Plus size={14} aria-hidden /> Book an appointment
+              <Plus size={14} aria-hidden /> Book appointment
             </button>
           ) : null}
         </div>
       )}
 
-      {view === 'reminders' ? (
-        <ReminderLog />
+      {/* Whose week: everyone as a list per day, or one dentist on the grid. */}
+      {view === 'week' && staff.length > 1 && (
+        <div className="calwho" role="group" aria-label="Practitioner">
+          <button
+            type="button"
+            className={`chip${!filterStaff ? ' chip--on' : ''}`}
+            aria-pressed={!filterStaff}
+            onClick={() => setFilterStaff('')}
+          >
+            Everyone
+          </button>
+          {staff.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`chip${filterStaff === s.id ? ' chip--on' : ''}`}
+              aria-pressed={filterStaff === s.id}
+              onClick={() => setFilterStaff(s.id)}
+            >
+              {s.fullName}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === 'list' ? (
+        <DayList
+          day={days[0]!}
+          appts={appts}
+          staff={staff}
+          filterStaff={filterStaff}
+          onFilterStaff={setFilterStaff}
+          now={now}
+          canWrite={canWrite && !readOnly}
+          canBill={can('invoices:write') && !readOnly}
+          closed={Boolean(workdayFor(hours, days[0]!)?.closed)}
+          onOpen={openAppointment}
+          onBook={() => {
+            const d = new Date(days[0]!);
+            d.setHours(9, 0, 0, 0);
+            setEditing(null);
+            setCreating({ start: d, suggested: true, staffId: filterStaff || undefined });
+          }}
+          onChanged={() => void load()}
+        />
+      ) : weekAgenda ? (
+        <WeekAgenda
+          days={days}
+          appts={appts}
+          hours={hours}
+          today={today}
+          onDayClick={openDay}
+          onApptClick={openAppointment}
+        />
       ) : view === 'month' ? (
         <MonthGrid
           days={days}
@@ -702,7 +839,15 @@ export default function ReservationsPage() {
                       const booked = apptsFor(c).filter((a) => a.status !== 'cancelled').length;
                       return (
                         <div className="cal__staffhead" key={c.key}>
-                          <Avatar name={c.name} size={30} />
+                          {byRoom ? (
+                            <span
+                              className="cal__roomdot"
+                              style={c.color ? { background: c.color } : undefined}
+                              aria-hidden
+                            />
+                          ) : (
+                            <Avatar name={c.name} size={30} />
+                          )}
                           <span className="cal__staffmeta">
                             <span className="cal__staffname" title={c.name}>
                               {c.name}
@@ -772,9 +917,10 @@ export default function ReservationsPage() {
                         endHour={endHour}
                         workday={workdayFor(hours, days[0]!)}
                         detailed
+                        byRoom={byRoom}
                         appts={apptsFor(c)}
                         canWrite={canWrite}
-                        onSlotClick={slotHandler(c.staffId)}
+                        onSlotClick={slotHandler(c)}
                         onApptClick={openAppointment}
                       />
                     ))
@@ -806,19 +952,114 @@ export default function ReservationsPage() {
           initialOperatoryId={creating?.operatoryId}
           initialPatientId={creating?.patientId}
           initialStaffId={creating?.staffId}
+          suggestedStart={creating?.suggested}
           appointment={editing ?? undefined}
           staff={staff}
           onClose={() => {
             setCreating(null);
             setEditing(null);
           }}
-          onSaved={async () => {
+          onSaved={async (at?: Date) => {
             setCreating(null);
             setEditing(null);
-            await load();
+            // Show the day the visit landed on, not the one the panel opened from.
+            if (at && !days.some((d) => sameDay(d, at))) setAnchor(at);
+            else await load();
           }}
         />
       )}
+    </div>
+  );
+}
+
+/* ── week, everyone: one list per day ───────────────────── */
+function initialsOf(name: string | null | undefined) {
+  if (!name) return '';
+  return name
+    .replace(/^Dr\.?\s+/i, '')
+    .split(/\s+/)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function WeekAgenda({
+  days,
+  appts,
+  hours,
+  today,
+  onDayClick,
+  onApptClick,
+}: {
+  days: Date[];
+  appts: Appointment[];
+  hours: WorkingDay[] | null;
+  today: Date;
+  onDayClick: (d: Date) => void;
+  onApptClick: (a: Appointment) => void;
+}) {
+  return (
+    <div className="weekagenda">
+      {days.map((d) => {
+        const list = appts
+          .filter((a) => sameDay(new Date(a.startsAt), d))
+          .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+        const live = list.filter((a) => a.status !== 'cancelled').length;
+        const closed = workdayFor(hours, d)?.closed ?? false;
+        const isToday = sameDay(d, today);
+        return (
+          <section
+            key={d.toISOString()}
+            className={`weekagenda__day${isToday ? ' weekagenda__day--today' : ''}`}
+            aria-label={fullDate(d)}
+          >
+            <button
+              type="button"
+              className="weekagenda__head"
+              onClick={() => onDayClick(d)}
+              aria-label={`Open ${fullDate(d)}${live ? `, ${plural(live, 'booking')}` : ''}`}
+              aria-current={isToday ? 'date' : undefined}
+            >
+              <span className="cal__dayname">
+                {d.toLocaleDateString(dateLocale(), { weekday: 'short' })}
+              </span>
+              <span className={`cal__daynum${isToday ? ' cal__daynum--today' : ''}`}>
+                {d.getDate()}
+              </span>
+              <span className="cal__daymeta">
+                {live > 0 ? `${live} booked` : closed ? 'Closed' : 'Free'}
+              </span>
+            </button>
+            {list.length > 0 && (
+              <ol className="weekagenda__list">
+                {list.map((a) => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      className={`weekagenda__item weekagenda__item--${a.status}`}
+                      style={a.operatoryColor ? { borderLeftColor: a.operatoryColor } : undefined}
+                      onClick={() => onApptClick(a)}
+                      aria-label={`${fmtTime(a.startsAt)} ${a.patientName}, ${a.reason}${
+                        a.staffName ? `, ${a.staffName}` : ''
+                      }, ${t(`appt.status.${a.status}`)}`}
+                      title={`${fmtTime(a.startsAt)}–${fmtTime(a.endsAt)} ${a.patientName} — ${a.reason}${
+                        a.staffName ? ` · ${a.staffName}` : ''
+                      }`}
+                    >
+                      <span className="weekagenda__time">{fmtTime(a.startsAt)}</span>
+                      <span className="weekagenda__who">{a.patientName}</span>
+                      <span className="weekagenda__doc" aria-hidden>
+                        {initialsOf(a.staffName)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -831,6 +1072,7 @@ function DayColumn({
   endHour,
   workday,
   detailed = false,
+  byRoom = false,
   appts,
   canWrite,
   onSlotClick,
@@ -844,6 +1086,8 @@ function DayColumn({
   workday: WorkingDay | null;
   /** Wide enough for a status badge and a reason tag (day views). */
   detailed?: boolean;
+  /** Columns are rooms, so each booking names its practitioner instead. */
+  byRoom?: boolean;
   appts: Appointment[];
   canWrite: boolean;
   onSlotClick: (start: Date) => void;
@@ -912,11 +1156,14 @@ function DayColumn({
 
       {placed.map(({ appt: a, top, height, lane, lanes }) => {
         const compact = height < COMPACT_PX;
+        // A block sharing a narrow week column with others has room for one
+        // thing. The grid already says the time; the name gets the space.
+        const narrow = !detailed && lanes > 1;
         return (
           <button
             key={a.id}
             type="button"
-            className={`appt appt--${a.status}${compact ? ' appt--compact' : ''}`}
+            className={`appt appt--${a.status}${compact ? ' appt--compact' : ''}${narrow ? ' appt--narrow' : ''}`}
             style={{
               top,
               height,
@@ -935,7 +1182,9 @@ function DayColumn({
             }${a.operatoryName ? ` · ${a.operatoryName}` : ''} (${t(`appt.status.${a.status}`)})`}
             aria-label={`${fmtTime(a.startsAt)} ${a.patientName}, ${a.reason}, ${t(`appt.status.${a.status}`)}`}
           >
-            {compact ? (
+            {narrow ? (
+              <span className="appt__title">{a.patientName}</span>
+            ) : compact ? (
               <span className="appt__line">
                 <span className="appt__time">{fmtTime(a.startsAt)}</span>
                 <span className="appt__title">{a.patientName}</span>
@@ -946,11 +1195,17 @@ function DayColumn({
               <>
                 <span className="appt__row">
                   <span className="appt__title">{a.patientName}</span>
-                  <span className="appt__status">{t(`appt.status.${a.status}`)}</span>
+                  {/* "Scheduled" is what a booking is; only the exceptions speak. */}
+                  {a.status !== 'scheduled' && (
+                    <span className="appt__status">{t(`appt.status.${a.status}`)}</span>
+                  )}
                 </span>
                 <span className="appt__sub">
                   {fmtTime(a.startsAt)}–{fmtTime(a.endsAt)}
-                  {a.operatoryName ? ` · ${a.operatoryName}` : ''}
+                  {/* The column already says the room (or the dentist); name the other. */}
+                  {byRoom
+                    ? a.staffName ? ` · ${a.staffName}` : ''
+                    : a.operatoryName ? ` · ${a.operatoryName}` : ''}
                 </span>
                 {height >= 64 && <span className="appt__tag">{a.reason}</span>}
               </>
@@ -1069,141 +1324,3 @@ function MonthGrid({
   );
 }
 
-/* ── tenant-wide reminder log ───────────────────────────── */
-function ReminderLog() {
-  const [items, setItems] = useState<Reminder[] | null>(null);
-  useEffect(() => {
-    remindersApi
-      .list()
-      .then(setItems)
-      .catch(() => setItems([]));
-  }, []);
-
-  if (items === null) {
-    return (
-      <div className="card">
-        <div className="pad muted">Loading reminder log…</div>
-      </div>
-    );
-  }
-  if (items.length === 0) {
-    return (
-      <EmptyState
-        framed
-        icon={<BellRing size={22} />}
-        title="No reminders yet"
-        body="Open any scheduled appointment and use WhatsApp or Email to send one."
-      />
-    );
-  }
-
-  // One vocabulary for channels, shared with the appointment panel.
-  const channelLabel = sharedChannelLabel;
-
-  return (
-    <div className="card">
-      <div className="card__head">
-        <div>
-          <h2>Reminder log</h2>
-          <p className="card__sub">
-            {items.length} entr{items.length === 1 ? 'y' : 'ies'}. An SMS reads Delivered
-            only once the carrier confirms it. WhatsApp and email reminders are opened in
-            your own app, so for those this records a hand-off — not that the patient
-            received it.
-          </p>
-        </div>
-      </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th scope="col">When</th>
-            <th scope="col">Patient</th>
-            <th scope="col">Appointment</th>
-            <th scope="col">Channel</th>
-            <th scope="col">Type</th>
-            <th scope="col">Status</th>
-            <th scope="col">Message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((r) => (
-            <tr key={r.id}>
-              <td className="muted">
-                {new Date(r.createdAt).toLocaleString(dateLocale(), {
-                  day: 'numeric',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </td>
-              <td style={{ fontWeight: 600 }}>{r.patientName}</td>
-              <td className="muted">
-                {r.appointmentReason}
-                {r.appointmentStartsAt &&
-                  ` · ${new Date(r.appointmentStartsAt).toLocaleString(dateLocale(), {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}`}
-              </td>
-              <td className="muted">{channelLabel(r.channel)}</td>
-              <td>
-                <StatusPill
-                  status={r.type === 'automatic' ? 'info' : 'neutral'}
-                  label={r.type === 'automatic' ? 'Automatic' : 'Manual'}
-                />
-              </td>
-              <td>
-                <StatusPill
-                  status={
-                    r.status === 'delivered' || (r.status === 'sent' && r.channel !== 'sms')
-                      ? 'completed'
-                      : r.status === 'sent'
-                        ? 'info'
-                        : r.status === 'failed'
-                          ? 'no_show'
-                          : r.status === 'skipped'
-                            ? 'neutral'
-                            : 'scheduled'
-                  }
-                  label={
-                    r.status === 'delivered'
-                      ? 'Delivered'
-                      : r.status === 'sent'
-                        ? r.channel === 'sms'
-                          ? 'Sent'
-                          : r.channel === 'log'
-                            ? 'Recorded'
-                            : 'Handed off'
-                        : r.status === 'failed'
-                          ? 'Failed'
-                          : r.status === 'skipped'
-                            ? 'Not sent'
-                            : r.status === 'sending'
-                              ? 'Sending'
-                              : 'Queued'
-                  }
-                />
-              </td>
-              <td
-                className="muted"
-                style={{
-                  maxWidth: 300,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-                title={r.error ? `${r.error}\n\n${r.message}` : r.message}
-              >
-                {(r.status === 'failed' || r.status === 'skipped') && r.error
-                  ? r.error
-                  : r.message}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}

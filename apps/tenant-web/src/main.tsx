@@ -4,8 +4,11 @@ import App from './App';
 import './styles.css';
 import './operations.css';
 import './print.css';
-import './messaging.css';
 import './drawer.css';
+import './whatsapp.css';
+import './staff.css';
+import './experience.css';
+import './polish.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

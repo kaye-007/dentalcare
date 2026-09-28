@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, RefreshCw, Send } from 'lucide-react';
-import { ApiError, fiscalApi, type FiscalQueue, type FiscalQueueItem } from '../lib/api';
+import {
+  ApiError,
+  fiscalApi,
+  type FiscalQueue,
+  type FiscalQueueItem,
+  humanError,
+} from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatMoney } from '../lib/format';
-import { EmptyState, PageHeader, StatusPill } from '../components/ui';
+import { EmptyState, PageHeader, StatusPill, LoadingRows } from '../components/ui';
 
 /**
  * What the tax authority has not taken yet.
@@ -28,7 +34,7 @@ export default function FiscalQueuePage() {
         setQueue(q);
         setError(null);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
   }, []);
 
   useEffect(load, [load]);
@@ -89,7 +95,7 @@ export default function FiscalQueuePage() {
 
       <section className="card">
         {queue === null ? (
-          <p className="muted pad">Loading…</p>
+          <LoadingRows rows={3} label="Loading" />
         ) : queue.items.length === 0 ? (
           <div className="pad">
             <EmptyState
@@ -119,21 +125,37 @@ export default function FiscalQueuePage() {
                       <Link to={`/invoices/${i.invoiceId}`} className="table__link">
                         {i.invoiceNumber}
                       </Link>
-                      {i.environment === 'test' && <div className="small muted">test environment</div>}
+                      {i.environment === 'test' && (
+                        <div className="small muted">test environment</div>
+                      )}
                     </td>
                     <td>{i.patientName}</td>
                     <td className="num">{formatMoney(i.total)}</td>
-                    <td>{new Date(i.issueDateTime).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                    <td className={`queue-urgency queue-urgency--${i.urgency}`}>{timeLeft(i)}</td>
+                    <td>
+                      {new Date(i.issueDateTime).toLocaleString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                    <td className={`queue-urgency queue-urgency--${i.urgency}`}>
+                      {timeLeft(i)}
+                    </td>
                     <td>
                       {i.status === 'rejected' ? (
                         <>
                           <StatusPill status="danger" label="Refused" />
-                          {i.lastError && <div className="small muted">{i.lastError}</div>}
+                          {i.lastError && (
+                            <div className="small muted">{i.lastError}</div>
+                          )}
                         </>
                       ) : (
                         <>
-                          <StatusPill status={i.overdue ? 'danger' : 'warn'} label="Waiting" />
+                          <StatusPill
+                            status={i.overdue ? 'danger' : 'warn'}
+                            label="Waiting"
+                          />
                           <div className="small muted">
                             {i.attempts} attempt{i.attempts === 1 ? '' : 's'}
                             {i.lastError ? ` · ${i.lastError}` : ''}
@@ -149,7 +171,8 @@ export default function FiscalQueuePage() {
                           disabled={busyId === i.id}
                           onClick={() => void retry(i)}
                         >
-                          <Send size={14} aria-hidden /> {busyId === i.id ? 'Sending…' : 'Send now'}
+                          <Send size={14} aria-hidden />{' '}
+                          {busyId === i.id ? 'Sending…' : 'Send now'}
                         </button>
                       )}
                     </td>
@@ -162,8 +185,9 @@ export default function FiscalQueuePage() {
       </section>
 
       <p className="muted small">
-        An invoice is valid for the patient from the moment it is signed: it carries its NSLF and QR code. The law
-        allows the registration to follow within 48 hours, which is what this queue counts down.
+        An invoice is valid for the patient from the moment it is signed: it carries its
+        NSLF and QR code. The law allows the registration to follow within 48 hours, which
+        is what this queue counts down.
       </p>
     </div>
   );

@@ -1,0 +1,2165 @@
+/* ════════════════════════════════════════════════════════════════════
+   Pre-launch polish (docs/PRE_LAUNCH_PRODUCT_POLISH.md)
+
+   Loaded last. Layout, density and phone structure only: every colour,
+   radius, shadow and the glass/bloom treatment come from the existing
+   tokens in styles.css, which this file never redefines.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── page anchoring ───────────────────────────────────────────────────
+   Nothing moves sideways. The page itself never scrolls horizontally —
+   anything genuinely wider than the screen (a table, a chart, a week grid)
+   scrolls inside its own box. `clip` rather than `hidden` so position:
+   sticky inside the page keeps working. */
+html,
+body {
+  overflow-x: clip;
+}
+.content {
+  overflow-x: clip;
+  overscroll-behavior-y: contain;
+}
+.main {
+  min-width: 0;
+}
+
+/* ── phone header: the mark, the clinic, and the few actions ───────── */
+.topbar__brand,
+.gsearch__cancel {
+  display: none;
+}
+@media (max-width: 760px) {
+  .topbar {
+    height: calc(52px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0;
+  }
+  .topbar__lead {
+    flex: 1;
+    min-width: 0;
+  }
+  .topbar__crumbs {
+    display: none;
+  }
+  .topbar__brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: var(--target);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .topbar__mark {
+    display: inline-grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+  }
+  .topbar__clinic {
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .topbar__actions {
+    gap: 6px;
+  }
+
+  /* Search takes the whole bar while it is open. */
+  .topbar--searching .topbar__lead,
+  .topbar--searching .topbar__actions {
+    display: none;
+  }
+  .topbar--searching .gsearch {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    animation: xp-enter var(--dur-2) var(--ease-out);
+  }
+  .topbar--searching .gsearch__box {
+    flex: 1;
+    height: var(--target);
+  }
+  .topbar--searching .gsearch__box input {
+    font-size: 16px; /* no iOS zoom on focus */
+  }
+  .topbar--searching .gsearch__kbd {
+    display: none;
+  }
+  .topbar--searching .gsearch__cancel {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: auto;
+    padding: 0 8px;
+  }
+  .topbar--searching .gsearch__list {
+    position: fixed;
+    top: calc(52px + env(safe-area-inset-top));
+    right: 0;
+    left: 0;
+    max-height: calc(
+      100dvh - 52px - 76px - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+    );
+    border-width: 1px 0;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .topbar--searching .gsearch__option {
+    min-height: 52px;
+  }
+}
+
+/* ── section tabs: a row that fades where it continues ─────────────── */
+@media (max-width: 760px) {
+  .secnav {
+    margin: -4px -16px 16px;
+    padding: 0 16px;
+    scroll-padding-inline: 16px;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 12px,
+      #000 calc(100% - 28px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 12px,
+      #000 calc(100% - 28px),
+      transparent 100%
+    );
+  }
+  .secnav__item {
+    padding: 0 10px;
+  }
+}
+
+/* ── phone tab bar: labels never wrap, the active tab is unmistakable ── */
+@media (max-width: 760px) {
+  .tabbar__item {
+    position: relative;
+    min-height: 52px;
+    white-space: nowrap;
+  }
+  .tabbar__item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 18px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--accent);
+    transform: translateX(-50%) scaleX(0);
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+  .tabbar__item--active::before {
+    transform: translateX(-50%) scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar--searching .gsearch,
+  .tabbar__item::before {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ── today's visits on a phone: one row each, one action ───────────────
+   Time, who and why on the left; the next thing to do on the right. The
+   row used to wrap its buttons onto a second line, doubling its height. */
+@media (max-width: 760px) {
+  .agenda__item {
+    grid-template-columns: 44px 3px minmax(0, 1fr) auto;
+    gap: 0 10px;
+    padding: 10px 16px;
+  }
+  .agenda__side {
+    grid-column: auto;
+    justify-self: end;
+    margin-top: 0;
+    gap: 6px;
+  }
+  .agenda__start {
+    font-size: 13.5px;
+  }
+  .agenda__end {
+    font-size: 11.5px;
+  }
+  .agenda__checkin {
+    padding: 0 12px;
+  }
+  .agenda__checkin svg {
+    display: none;
+  }
+  .agenda__call {
+    width: 40px;
+  }
+  .daylist__go {
+    display: none;
+  }
+}
+@media (max-width: 359px) {
+  /* The smallest phones keep the one action that moves the day along. */
+  .agenda__call {
+    display: none;
+  }
+}
+
+/* ── inventory ─────────────────────────────────────────────────────── */
+.stocktable .rowactions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+.stockcards {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stockcard {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+.stockcard + .stockcard {
+  border-top: 1px solid var(--border);
+}
+.stockcard--low {
+  box-shadow: inset 3px 0 0 var(--warn-fg);
+}
+.stockcard--out {
+  box-shadow: inset 3px 0 0 var(--danger-fg);
+}
+.stockcard__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stockcard__name {
+  min-width: 0;
+  padding-top: 2px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.stockcard__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  font-size: 13.5px;
+}
+.stockcard__qty strong {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.stockcard__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stockcard__pills,
+.stockcard__moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+@media (max-width: 760px) {
+  /* Filters: the status row scrolls inside itself; the category picker
+     takes the full width under it. Neither pushes the page sideways. */
+  .toolbar--filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .toolbar--filters .tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toolbar--filters .field--inline,
+  .toolbar--filters .field--inline select {
+    width: 100%;
+  }
+}
+
+/* ── page header actions never push the page wider than the screen ───
+   A range switcher (Financials) or a row of filters in the header is
+   allowed the full width on a phone and scrolls inside itself. */
+@media (max-width: 760px) {
+  .page__head {
+    flex-wrap: wrap;
+  }
+  .page__actions {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .page__actions > .tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .page__actions > .tabs::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ── patient timeline: money beside visits and notes ───────────────────
+   A charge is an open ring in the ember, a payment a filled ink dot — the
+   words say which, the marks just make the rhythm scannable. */
+.timeline__item--money .timeline__dot {
+  border-radius: 4px;
+  border-color: var(--accent);
+}
+.timeline__item--paid .timeline__dot {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+.timeline__link {
+  color: inherit;
+  text-decoration: none;
+}
+.timeline__link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── settings: grouped sections ────────────────────────────────────── */
+.setnav__group + .setnav__group {
+  margin-top: 14px;
+}
+.setnav__label {
+  margin: 0 0 4px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.setnav__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+}
+.setnav__item--link svg {
+  color: var(--muted-2);
+}
+/* Phones: the list of sections, one group per card. */
+.setgroup + .setgroup {
+  margin-top: 20px;
+}
+.setgroup__label {
+  margin: 0 0 8px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.setgroup__list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.setgroup__list li + li {
+  border-top: 1px solid var(--border);
+}
+.setgroup__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.setgroup__row:active {
+  background: var(--surface-2);
+}
+.setgroup__row svg {
+  flex-shrink: 0;
+  color: var(--muted-2);
+}
+.setgroup__text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+.setgroup__name {
+  font-weight: 600;
+}
+.setgroup__hint {
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+/* ── search: an invoice result carries a receipt mark where a patient has a face ── */
+.gsearch__icon {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* ── contrast: the alert bar's detail line was faded to 0.85, below 4.5:1 on
+   the warning tint. Full strength; the weight already makes it secondary. ── */
+.alertbar__items {
+  opacity: 1;
+}
+
+/* ── services & prices ─────────────────────────────────────────────── */
+.nowrap {
+  white-space: nowrap;
+}
+.svclist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.svclist li + li {
+  border-top: 1px solid var(--border);
+}
+.svclist__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+button.svclist__row {
+  cursor: pointer;
+}
+button.svclist__row:active {
+  background: var(--surface-2);
+}
+.svclist__main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.svclist__name {
+  font-weight: 600;
+  line-height: 1.3;
+}
+.svclist__meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+.svclist__price {
+  flex-shrink: 0;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── invoice lines from the chart ─────────────────────────────
+   The dentist's charted work arrives as the invoice's first lines. One
+   quiet line says so; each line names its tooth, day and dentist. */
+.lineitems__from-chart {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-tint);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.lineitems__from-chart svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--primary);
+}
+.lineitem__chart {
+  color: var(--muted);
+}
+
+/* ── owner: today at a glance ─────────────────────────────────
+   Four figures in one card, each a link to where its detail lives. Reuses
+   the day-stat type scale; tiles wrap two-up wherever the dashboard is one
+   column. Four across on a tablet cut the money to "614,5…". */
+.todaystrip {
+  padding: 0;
+  margin-bottom: var(--gap, 16px);
+}
+.todaystrip__tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--tiles, 4), minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.todaystrip__tiles > li {
+  min-width: 0;
+}
+.todaystrip__tiles > li + li {
+  border-left: 1px solid var(--border);
+}
+.todaystrip__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 44px;
+  padding: 14px var(--gutter, 18px);
+  color: inherit;
+  text-decoration: none;
+  border-radius: inherit;
+  transition: background-color var(--dur-1, 120ms) ease;
+}
+.todaystrip__tile:hover {
+  background: var(--canvas);
+}
+.todaystrip__tile:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.todaystrip__tile .daystat__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.todaystrip__note {
+  font-size: 12px;
+  color: var(--muted);
+}
+@media (max-width: 1080px) {
+  .todaystrip__tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .todaystrip__tiles > li:nth-child(odd) {
+    border-left: 0;
+  }
+  .todaystrip__tiles > li:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* ── recall ────────────────────────────────────────────────────
+   One row per patient: who, when they were last in, Call and Book. */
+.recall {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recall__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px var(--gutter);
+}
+.recall__row + .recall__row {
+  border-top: 1px solid var(--border);
+}
+.recall__who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.recall__name {
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+.recall__name:hover {
+  text-decoration: underline;
+}
+.recall__meta {
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recall__do {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .recall__meta {
+    white-space: normal;
+  }
+}
+
+/* ── finished states are quiet ────────────────────────────────
+   A completed visit, a paid invoice, a closed drawer is what should happen.
+   It reads as a muted check and a word; colour is kept for the exceptions
+   (no-show, unpaid, short, low stock) so they are what the eye finds. */
+.pill--done {
+  gap: 4px;
+  padding-left: 0;
+  padding-right: 0;
+  background: none;
+  color: var(--muted);
+  font-weight: 500;
+}
+.pill--done::before {
+  content: '✓';
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: var(--ok-fg);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ── dashboard: the exceptions, together ───────────────────────
+   Stock and recall used to be a warning banner at the top and a line at the
+   very bottom. One quiet list under the day's figures; the warning colour is
+   kept for the icon of a stock problem only. */
+.attention {
+  padding: 0;
+  margin-bottom: var(--gap, 16px);
+}
+.attention ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.attention li + li {
+  border-top: 1px solid var(--border);
+}
+.attention__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px var(--gutter);
+  color: var(--ink);
+  font-size: 14px;
+  text-decoration: none;
+}
+.attention__row > svg:first-child {
+  flex: none;
+  color: var(--warn-fg);
+}
+.attention li:has(a[href$='/recall']) .attention__row > svg:first-child {
+  color: var(--primary);
+}
+.attention__text {
+  min-width: 0;
+}
+.attention__go {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+.attention__row:hover .attention__go {
+  color: var(--ink);
+}
+.attention__row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.comingup__more {
+  display: block;
+  margin: 4px auto 12px;
+}
+
+/* ── patient list: next visit and what is owed ─────────────── */
+.table .table__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.owes {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ── patient record: medical history as one card ──────────────
+   Allergies, conditions and medications are three short sections of one
+   card. An empty section is one quiet line, not a box with an illustration. */
+.medhistory {
+  gap: 0;
+}
+.medsec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+}
+.medsec + .medsec {
+  border-top: 1px solid var(--border);
+}
+.medsec:last-child {
+  padding-bottom: 0;
+}
+.medsec__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+.medsec__head h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.medsec__head h4 svg {
+  color: var(--muted);
+}
+.medsec__none {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* Record access: folded until asked for. */
+.accesscard__head {
+  margin: 0;
+  font-size: inherit;
+}
+.accesscard__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px var(--gutter);
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  border-radius: inherit;
+}
+.accesscard__toggle > svg:first-child {
+  color: var(--muted);
+}
+.accesscard__chev {
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform var(--dur-1, 120ms) ease;
+}
+.accesscard__toggle[aria-expanded='true'] .accesscard__chev {
+  transform: rotate(180deg);
+}
+.accesscard__toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.accesscard .list {
+  border-top: 1px solid var(--border);
+}
+
+/* ── summary strips: one card, divided ─────────────────────────
+   Total · Paid · Balance (and the report totals) were a card per number.
+   They are one group of figures, so they are one card with hairlines. */
+.sumstrip {
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.sumstrip > div {
+  min-width: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.sumstrip > div + div {
+  border-left: 1px solid var(--border);
+}
+@media (max-width: 760px) {
+  .sumstrip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .sumstrip > div {
+    padding: 12px;
+  }
+  .sumstrip strong {
+    font-size: 17px;
+  }
+  .sumstrip--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sumstrip--4 > div:nth-child(3) {
+    border-left: 0;
+  }
+  .sumstrip--4 > div:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* ── calendar week: narrow blocks carry the name only ─────────
+   Three dentists share a day column; a block a third of it wide showed
+   "Lo… 09:…". The grid gives the time, so the name may wrap to two lines. */
+.appt--narrow {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+.appt--narrow .appt__title {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  /* Break between words only: "Lorenc Kola", never "Lore / nc". */
+  overflow-wrap: normal;
+  word-break: keep-all;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.appt--narrow.appt--compact .appt__title {
+  -webkit-line-clamp: 1;
+}
+
+/* ── patient record on a phone ─────────────────────────────────
+   Edit sits with the ⋯ menu in the top-right corner, not stretched across
+   the header beside the photo; a note's withdraw × stays on its note's line. */
+@media (max-width: 760px) {
+  .profile__actions {
+    width: auto;
+    gap: 6px;
+  }
+  .profile__actions .btn {
+    flex: none;
+  }
+  .timeline__item--note {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+  }
+}
+
+/* ── phone tables that were designed to fit ───────────────────
+   Below 760px every .table gets min-width: 600px so a wide table scrolls
+   inside its card rather than being clipped. A table that already drops its
+   secondary columns on a phone (.hide-sm) was laid out to fit; the minimum
+   pushed its last column — the invoice's Amount — past the card's edge,
+   reachable only by swiping inside the card. */
+@media (max-width: 760px) {
+  .table:has(.hide-sm) {
+    min-width: 0;
+  }
+}
+@media (max-width: 760px) {
+  /* Money lists on a phone: the name and the amount matter, not the avatar. */
+  .table--money .namecell > .avatar {
+    display: none;
+  }
+  /* A patient's "Next … · Owes …" line wraps rather than widening the row. */
+  .namecell__sub {
+    white-space: normal;
+  }
+}
+
+/* Tablet widths (761–1080px, the line styles.css uses): the sidebar takes
+   its share, so lists drop what the row can live without (issue date, amount
+   paid, invoice number on a payment) instead of scrolling inside their card. */
+@media (min-width: 761px) and (max-width: 1080px) {
+  .table .hide-md {
+    display: none;
+  }
+  .table--money .namecell > .avatar {
+    display: none;
+  }
+}
+@media (max-width: 360px) {
+  .table--money th,
+  .table--money td {
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 13px;
+  }
+}
+
+/* Clinical › Seen today: the rows recede by weight and tone, not by
+   opacity — faded grey text on a faded row fell under 4.5:1. The quiet ✓
+   already says they are done. */
+.clin__done .row {
+  opacity: 1;
+}
+.clin__done .row__title {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+/* ── calendar week, everyone: a list per day ───────────────────
+   Three dentists sharing a time-grid day column left each block a third of
+   it wide ("Lo… 09:…"). Everyone's week is a list per day instead: the time
+   and the dentist's initials, then the patient's whole name. The room colour
+   is the left edge, as on the grid. Choosing one dentist in the chip row
+   brings the time grid back, blocks the full width of the day. */
+.calwho {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.calwho::-webkit-scrollbar {
+  display: none;
+}
+.calwho .chip {
+  flex-shrink: 0;
+}
+.weekagenda {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.weekagenda__day {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.weekagenda__day + .weekagenda__day {
+  border-left: 1px solid var(--border);
+}
+.weekagenda__day--today {
+  background: color-mix(in srgb, var(--primary-tint) 45%, transparent);
+}
+.weekagenda__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 8px 4px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.weekagenda__head:hover {
+  background: var(--canvas);
+}
+.weekagenda__head:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -3px;
+}
+.weekagenda__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+/* A seventh of the page is too narrow for time, name and initials on one
+   line — at 1280px the name kept five letters. So the name has a line of its
+   own under the time, and wraps between words instead of being cut. */
+.weekagenda__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'time doc'
+    'who who';
+  align-items: baseline;
+  gap: 1px 6px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 6px 6px 8px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+.weekagenda__item:hover {
+  background: var(--canvas);
+}
+.weekagenda__item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.weekagenda__time {
+  grid-area: time;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.weekagenda__who {
+  grid-area: who;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+.weekagenda__doc {
+  grid-area: doc;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+/* Only the exceptions look different, the way the grid draws them: waiting
+   (outlined), in the chair (amber), missed (dashed), gone (struck). A seen
+   visit recedes by tone and weight, as in Clinical › Seen today. */
+.weekagenda__item--checked_in {
+  border-color: var(--info-fg);
+}
+.weekagenda__item--in_progress {
+  background: var(--warn-bg);
+}
+.weekagenda__item--no_show {
+  border-style: dashed;
+  border-left-style: solid;
+  color: var(--warn-fg);
+}
+.weekagenda__item--cancelled .weekagenda__who {
+  color: var(--muted);
+  font-weight: 500;
+  text-decoration: line-through;
+}
+.weekagenda__item--completed .weekagenda__who {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+/* Tablets: a day per row, its bookings flowing across it in cards wide
+   enough for time, name and initials on one line. */
+@media (max-width: 1080px) {
+  .weekagenda {
+    grid-template-columns: 1fr;
+  }
+  .weekagenda__day {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .weekagenda__day + .weekagenda__day {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+  .weekagenda__head {
+    justify-content: flex-start;
+    padding-top: 12px;
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+  }
+  .weekagenda__list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+  .weekagenda__item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'time who doc';
+  }
+}
+/* Phones: the day's heading over its list, one booking per line. */
+@media (max-width: 760px) {
+  .weekagenda__day {
+    display: flex;
+    flex-direction: column;
+  }
+  .weekagenda__head {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    padding: 10px var(--gutter) 6px;
+    border-right: 0;
+  }
+  .weekagenda__list {
+    grid-template-columns: 1fr;
+    padding-top: 0;
+  }
+  .weekagenda__item {
+    min-height: 40px;
+    align-items: center;
+  }
+}
+
+/* ── secondary tables on phones and tablets ────────────────────
+   Staff, expenses, the drawer's past days, Overview's outstanding invoices,
+   the message lists, services and stock keep the columns a row needs; the
+   rest ride as a sub-line (.only-sm on phones, .show-md on tablets) instead
+   of scrolling inside the card. */
+.show-md {
+  display: none;
+}
+@media (min-width: 761px) and (max-width: 1080px) {
+  .show-md {
+    display: block;
+  }
+}
+@media (max-width: 760px) {
+  .only-sm.show-md {
+    display: block;
+  }
+}
+.cell-sub--block {
+  display: block;
+}
+@media (max-width: 360px) {
+  /* The void control keeps its 44px target; the cell around it loses padding. */
+  .table--money td:last-child:has(.iconbtn),
+  .table--money th:last-child:empty {
+    padding-left: 2px;
+    padding-right: 4px;
+  }
+}
+@media (max-width: 760px) {
+  /* The drawer's date range: From and To side by side, the checkbox under. */
+  .drawerrange {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .drawerrange .checkrow {
+    grid-column: 1 / -1;
+  }
+  .drawerrange .field {
+    min-width: 0;
+  }
+}
+
+/* Messages: Send history's status filter is drawn like the reminders filter
+   (it was the browser's own square select), and on a phone the reminders
+   filter takes the full row under the search box, as the box does. */
+.wa-stack > .card > .card__head > select {
+  height: var(--control-h);
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+@media (max-width: 560px) {
+  .wa-toolbar select {
+    width: 100%;
+  }
+}
+
+/* Tablet top bar: the section name keeps its width; the search box gives
+   way. At 768px "Settings" was clipped to "Settin" under the search box. */
+@media (min-width: 761px) and (max-width: 1080px) {
+  .topbar__lead {
+    flex-shrink: 0;
+  }
+  .gsearch {
+    flex: 1 1 200px;
+  }
+  /* The "/" hint is a desktop keyboard aid; here it only costs the placeholder. */
+  .gsearch__kbd {
+    display: none;
+  }
+}
+
+/* Settings › Branding: the colour picker is a swatch beside its hex code, as
+   the markup always meant. The field rule gives every input the full width,
+   which had stretched the picker into a colour bar across the card. */
+.field input[type='color'].swatch {
+  flex: none;
+  width: var(--input-h);
+  height: var(--input-h);
+  min-height: 0;
+  padding: 4px;
+  cursor: pointer;
+}
+input[type='color'].swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+input[type='color'].swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: 6px;
+}
+input[type='color'].swatch::-moz-color-swatch {
+  border: 0;
+  border-radius: 6px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Simplicity pass (2026-09-28): booking, finding a time, undo, search.
+   Existing tokens only — Ink & Ember is unchanged.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── booking steps: a finished step folds to one line ─────────── */
+.booking .step--folded {
+  padding-bottom: 14px;
+}
+.booking .step--folded:last-child {
+  padding-bottom: 0;
+}
+.booking .step--folded .step__body {
+  gap: 2px;
+}
+.step__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.step__title:focus {
+  outline: none;
+}
+.step__title:focus-visible {
+  border-radius: 6px;
+  box-shadow: var(--ring);
+}
+.step__change {
+  flex-shrink: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.step__value {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.step__value strong {
+  font-weight: 600;
+}
+.step__sub {
+  display: block;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.step__who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.booking__flag {
+  align-self: flex-start;
+  margin: 0;
+}
+.panel__body > .booking__flag {
+  display: inline-flex;
+  width: fit-content;
+}
+@media (max-width: 760px) {
+  .step__change {
+    min-height: var(--target);
+    padding: 0 4px;
+  }
+}
+
+/* ── what for: the service list ───────────────────────────────── */
+.svclist {
+  display: grid;
+  gap: 8px;
+}
+.svclist__list {
+  display: grid;
+  max-height: 324px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.svclist__list li + li {
+  border-top: 1px solid var(--border);
+}
+.svcrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--target);
+  padding: 10px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.svcrow:hover,
+.svcrow:focus-visible {
+  background: var(--primary-050);
+}
+.svcrow:focus-visible {
+  outline-offset: -2px;
+}
+.svcrow--on {
+  background: var(--primary-tint);
+}
+.svcrow__name {
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.svcrow__meta {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.svclist__none {
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.svclist__other {
+  justify-self: start;
+  min-height: 32px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.svcother {
+  display: grid;
+  gap: 12px;
+}
+.svcother__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── when: the free times ─────────────────────────────────────── */
+.finder {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.finder__who {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.finder__who::-webkit-scrollbar {
+  display: none;
+}
+.finder__who .chip {
+  flex-shrink: 0;
+  gap: 6px;
+}
+/* Wider than a phone, every dentist is in sight: the chips wrap. */
+@media (min-width: 761px) {
+  .finder__who {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}
+.chip__tag {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+.finder__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.finder__date {
+  min-height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+.finder__alert {
+  margin: 0;
+}
+.finder__day {
+  display: grid;
+  gap: 6px;
+}
+.finder__dayname {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.finder__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.slot {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--target);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+.slot:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.slot:active:not(:disabled) {
+  background: var(--primary-050);
+}
+.slot--on,
+.slot--on:hover:not(:disabled) {
+  border-color: var(--primary-300);
+  background: var(--primary-tint);
+}
+.slot:disabled {
+  cursor: progress;
+}
+.slot__time {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.slot__who {
+  overflow: hidden;
+  font-size: 13.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-2);
+}
+.slot__tick {
+  color: var(--ok-fg);
+}
+.finder__none {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.finder__none p {
+  margin: 0;
+}
+.finder__none .linkbtn {
+  justify-self: start;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.finder__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+@media (max-width: 760px) {
+  .finder__who .chip,
+  .finder__date {
+    min-height: var(--target);
+  }
+  .slot {
+    min-height: 52px;
+  }
+}
+/* The smallest phones: who and where take a second line, never an ellipsis. */
+@media (max-width: 400px) {
+  .slot__who {
+    white-space: normal;
+  }
+}
+
+/* ── the advanced layer ───────────────────────────────────────── */
+.whenfields {
+  display: grid;
+  gap: 12px;
+}
+.panel .disclosure {
+  margin-top: 4px;
+}
+
+/* ── an existing visit: next step, Move, More ─────────────────── */
+.visit__do {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.visit__do .moremenu {
+  margin-left: auto;
+}
+.visit__move {
+  display: grid;
+  gap: 10px;
+}
+.visit__save {
+  display: flex;
+  justify-content: flex-end;
+}
+@media (max-width: 760px) {
+  .visit__do .btn {
+    min-height: var(--target);
+  }
+}
+
+/* ── the patient's next visit, with Move beside it ────────────── */
+.profile__move {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── toasts: the Undo that replaces "Are you sure?" ───────────── */
+.toast:has(.toast__action) {
+  align-items: center;
+}
+.toast__action {
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+.toast__action:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.toast__action:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+@media (max-width: 760px) {
+  .toast__action {
+    min-height: var(--target);
+  }
+}
+
+/* ── search: groups under the patients, and the create menu's button ── */
+.gsearch__group {
+  padding: 10px 10px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+button.newmenu__item {
+  width: 100%;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ── Financials: today first, then the range ──────────────────── */
+.fin__label {
+  margin: 4px 0 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+/* ── contrast: the severe-allergy banner's detail line was faded to 0.9,
+   below 4.5:1 on the danger tint. Full strength; the size already makes it
+   secondary, and this is the one line on the record that must be read. ── */
+.alertbanner p {
+  opacity: 1;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Experience pass (2026-09-28, second): lab work, suppliers, messages,
+   what needs attention. Existing tokens only — Ink & Ember is unchanged.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── lab work rows: what, whose, where it is, its one next step ── */
+.labrows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.labrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 12px var(--gutter);
+}
+.labrows li + li {
+  border-top: 1px solid var(--border);
+}
+.labrow__main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.labrow__work {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.labrow__sub {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.labrow__patient {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.labrow__patient:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.labrow__when {
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.labrow__when--danger {
+  color: var(--danger-fg);
+  font-weight: 600;
+}
+.labrow__when--warn {
+  color: var(--warn-fg);
+  font-weight: 600;
+}
+.labrow__do {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.labrow--fitted .labrow__work,
+.labrow--cancelled .labrow__work {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.labrow--cancelled .labrow__work {
+  text-decoration: line-through;
+}
+/* In the narrow rail of a patient record the date rides under the work. */
+.labrows--card .labrow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.labrows--card .labrow__when {
+  grid-column: 1;
+  grid-row: 2;
+  white-space: normal;
+}
+.labrows--card .labrow__do {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.lab__done {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.lab__done > .btn {
+  justify-self: center;
+}
+@media (max-width: 760px) {
+  .labrow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .labrow__when {
+    grid-column: 1;
+    grid-row: 2;
+    white-space: normal;
+  }
+  .labrow__do {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .labrow__do .btn {
+    min-height: var(--target);
+  }
+}
+
+/* ── ordering lab work ─────────────────────────────────────────── */
+.labsheet {
+  display: grid;
+  gap: 12px;
+}
+.labsheet__newlab {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.labsheet__newtitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.labsheet__newfoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── labs and suppliers ────────────────────────────────────────── */
+.partners {
+  display: grid;
+  gap: 12px;
+}
+.partners__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.partners__list li + li {
+  border-top: 1px solid var(--border);
+}
+.partners__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 48px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+.partners__row--edit {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+.partners__row--edit input,
+.partners__add input {
+  min-height: var(--input-h);
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 14px;
+  min-width: 0;
+}
+.partners__row--retired .partners__name {
+  color: var(--muted);
+}
+.partners__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+}
+.partners__tag {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.partners__phone {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.partners__do {
+  display: inline-flex;
+  gap: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.partners__add {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .partners__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .partners__phone {
+    grid-column: 1;
+  }
+  .partners__do {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .partners__row--edit,
+  .partners__add {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── a message, shown as it will read ──────────────────────────── */
+.msgsheet {
+  display: grid;
+  gap: 12px;
+}
+.msgsheet__preview {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+/* ── reorder: low items by supplier ────────────────────────────── */
+.reorder {
+  display: grid;
+  gap: 14px;
+}
+.reorder__group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.reorder__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.reorder__name {
+  font-weight: 600;
+}
+.reorder__do {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.reorder__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.reorder__items li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+.reorder__items li + li {
+  border-top: 1px solid var(--border);
+}
+.reorder__qty {
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.reorder__qty--out {
+  color: var(--danger-fg);
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .reorder__do .btn {
+    min-height: var(--target);
+  }
+}
+
+/* ── inventory: the low-stock bar carries its own next step ────── */
+.alertbar--low {
+  cursor: default;
+}
+.alertbar__action {
+  margin-left: auto;
+  background: var(--surface);
+}
+
+/* ── a patient's "needs attention": rows with a button, not a link ── */
+.attention--record .attention__row > svg:first-child {
+  color: var(--warn-fg);
+}
+.attention--record .attention__row--recall > svg:first-child,
+.attention--record .attention__row--plan > svg:first-child {
+  color: var(--primary);
+}
+.attention--record .attention__go {
+  min-height: 32px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.attention--record .attention__go:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+@media (max-width: 760px) {
+  .attention--record .attention__row {
+    flex-wrap: wrap;
+  }
+  .attention--record .attention__go {
+    min-height: var(--target);
+  }
+}
+
+/* ── Clinical › Today: lab work back for the patient in the chair ── */
+.clin__lab {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.clin__lab .btn {
+  margin-left: auto;
+  background: var(--surface);
+}
+
+/* ── import: what DentalCare found in the file, then Import ─────── */
+.import-reading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.import-reading p {
+  margin: 4px 0 0;
+}
+.import-summary {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 18px var(--gutter);
+}
+.import-summary__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.import-summary__head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.import-summary__counts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+.import-summary__counts dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.import-summary__counts dd {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.import-summary__sub {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.import-summary__opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.import-summary__opt input {
+  margin-top: 3px;
+}
+.import-summary__do {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .import-summary__do .btn {
+    flex: 1 1 auto;
+    min-height: var(--target);
+  }
+}
+
+/* ── reports: a section per question, answers first ──────────────
+   Money, Clinic, Stock and lab each open with their figures and follow
+   with the detail. While a new period loads, the old figures stay and dim,
+   so the page does not jump to a skeleton and back. */
+.reports > section + section {
+  margin-top: 28px;
+}
+.reports--updating {
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+}
+.reports__none {
+  font-size: 13px;
+}
+.reports__note {
+  padding-top: 0;
+  font-size: 12.5px;
+}
+.reports__note:empty {
+  display: none;
+}
+.reports__figure {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.reports__failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.reports__failed p {
+  margin: 0;
+}
+
+/* ── what sits straight in a card keeps the card's gutter ──────────────
+   Bar lists, the receivables total, and a sub-line under a card's head
+   were direct children of .card with no padding of their own, so they ran
+   to the card's edges and the last figure on a row was cut off (Reports,
+   Financials). */
+.card > .bars {
+  padding: 6px var(--gutter) 16px;
+}
+.card > .statbig {
+  padding: 14px var(--gutter) 0;
+}
+.card > .card__sub {
+  margin: 0;
+  padding: 10px var(--gutter) 0;
+}
+.bars__empty {
+  margin: 0;
+  padding: 12px var(--gutter) 16px;
+  font-size: 13px;
+}
+
+/* ── bar lists on a phone: the name and the figure on one line ─────────
+   Each row was three lines — name, bar, figure — so a ten-row breakdown
+   ran to a screen and a half. The bar now sits under its name and figure. */
+@media (max-width: 720px) {
+  .bars__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'label value'
+      'track track';
+    row-gap: 5px;
+  }
+  .bars__label {
+    grid-area: label;
+  }
+  .bars__value {
+    grid-area: value;
+  }
+  .bars__track {
+    grid-area: track;
+  }
+}
+
+/* ── a fact's own action, on a phone: under the value, not past it ────
+   Message beside the phone number and Move beside the next visit sat in
+   a one-line cell that ends in an ellipsis, so on a phone the link was cut
+   off: invisible, yet still reachable by Tab. It takes its own line there;
+   the number itself never breaks. */
+@media (max-width: 760px) {
+  .profile__facts dd:has(.profile__move) {
+    white-space: normal;
+  }
+  .profile__facts dd .profile__move {
+    display: block;
+    margin-top: 2px;
+  }
+  .profile__facts dd a[href^='tel:'] {
+    white-space: nowrap;
+  }
+}

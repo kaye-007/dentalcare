@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Plus, TrendingDown, Undo2 } from 'lucide-react';
 import { financeApi, ApiError, type ExpenseRow, type ExpenseCategory } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { PageHeader, StatusPill, EmptyState, Modal } from '../components/ui';
+import { PageHeader, EmptyState, Modal, LoadingRows } from '../components/ui';
 import VoidModal, { VoidedNote } from '../components/VoidModal';
 import { currencySymbol, formatMoney, toDate } from '../lib/format';
 import MoneyInput from '../components/MoneyInput';
@@ -107,7 +107,7 @@ export default function ExpensesPage() {
 
       <div className="card">
         {items === null ? (
-          <div className="pad muted">Loading…</div>
+          <LoadingRows rows={3} label="Loading" />
         ) : items.length === 0 ? (
           <EmptyState
             icon={<TrendingDown size={22} />}
@@ -115,11 +115,11 @@ export default function ExpensesPage() {
             body="Log clinic costs so the owner's profit picture is real."
           />
         ) : (
-          <table className="table">
+          <table className="table table--money">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Category</th>
+                <th className="hide-sm hide-md">Date</th>
+                <th className="hide-sm hide-md">Category</th>
                 <th>Note</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
                 {canVoid && <th />}
@@ -128,12 +128,16 @@ export default function ExpensesPage() {
             <tbody>
               {items.map((e) => (
                 <tr key={e.id} className={e.voidedAt ? 'tr--voided' : undefined}>
-                  <td className="muted">{fmtDate(e.expenseDate)}</td>
-                  <td>
-                    <StatusPill status="neutral" label={CAT_LABEL[e.category]} />
-                  </td>
+                  <td className="muted hide-sm hide-md">{fmtDate(e.expenseDate)}</td>
+                  {/* A category is a label, not a status: plain words. */}
+                  <td className="hide-sm hide-md">{CAT_LABEL[e.category]}</td>
                   <td className="muted">
                     {e.note ?? '—'}
+                    {/* Phones and tablets: the category and the day under the
+                        note, rather than a date column wrapped over three lines. */}
+                    <span className="cell-sub only-sm show-md">
+                      {CAT_LABEL[e.category]} · {fmtDate(e.expenseDate)}
+                    </span>
                     {e.voidedAt && (
                       <VoidedNote
                         at={e.voidedAt}
@@ -149,9 +153,10 @@ export default function ExpensesPage() {
                     <td style={{ textAlign: 'right' }}>
                       {!e.voidedAt && (
                         <button
-                          className="iconbtn"
+                          className="iconbtn iconbtn--quiet"
                           onClick={() => setVoiding(e)}
                           title="Void this expense"
+                          aria-label={`Void the ${formatMoney(e.amount)} expense`}
                         >
                           <Undo2 size={13} />
                         </button>

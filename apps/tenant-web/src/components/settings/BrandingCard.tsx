@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { ImagePlus, Trash2 } from 'lucide-react';
-import { settingsApi, ApiError, type ClinicSettings } from '../../lib/api';
+import { settingsApi, ApiError, type ClinicSettings, humanError } from '../../lib/api';
 import { prepareLogo } from '../../lib/image';
 import { SaveButton, useSave } from '../../pages/SettingsPage';
 
@@ -32,7 +32,7 @@ export default function BrandingCard({
     try {
       onChange(await settingsApi.uploadLogo(await prepareLogo(file)));
     } catch (err) {
-      setLogoError(err instanceof ApiError || err instanceof Error ? err.message : 'Could not upload the logo.');
+      setLogoError(humanError(err, 'Could not upload the logo.'));
     } finally {
       setUploading(false);
     }
@@ -58,7 +58,9 @@ export default function BrandingCard({
       <div className="card__head">
         <div>
           <h2>Branding</h2>
-          <p className="card__sub">The logo and colour on invoices and printed documents.</p>
+          <p className="card__sub">
+            The logo and colour on invoices and printed documents.
+          </p>
         </div>
       </div>
       <div className="form" style={{ paddingTop: 16 }}>
@@ -67,20 +69,44 @@ export default function BrandingCard({
             {settings.logoUrl ? (
               <img src={settings.logoUrl} alt="Clinic logo" />
             ) : (
-              <span className="muted" style={{ fontSize: 12.5 }}>No logo</span>
+              <span className="muted" style={{ fontSize: 12.5 }}>
+                No logo
+              </span>
             )}
           </div>
           <div className="settings-stack" style={{ gap: 8 }}>
-            <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={pick} />
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => fileInput.current?.click()} disabled={uploading}>
-              <ImagePlus size={14} aria-hidden /> {uploading ? 'Uploading…' : settings.logoUrl ? 'Replace logo' : 'Upload logo'}
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={pick}
+            />
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => fileInput.current?.click()}
+              disabled={uploading}
+            >
+              <ImagePlus size={14} aria-hidden />{' '}
+              {uploading
+                ? 'Uploading…'
+                : settings.logoUrl
+                  ? 'Replace logo'
+                  : 'Upload logo'}
             </button>
             {settings.logoUrl && (
-              <button type="button" className="btn btn--danger-ghost btn--sm" onClick={removeLogo}>
+              <button
+                type="button"
+                className="btn btn--danger-ghost btn--sm"
+                onClick={removeLogo}
+              >
                 <Trash2 size={14} aria-hidden /> Remove
               </button>
             )}
-            <span className="field-hint">PNG, JPEG or WEBP. Transparent logos are placed on white.</span>
+            <span className="field-hint">
+              PNG, JPEG or WEBP. Transparent logos are placed on white.
+            </span>
           </div>
         </div>
         {logoError && <p className="formerror">{logoError}</p>}
@@ -104,6 +130,7 @@ export default function BrandingCard({
                 save.setSaved(false);
                 setColor(e.target.value);
               }}
+              aria-label="Brand colour as a hex code"
               pattern="#[0-9a-fA-F]{6}"
               maxLength={7}
               style={{ maxWidth: 120 }}

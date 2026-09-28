@@ -1,4 +1,4 @@
-import { useEffect, useState, type InputHTMLAttributes } from 'react';
+import { forwardRef, useEffect, useState, type InputHTMLAttributes } from 'react';
 import { moneyInputValue, parseMoney } from '@dentalcare/shared';
 
 type Props = Omit<
@@ -23,7 +23,10 @@ const same = (a: number | null, b: number | null) => (a ?? 0) === (b ?? 0);
  * parsed exactly by the shared parseMoney — "37,50" and "37.50" both mean
  * 3750.
  */
-export default function MoneyInput({ value, onChange, ...rest }: Props) {
+const MoneyInput = forwardRef<HTMLInputElement, Props>(function MoneyInput(
+  { value, onChange, ...rest },
+  ref,
+) {
   const [text, setText] = useState(() => (value ? moneyInputValue(value) : ''));
 
   // Follow a value set from outside — a price filled in from the catalogue —
@@ -33,7 +36,9 @@ export default function MoneyInput({ value, onChange, ...rest }: Props) {
   useEffect(() => {
     setText((current) => {
       const typed = parseMoney(current);
-      if (current.trim() === '' ? same(null, value) : typed !== null && same(typed, value)) {
+      if (
+        current.trim() === '' ? same(null, value) : typed !== null && same(typed, value)
+      ) {
         return current;
       }
       return value ? moneyInputValue(value) : '';
@@ -43,6 +48,7 @@ export default function MoneyInput({ value, onChange, ...rest }: Props) {
   return (
     <input
       {...rest}
+      ref={ref}
       type="text"
       inputMode="decimal"
       autoComplete="off"
@@ -53,4 +59,6 @@ export default function MoneyInput({ value, onChange, ...rest }: Props) {
       }}
     />
   );
-}
+});
+
+export default MoneyInput;

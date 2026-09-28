@@ -32,6 +32,11 @@ export function currencySymbol(): string {
   return symbolOf(currency, MONEY_LOCALE);
 }
 
+/** Whether the sign follows the amount, as the lek's does: "3,000 L". */
+export function symbolAfter(): boolean {
+  return currency === 'ALL';
+}
+
 /** "Euro (EUR)" */
 export function currencyLabel(code: CurrencyCode = currency): string {
   return `${CURRENCY_NAMES[code]} (${code})`;
@@ -67,15 +72,23 @@ export function toDate(value: string): Date {
 const HONORIFICS = /^(dr|prof|mr|mrs|ms|mx)\.?$/i;
 
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter((p) => !HONORIFICS.test(p));
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter((p) => !HONORIFICS.test(p));
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
+/** Trailing zeros help nobody: 2.5 boxes reads better than 2.50. */
+export function formatQty(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+}
+
 /** "1 patient" / "2 patients" — avoids the "patient(s)" placeholder look. */
 export function plural(count: number, singular: string, pluralForm?: string): string {
-  return `${count} ${count === 1 ? singular : pluralForm ?? `${singular}s`}`;
+  return `${count} ${count === 1 ? singular : (pluralForm ?? `${singular}s`)}`;
 }
 
 // Soft, readable avatar tints — deterministic per name.

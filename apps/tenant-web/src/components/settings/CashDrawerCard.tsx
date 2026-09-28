@@ -1,23 +1,28 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { CURRENCIES, DEFAULT_VARIANCE_THRESHOLDS, type CurrencyCode } from '@dentalcare/shared';
-import { ApiError, drawerApi, type CashDrawer, type DrawerPolicy } from '../../lib/api';
+import { ApiError, drawerApi, type CashDrawer, type DrawerPolicy, humanError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { currentCurrency } from '../../lib/format';
 import MoneyInput from '../MoneyInput';
-import { StatusPill } from '../ui';
+import { StatusPill, LoadingRows } from '../ui';
 import { SaveButton, useSave } from '../../pages/SettingsPage';
 
 /**
- * The cash drawer's rules, the drawers themselves, and — for the people who
- * approve differences — their own approval PIN.
+ * The cash drawer's settings. Nothing here is needed to start: the clinic's
+ * drawer is created the first time someone starts the day. What most clinics
+ * touch is the difference limits and the managers' approval PINs; the rest
+ * stays folded away.
  */
 export default function CashDrawerCard() {
   const { can } = useAuth();
   return (
     <>
       <PolicyCard />
-      <DrawersCard />
       {can('drawer:approve') && <PinCard />}
+      <details className="card advanced">
+        <summary className="advanced__summary">Several drawers</summary>
+        <DrawersCard />
+      </details>
     </>
   );
 }
@@ -32,14 +37,32 @@ function PolicyCard() {
     drawerApi
       .policy()
       .then(setPolicy)
-      .catch((e: Error) => setLoadError(e.message));
+      .catch((e) => setLoadError(humanError(e)));
   }, []);
 
   if (loadError) return <p className="formerror">{loadError}</p>;
-  if (!policy) return <p className="muted">Loading…</p>;
+  if (!policy) return <LoadingRows rows={3} label="Loading" />;
 
-  const shown: CurrencyCode[] = [clinic, ...(clinic === 'EUR' ? [] : (['EUR'] as CurrencyCode[]))];
+  const others: CurrencyCode[] = clinic === 'EUR' ? [] : ['EUR'];
   const threshold = (c: CurrencyCode) => policy.thresholds[c] ?? DEFAULT_VARIANCE_THRESHOLDS[c];
+  const limits = (c: CurrencyCode) => (
+    <div className="grid2">
+      <label className="field">
+        <span>Close without a note up to</span>
+        <MoneyInput
+          value={threshold(c).tolerance}
+          onChange={(v) => edit({ thresholds: { ...policy.thresholds, [c]: { ...threshold(c), tolerance: v ?? 0 } } })}
+        />
+      </label>
+      <label className="field">
+        <span>A manager approves above</span>
+        <MoneyInput
+          value={threshold(c).approval}
+          onChange={(v) => edit({ thresholds: { ...policy.thresholds, [c]: { ...threshold(c), approval: v ?? 0 } } })}
+        />
+      </label>
+    </div>
+  );
   const edit = (next: Partial<DrawerPolicy>) => {
     save.setSaved(false);
     setPolicy({ ...policy, ...next });
@@ -56,59 +79,46 @@ function PolicyCard() {
     <form className="card" onSubmit={submit}>
       <div className="card__head">
         <div>
-          <h2>Cash drawer rules</h2>
-          <p className="card__sub">Apply to sessions opened after saving. An open session keeps the rules it started with.</p>
+          <h2>Cash differences</h2>
+          <p className="card__sub">
+            When the count at the end of the day does not match. Applies from the next day started.
+          </p>
         </div>
       </div>
       <div className="form" style={{ paddingTop: 16 }}>
-        <label className="checkrow">
-          <input type="checkbox" checked={policy.blindCount} onChange={(e) => edit({ blindCount: e.target.checked })} />
-          <span>
-            <strong>Blind counting.</strong> Hide what the drawer should hold until the receptionist has counted it.
-          </span>
-        </label>
-        <label className="field" style={{ maxWidth: 260 }}>
-          <span>Recounts allowed at close</span>
-          <select value={policy.maxRecounts} onChange={(e) => edit({ maxRecounts: Number(e.target.value) })}>
-            {[0, 1, 2, 3].map((n) => (
-              <option key={n} value={n}>
-                {n === 0 ? 'None' : n}
-              </option>
-            ))}
-          </select>
-        </label>
-        {shown.map((c) => (
-          <fieldset key={c} className="fieldset">
-            <legend>{c}</legend>
-            <div className="grid2">
-              <label className="field">
-                <span>Default float</span>
-                <MoneyInput
-                  value={policy.defaultFloat[c] ?? 0}
-                  onChange={(v) => edit({ defaultFloat: { ...policy.defaultFloat, [c]: v ?? 0 } })}
-                />
-              </label>
-              <label className="field">
-                <span>Accept without a note up to</span>
-                <MoneyInput
-                  value={threshold(c).tolerance}
-                  onChange={(v) =>
-                    edit({ thresholds: { ...policy.thresholds, [c]: { ...threshold(c), tolerance: v ?? 0 } } })
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>Manager approval above</span>
-                <MoneyInput
-                  value={threshold(c).approval}
-                  onChange={(v) =>
-                    edit({ thresholds: { ...policy.thresholds, [c]: { ...threshold(c), approval: v ?? 0 } } })
-                  }
-                />
-              </label>
-            </div>
-          </fieldset>
-        ))}
+        {limits(clinic)}
+        <details className="advanced__inline">
+          <summary>More options</summary>
+          <label className="checkrow">
+            <input type="checkbox" checked={policy.blindCount} onChange={(e) => edit({ blindCount: e.target.checked })} />
+            <span>
+              <strong>Hide the expected amount</strong> until the cash has been counted, so the count is honest.
+            </span>
+          </label>
+          <label className="field" style={{ maxWidth: 260 }}>
+            <span>Recounts allowed</span>
+            <select value={policy.maxRecounts} onChange={(e) => edit({ maxRecounts: Number(e.target.value) })}>
+              {[0, 1, 2, 3].map((n) => (
+                <option key={n} value={n}>
+                  {n === 0 ? 'None' : n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field" style={{ maxWidth: 260 }}>
+            <span>Starting cash for the very first day</span>
+            <MoneyInput
+              value={policy.defaultFloat[clinic] ?? 0}
+              onChange={(v) => edit({ defaultFloat: { ...policy.defaultFloat, [clinic]: v ?? 0 } })}
+            />
+          </label>
+          {others.map((c) => (
+            <fieldset key={c} className="fieldset">
+              <legend>For drawers that also hold {c}</legend>
+              {limits(c)}
+            </fieldset>
+          ))}
+        </details>
         {save.error && <p className="formerror">{save.error}</p>}
         <div className="card__foot">
           <SaveButton busy={save.busy} saved={save.saved} />
@@ -131,7 +141,7 @@ function DrawersCard() {
     drawerApi
       .drawers()
       .then(setDrawers)
-      .catch((e: Error) => setError(e.message));
+      .catch((e) => setError(humanError(e)));
 
   useEffect(() => {
     void load();
@@ -164,13 +174,11 @@ function DrawersCard() {
   }
 
   return (
-    <section className="card">
-      <div className="card__head">
-        <div>
-          <h2>Drawers</h2>
-          <p className="card__sub">One per till. A retired drawer keeps its history.</p>
-        </div>
-      </div>
+    <section>
+      <p className="card__sub pad-x">
+        Most clinics need one drawer, and it is created by itself. Add more only for separate tills that are counted
+        apart. A retired drawer keeps its history.
+      </p>
       {drawers && drawers.length > 0 && (
         <ul className="feature-list">
           {drawers.map((d) => (
@@ -261,8 +269,8 @@ function PinCard() {
         <div>
           <h2>Your approval PIN</h2>
           <p className="card__sub">
-            Approve a cash difference or a payout at a receptionist’s device. The PIN is yours alone; five wrong
-            tries lock it for 15 minutes.
+            Approve a cash difference at the front desk without signing in there. The PIN is yours alone; five
+            wrong tries lock it for 15 minutes.
           </p>
         </div>
       </div>

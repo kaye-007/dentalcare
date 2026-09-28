@@ -5,19 +5,25 @@ import {
   ApiError,
   type CashDeposit,
   type FiscalSettings,
+  humanError,
 } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { formatMoney } from '../../lib/format';
 import { ROLE_LABELS } from '../../lib/permissions';
 import MoneyInput from '../MoneyInput';
 import { SaveButton, useSave } from '../../pages/SettingsPage';
+import { LoadingRows } from '../ui';
 
 const CODE = /^[a-z]{2}[0-9]{3}[a-z]{2}[0-9]{3}$/;
 
 function Check({ ok, children }: { ok: boolean; children: string }) {
   return (
     <li className="inline-row" style={{ gap: 6 }}>
-      {ok ? <CheckCircle2 size={15} color="var(--ok-fg)" aria-hidden /> : <XCircle size={15} color="var(--danger-fg)" aria-hidden />}
+      {ok ? (
+        <CheckCircle2 size={15} color="var(--ok-fg)" aria-hidden />
+      ) : (
+        <XCircle size={15} color="var(--danger-fg)" aria-hidden />
+      )}
       <span style={{ color: ok ? 'var(--ink)' : 'var(--muted)' }}>{children}</span>
     </li>
   );
@@ -36,11 +42,11 @@ export default function FiscalCard() {
     fiscalApi
       .settings()
       .then(setS)
-      .catch((e: Error) => setLoadError(e.message));
+      .catch((e) => setLoadError(humanError(e)));
   }, []);
 
   if (loadError) return <p className="formerror">{loadError}</p>;
-  if (!s) return <p className="muted">Loading…</p>;
+  if (!s) return <LoadingRows rows={3} label="Loading" />;
 
   return (
     <>
@@ -60,32 +66,46 @@ function ReadinessCard({ s }: { s: FiscalSettings }) {
         <div>
           <h2>Fiscalization (fiskalizimi)</h2>
           <p className="card__sub">
-            Registers invoices with the tax authority, which returns the NIVF and lets patients verify the
-            invoice by QR code.
+            Registers invoices with the tax authority, which returns the NIVF and lets
+            patients verify the invoice by QR code.
           </p>
         </div>
       </div>
       <div className="pad">
         {!s.available && (
           <p className="channel-note" style={{ marginTop: 0 }}>
-            <strong>Not available on this deployment.</strong> Fiscalization needs the software code issued to
-            the software's maker. Contact support.
+            <strong>Not available on this deployment.</strong> Fiscalization needs the
+            software code issued to the software's maker. Contact support.
           </p>
         )}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
-          <Check ok={s.seller.niptValid}>{`NIPT on the clinic profile${s.seller.nipt ? ` (${s.seller.nipt})` : ''}`}</Check>
-          <Check ok={Boolean(s.seller.address && s.seller.town)}>Clinic address and city</Check>
+          <Check
+            ok={s.seller.niptValid}
+          >{`NIPT on the clinic profile${s.seller.nipt ? ` (${s.seller.nipt})` : ''}`}</Check>
+          <Check ok={Boolean(s.seller.address && s.seller.town)}>
+            Clinic address and city
+          </Check>
           <Check ok={s.seller.currency === 'ALL'}>Currency is lek (ALL)</Check>
-          <Check ok={Boolean(s.businessUnitCode && s.tcrCode)}>Business unit and cash register codes</Check>
+          <Check ok={Boolean(s.businessUnitCode && s.tcrCode)}>
+            Business unit and cash register codes
+          </Check>
           <Check ok={Boolean(s.certificate)}>Signing certificate installed</Check>
-          <Check ok={s.operators.some((o) => o.operatorCode)}>At least one operator code</Check>
+          <Check ok={s.operators.some((o) => o.operatorCode)}>
+            At least one operator code
+          </Check>
         </ul>
       </div>
     </section>
   );
 }
 
-function RegisterCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: FiscalSettings) => void }) {
+function RegisterCard({
+  s,
+  onSaved,
+}: {
+  s: FiscalSettings;
+  onSaved: (s: FiscalSettings) => void;
+}) {
   const [form, setForm] = useState({
     enabled: s.enabled,
     environment: s.environment,
@@ -121,35 +141,71 @@ function RegisterCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: FiscalSe
         <div className="grid2">
           <label className="field">
             <span>Business unit code</span>
-            <input value={form.businessUnitCode} onChange={(e) => set('businessUnitCode', e.target.value.toLowerCase())} placeholder="ab123ab123" />
-            {form.businessUnitCode && !CODE.test(form.businessUnitCode) && <span className="row-issue">Two letters, three digits, two letters, three digits</span>}
+            <input
+              value={form.businessUnitCode}
+              onChange={(e) => set('businessUnitCode', e.target.value.toLowerCase())}
+              placeholder="ab123ab123"
+            />
+            {form.businessUnitCode && !CODE.test(form.businessUnitCode) && (
+              <span className="row-issue">
+                Two letters, three digits, two letters, three digits
+              </span>
+            )}
           </label>
           <label className="field">
             <span>Cash register (TCR) code</span>
-            <input value={form.tcrCode} onChange={(e) => set('tcrCode', e.target.value.toLowerCase())} placeholder="cd456cd456" />
-            {form.tcrCode && !CODE.test(form.tcrCode) && <span className="row-issue">Two letters, three digits, two letters, three digits</span>}
+            <input
+              value={form.tcrCode}
+              onChange={(e) => set('tcrCode', e.target.value.toLowerCase())}
+              placeholder="cd456cd456"
+            />
+            {form.tcrCode && !CODE.test(form.tcrCode) && (
+              <span className="row-issue">
+                Two letters, three digits, two letters, three digits
+              </span>
+            )}
           </label>
         </div>
         <div className="grid2">
           <label className="field">
             <span>Environment</span>
-            <select value={form.environment} onChange={(e) => set('environment', e.target.value as 'test' | 'production')}>
+            <select
+              value={form.environment}
+              onChange={(e) =>
+                set('environment', e.target.value as 'test' | 'production')
+              }
+            >
               <option value="test">Test — invoices are not legally valid</option>
               <option value="production">Production</option>
             </select>
           </label>
           <label className="field">
             <span>VAT exemption on untaxed lines</span>
-            <input value={form.vatExemptionCode} onChange={(e) => set('vatExemptionCode', e.target.value.toUpperCase())} placeholder="TYPE_1" />
+            <input
+              value={form.vatExemptionCode}
+              onChange={(e) => set('vatExemptionCode', e.target.value.toUpperCase())}
+              placeholder="TYPE_1"
+            />
           </label>
         </div>
         <label className="hours-row__closed" style={{ width: 'auto' }}>
-          <input type="checkbox" checked={form.isIssuerInVat} onChange={(e) => set('isIssuerInVat', e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={form.isIssuerInVat}
+            onChange={(e) => set('isIssuerInVat', e.target.checked)}
+          />
           <span>The clinic is registered for VAT</span>
         </label>
         <label className="hours-row__closed" style={{ width: 'auto' }}>
-          <input type="checkbox" checked={form.enabled} disabled={!s.available} onChange={(e) => set('enabled', e.target.checked)} />
-          <span style={{ color: 'var(--ink)', fontWeight: 600 }}>Issue fiscal invoices</span>
+          <input
+            type="checkbox"
+            checked={form.enabled}
+            disabled={!s.available}
+            onChange={(e) => set('enabled', e.target.checked)}
+          />
+          <span style={{ color: 'var(--ink)', fontWeight: 600 }}>
+            Issue fiscal invoices
+          </span>
         </label>
         {save.error && <p className="formerror">{save.error}</p>}
         <div className="form__foot">
@@ -175,7 +231,13 @@ async function base64Of(file: File): Promise<string> {
  * opened on the server, the key sealed there, and the password discarded; a
  * PEM someone has already converted is still accepted for the odd case.
  */
-function CertificateCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: FiscalSettings) => void }) {
+function CertificateCard({
+  s,
+  onSaved,
+}: {
+  s: FiscalSettings;
+  onSaved: (s: FiscalSettings) => void;
+}) {
   const [p12, setP12] = useState<{ name: string; base64: string } | null>(null);
   const [password, setPassword] = useState('');
   const [pem, setPem] = useState('');
@@ -207,7 +269,9 @@ function CertificateCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: Fisca
   async function submit(e: FormEvent) {
     e.preventDefault();
     const out = await save.run(() =>
-      p12 ? fiscalApi.installCertificateFile(p12.base64, password) : fiscalApi.installCertificate(pem),
+      p12
+        ? fiscalApi.installCertificateFile(p12.base64, password)
+        : fiscalApi.installCertificate(pem),
     );
     if (out) {
       onSaved(out);
@@ -235,12 +299,24 @@ function CertificateCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: Fisca
         </div>
       </div>
       <div className="form" style={{ paddingTop: 16 }}>
-        <input ref={fileInput} type="file" accept=".p12,.pfx,.pem,.crt,.key,.txt" hidden onChange={readFile} />
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".p12,.pfx,.pem,.crt,.key,.txt"
+          hidden
+          onChange={readFile}
+        />
         <div className="inline-row">
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => fileInput.current?.click()}>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => fileInput.current?.click()}
+          >
             {p12 ? 'Choose another file' : 'Choose certificate file'}
           </button>
-          <span className="field-hint">{p12 ? p12.name : '.p12 or .pfx, as the certificate authority issued it'}</span>
+          <span className="field-hint">
+            {p12 ? p12.name : '.p12 or .pfx, as the certificate authority issued it'}
+          </span>
         </div>
         {p12 && (
           <label className="field" style={{ maxWidth: 360 }}>
@@ -255,13 +331,18 @@ function CertificateCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: Fisca
               }}
             />
             <span className="field-hint">
-              Used once to open the file and then discarded. The private key is sealed on arrival and cannot be
-              downloaded again.
+              Used once to open the file and then discarded. The private key is sealed on
+              arrival and cannot be downloaded again.
             </span>
           </label>
         )}
         {!p12 && (
-          <button type="button" className="linkbtn" style={{ alignSelf: 'flex-start' }} onClick={() => setShowPem((v) => !v)}>
+          <button
+            type="button"
+            className="linkbtn"
+            style={{ alignSelf: 'flex-start' }}
+            onClick={() => setShowPem((v) => !v)}
+          >
             {showPem ? 'Hide PEM input' : 'Have a PEM instead?'}
           </button>
         )}
@@ -281,7 +362,11 @@ function CertificateCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: Fisca
         {save.error && <p className="formerror">{save.error}</p>}
         <div className="form__foot">
           <button className="btn btn--primary btn--sm" disabled={save.busy || !ready}>
-            {save.busy ? 'Checking…' : s.certificate ? 'Replace certificate' : 'Install certificate'}
+            {save.busy
+              ? 'Checking…'
+              : s.certificate
+                ? 'Replace certificate'
+                : 'Install certificate'}
           </button>
         </div>
       </div>
@@ -289,7 +374,13 @@ function CertificateCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: Fisca
   );
 }
 
-function OperatorsCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: FiscalSettings) => void }) {
+function OperatorsCard({
+  s,
+  onSaved,
+}: {
+  s: FiscalSettings;
+  onSaved: (s: FiscalSettings) => void;
+}) {
   const [codes, setCodes] = useState<Record<string, string>>(
     Object.fromEntries(s.operators.map((o) => [o.userId, o.operatorCode ?? ''])),
   );
@@ -299,7 +390,9 @@ function OperatorsCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: FiscalS
   async function saveOne(userId: string) {
     const code = codes[userId]?.trim() ?? '';
     if (code && !CODE.test(code)) {
-      setError('Operator codes are two letters, three digits, two letters, three digits.');
+      setError(
+        'Operator codes are two letters, three digits, two letters, three digits.',
+      );
       return;
     }
     setError(null);
@@ -319,8 +412,8 @@ function OperatorsCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: FiscalS
         <div>
           <h2>Operators</h2>
           <p className="card__sub">
-            Each person who issues fiscal invoices needs the operator code registered for them with the tax
-            authority.
+            Each person who issues fiscal invoices needs the operator code registered for
+            them with the tax authority.
           </p>
         </div>
       </div>
@@ -345,7 +438,12 @@ function OperatorsCard({ s, onSaved }: { s: FiscalSettings; onSaved: (s: FiscalS
                   <td>
                     <input
                       value={codes[o.userId] ?? ''}
-                      onChange={(e) => setCodes((c) => ({ ...c, [o.userId]: e.target.value.toLowerCase() }))}
+                      onChange={(e) =>
+                        setCodes((c) => ({
+                          ...c,
+                          [o.userId]: e.target.value.toLowerCase(),
+                        }))
+                      }
                       placeholder="ef789ef789"
                       aria-label={`Operator code for ${o.fullName}`}
                     />
@@ -378,15 +476,21 @@ function CashCard() {
   const save = useSave();
 
   useEffect(() => {
-    fiscalApi.cashDeposits().then(setDeposits).catch(() => setDeposits([]));
+    fiscalApi
+      .cashDeposits()
+      .then(setDeposits)
+      .catch(() => setDeposits([]));
   }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const out = await save.run(() => fiscalApi.registerCashDeposit({ operation, amount: amount ?? 0 }));
+    const out = await save.run(() =>
+      fiscalApi.registerCashDeposit({ operation, amount: amount ?? 0 }),
+    );
     if (out) {
       setDeposits((d) => [out, ...(d ?? [])]);
-      if (out.status !== 'registered') save.setError(out.error ?? 'The tax authority did not confirm the declaration.');
+      if (out.status !== 'registered')
+        save.setError(out.error ?? 'The tax authority did not confirm the declaration.');
     }
   }
 
@@ -397,14 +501,20 @@ function CashCard() {
           <h2>
             <Receipt size={16} aria-hidden /> Cash in the register
           </h2>
-          <p className="card__sub">Declare the opening cash at the start of each day, before the first cash invoice.</p>
+          <p className="card__sub">
+            Declare the opening cash at the start of each day, before the first cash
+            invoice.
+          </p>
         </div>
       </div>
       <div className="form" style={{ paddingTop: 16 }}>
         <div className="grid2">
           <label className="field">
             <span>Declaration</span>
-            <select value={operation} onChange={(e) => setOperation(e.target.value as 'INITIAL' | 'WITHDRAW')}>
+            <select
+              value={operation}
+              onChange={(e) => setOperation(e.target.value as 'INITIAL' | 'WITHDRAW')}
+            >
               <option value="INITIAL">Opening cash (start of day)</option>
               <option value="WITHDRAW">Cash taken out</option>
             </select>
@@ -428,7 +538,13 @@ function CashCard() {
                   <td>{d.changeDateTime.replace('T', ' ').slice(0, 16)}</td>
                   <td>{d.operation === 'INITIAL' ? 'Opening cash' : 'Taken out'}</td>
                   <td>{formatMoney(d.amount)}</td>
-                  <td>{d.status === 'registered' ? 'Confirmed' : d.status === 'rejected' ? 'Refused' : 'Not reached'}</td>
+                  <td>
+                    {d.status === 'registered'
+                      ? 'Confirmed'
+                      : d.status === 'rejected'
+                        ? 'Refused'
+                        : 'Not reached'}
+                  </td>
                 </tr>
               ))}
             </tbody>

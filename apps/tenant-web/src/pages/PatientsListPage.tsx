@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, Search, Users, UserPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Users, UserPlus } from 'lucide-react';
 import { api, type PatientListItem } from '../lib/api';
-import { Avatar, PageHeader, StatusPill, EmptyState } from '../components/ui';
+import {
+  Avatar,
+  PageHeader,
+  StatusPill,
+  EmptyState,
+  LoadingRows,
+} from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { dateLocale } from '../lib/strings';
-import { plural, toDate } from '../lib/format';
+import { formatMoney, plural } from '../lib/format';
+import { toWall, wallNow } from '../lib/clinic-time';
 
 /**
  * 'all' means all *live* records — the API excludes archived patients unless
@@ -20,12 +27,29 @@ const TABS = [
 
 const PAGE_SIZE = 20;
 
-function fmtDate(s: string) {
-  return toDate(s).toLocaleDateString(dateLocale(), {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+/** "Today 10:00", "Tomorrow 09:30", "Mon 12 Oct, 10:00" — on the clinic's clock. */
+function fmtNext(iso: string) {
+  const at = toWall(iso);
+  const today = wallNow();
+  today.setHours(0, 0, 0, 0);
+  const day = new Date(at);
+  day.setHours(0, 0, 0, 0);
+  const diff = Math.round((day.getTime() - today.getTime()) / 86_400_000);
+  const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+  if (diff === 0) return `Today ${time}`;
+  if (diff === 1) return `Tomorrow ${time}`;
+  return `${at.toLocaleDateString(dateLocale(), { weekday: 'short', day: 'numeric', month: 'short' })}, ${time}`;
+}
+
+/** What they owe, loudly; nothing owed, quietly; credit, in words. */
+function Owes({ balance }: { balance: number }) {
+  if (balance > 0) return <strong className="owes">{formatMoney(balance)}</strong>;
+  if (balance < 0) return <span className="muted">Credit {formatMoney(-balance)}</span>;
+  return (
+    <span className="muted" aria-label="Nothing owed">
+      —
+    </span>
+  );
 }
 
 export default function PatientsListPage() {
@@ -82,23 +106,22 @@ export default function PatientsListPage() {
   const firstShown = (page - 1) * PAGE_SIZE + 1;
   const lastShown = Math.min(page * PAGE_SIZE, data?.total ?? 0);
   const tabLabel = TABS.find((x) => x.key === status)?.label ?? '';
+  // The columns follow what this role may see; the API leaves the rest out.
+  const showNext = data?.items.some((p) => p.nextAppointmentAt !== undefined) ?? false;
+  const showBalance = data?.items.some((p) => p.balance !== undefined) ?? false;
 
   return (
     <div className="page">
       <PageHeader
         title="Patients"
-        meta={data ? `${plural(data.total, 'patient')} · ${tabLabel}` : 'Loading…'}
+        meta={data ? `${plural(data.total, 'patient')} · ${tabLabel}` : undefined}
         actions={
-          <>
-            {can('patients:import') && !readOnly && (
-              <Link to="/patients/import" className="btn btn--ghost">
-                <FileSpreadsheet size={16} aria-hidden /> Import
-              </Link>
-            )}
+          // Import lives in the section tabs above; one primary action here.
+          !readOnly && can('patients:write') ? (
             <Link to="/patients/new" className="btn btn--primary">
               <UserPlus size={16} aria-hidden /> Add patient
             </Link>
-          </>
+          ) : undefined
         }
       />
 
@@ -130,7 +153,7 @@ export default function PatientsListPage() {
         </div>
 
         {loading && !data ? (
-          <p className="pad muted">Loading patients…</p>
+          <LoadingRows rows={3} label="Loading patients" />
         ) : !data || data.items.length === 0 ? (
           <EmptyState
             icon={<Users size={22} />}
@@ -155,10 +178,20 @@ export default function PatientsListPage() {
             <thead>
               <tr>
                 <th scope="col">Patient</th>
-                <th scope="col">Phone</th>
-                <th scope="col">City</th>
-                <th scope="col">Status</th>
-                <th scope="col">Registered</th>
+                <th scope="col" className="hide-sm">
+                  Phone
+                </th>
+                {showNext && (
+                  <th scope="col" className="hide-sm">
+                    Next visit
+                  </th>
+                )}
+                {showBalance && (
+                  <th scope="col" className="hide-sm table__num">
+                    Balance
+                  </th>
+                )}
+                {status === 'all' && <th scope="col">Status</th>}
                 <th scope="col" className="table__chevron">
                   <span className="sr-only">Open</span>
                 </th>
@@ -182,16 +215,44 @@ export default function PatientsListPage() {
                         >
                           {p.firstName} {p.lastName}
                         </Link>
-                        <span className="namecell__sub">{p.email ?? 'No email on file'}</span>
+                        {/* On a phone: when they are next in, and what they owe. */}
+                        <span className="namecell__sub only-sm">
+                          {[
+                            p.nextAppointmentAt
+                              ? `Next ${fmtNext(p.nextAppointmentAt)}`
+                              : null,
+                            p.balance && p.balance > 0
+                              ? `Owes ${formatMoney(p.balance)}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') ||
+                            p.phone ||
+                            'No phone on file'}
+                        </span>
                       </span>
                     </div>
                   </td>
-                  <td className="muted">{p.phone ?? '—'}</td>
-                  <td className="muted">{p.city ?? '—'}</td>
-                  <td>
-                    <StatusPill status={p.status} />
-                  </td>
-                  <td className="muted">{fmtDate(p.createdAt)}</td>
+                  <td className="muted hide-sm">{p.phone ?? '—'}</td>
+                  {showNext && (
+                    <td className="hide-sm">
+                      {p.nextAppointmentAt ? (
+                        fmtNext(p.nextAppointmentAt)
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  )}
+                  {showBalance && (
+                    <td className="hide-sm table__num">
+                      <Owes balance={p.balance ?? 0} />
+                    </td>
+                  )}
+                  {status === 'all' && (
+                    <td>
+                      <StatusPill status={p.status} />
+                    </td>
+                  )}
                   <td className="table__chevron">
                     <ChevronRight size={16} aria-hidden />
                   </td>

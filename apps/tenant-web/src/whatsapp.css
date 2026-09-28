@@ -1,0 +1,379 @@
+/* Messages: WhatsApp appointment reminders (0017). */
+
+.wa-tabs {
+  margin: 0 0 16px;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.wa-tabs .tab {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.wa-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.wa-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.wa-problem {
+  color: var(--danger-fg);
+  margin: 4px 0 0;
+}
+
+/* ── the day ─────────────────────────────────────────────── */
+
+.wa-dayhead h2 {
+  margin: 0;
+}
+
+.wa-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.wa-summary__item {
+  padding: 14px var(--gutter);
+  border-right: 1px solid var(--border);
+}
+
+.wa-summary__item:last-child {
+  border-right: 0;
+}
+
+.wa-summary dt {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.wa-summary dd {
+  margin: 4px 0 0;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.wa-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px var(--gutter);
+  border-bottom: 1px solid var(--border);
+}
+
+.wa-toolbar .searchbox {
+  width: 260px;
+}
+
+.wa-toolbar select {
+  height: var(--control-h);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  padding: 0 12px;
+  background: var(--surface);
+}
+
+.wa-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.wa-table__check {
+  width: 44px;
+  text-align: center;
+}
+
+.wa-table__check input {
+  width: 18px;
+  height: 18px;
+}
+
+.wa-row--excluded td {
+  color: var(--muted);
+}
+
+.wa-row--excluded td:first-child input {
+  opacity: 0.4;
+}
+
+/* ── preview and confirmation ───────────────────────────── */
+
+.wa-previews {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.wa-previews__who {
+  margin: 0 0 6px;
+}
+
+/* A WhatsApp-like bubble: the preview, not the real thing. */
+.wa-bubble {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 4px 14px 14px 14px;
+  background: #e7f7ea;
+  color: #14261a;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wa-confirm {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.wa-confirm > div {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 12px;
+}
+
+.wa-confirm dt {
+  color: var(--muted);
+}
+
+.wa-confirm dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.wa-result {
+  border: 1px solid var(--ok-fg);
+}
+
+/* ── history ─────────────────────────────────────────────── */
+
+.wa-batches {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.wa-batch {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wa-batch:hover,
+.wa-batch.is-picked {
+  border-color: var(--ink);
+}
+
+.wa-batch__when {
+  font-weight: 600;
+}
+
+.wa-batch__counts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wa-count {
+  font-size: 12.5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-bg);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wa-count--ok {
+  background: var(--ok-bg, #e7f7ea);
+  color: var(--ok-fg);
+}
+
+.wa-count--bad {
+  background: var(--danger-bg, #fdeaea);
+  color: var(--danger-fg);
+}
+
+/* ── templates ───────────────────────────────────────────── */
+
+.wa-templates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wa-template {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px var(--gutter);
+  border-top: 1px solid var(--border);
+}
+
+.wa-template__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.wa-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.wa-editor__form {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.wa-editor__preview {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--canvas);
+}
+
+.wa-editor__foot {
+  grid-column: 1 / -1;
+}
+
+.wa-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wa-chip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.wa-chip:hover {
+  border-color: var(--ink);
+}
+
+/* ── settings ────────────────────────────────────────────── */
+
+.wa-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+
+.wa-facts dt {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.wa-facts dd {
+  margin: 4px 0 0;
+}
+
+.wa-test {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.wa-test--ok {
+  background: var(--ok-bg, #e7f7ea);
+  color: var(--ok-fg);
+}
+
+.wa-test--bad {
+  background: var(--danger-bg, #fdeaea);
+  color: var(--danger-fg);
+}
+
+.wa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── phones ──────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .wa-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .wa-summary__item:nth-child(3n) {
+    border-right: 0;
+  }
+  .wa-summary__item:nth-child(-n + 3) {
+    border-bottom: 1px solid var(--border);
+  }
+  .wa-editor {
+    grid-template-columns: 1fr;
+  }
+  .wa-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .wa-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wa-summary__item {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .wa-toolbar .searchbox {
+    width: 100%;
+  }
+  .wa-toolbar__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .wa-batch {
+    grid-template-columns: 1fr;
+  }
+  .wa-template {
+    flex-direction: column;
+  }
+  .wa-template__actions {
+    justify-content: flex-start;
+  }
+  .wa-confirm > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
