@@ -1,0 +1,22 @@
+# Text is stored and checked out with LF on every platform.
+#
+# Prettier and .editorconfig both expect LF. Without this line, a Windows
+# checkout with core.autocrlf=true writes CRLF into the working tree, and
+# every one of those files then fails the format gate while `git diff` shows
+# nothing wrong.
+* text=auto eol=lf
+
+# Binary: never converted, never diffed as text.
+*.p12 binary
+*.pfx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.xlsx binary
+*.zip binary
+*.woff binary
+*.woff2 binary

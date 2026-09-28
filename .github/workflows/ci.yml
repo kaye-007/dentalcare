@@ -13,7 +13,8 @@ name: CI
 
 on:
   push:
-    branches: [main, production-hardening]
+    # preserve/** is where the pre-production work lives until it is merged.
+    branches: [main, production-hardening, 'preserve/**']
   pull_request:
   workflow_dispatch:
 
@@ -30,9 +31,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          # format-check diffs against the base commit, so it needs history.
-          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -45,12 +43,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # Only what this change touches. The repository is hand-wrapped rather
-      # than machine-formatted; scripts/format-check.js explains why the gate
-      # is scoped and what it would cost not to be.
-      - name: Format (changed files)
-        env:
-          FORMAT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+      # Every file Prettier owns, not only the ones a change touches; see
+      # scripts/format-check.js.
+      - name: Format (whole repository)
         run: npm run format:check
 
       - name: Typecheck
