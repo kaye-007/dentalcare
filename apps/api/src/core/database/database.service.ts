@@ -100,13 +100,24 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
       row = res.rows[0];
     } catch (e) {
-      // Never block startup on the check itself being unavailable.
-      this.logger.warn(
-        `Could not verify tenant DB role privileges: ${(e as Error).message}`,
-      );
+      // Production does not start on an isolation guarantee it could not
+      // check: a failed check used to be waved through, which is the one
+      // outcome this check exists to prevent. Development keeps going, so a
+      // database still starting up is a warning, not a crash loop.
+      const reason =
+        'Could not verify that the tenant database role cannot bypass ' +
+        `Row-Level Security: ${(e as Error).message}`;
+      if (isProd) throw new Error(reason);
+      this.logger.warn(reason);
       return;
     }
-    if (!row || (!row.rolsuper && !row.rolbypassrls)) return;
+    if (!row) {
+      const reason = 'The tenant database role was not found in pg_roles.';
+      if (isProd) throw new Error(reason);
+      this.logger.warn(reason);
+      return;
+    }
+    if (!row.rolsuper && !row.rolbypassrls) return;
 
     const how = row.rolsuper ? 'is a SUPERUSER' : 'has BYPASSRLS';
     const message =
