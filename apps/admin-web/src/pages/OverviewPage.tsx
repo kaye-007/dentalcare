@@ -192,6 +192,41 @@ export default function OverviewPage() {
 
       {data ? (
         <>
+          {attention.length > 0 && (
+            <section className="card attn-card">
+              <div className="card__head">
+                <h2>Needs attention</h2>
+                {attention.length > 0 && (
+                  <span className="pill pill--danger">{attention.length}</span>
+                )}
+              </div>
+              <ul className="attn">
+                {attention.slice(0, 7).map((a) => (
+                  <li key={a.key}>
+                    <Link to={a.to} className="attn__item">
+                      <span className={`attn__icon attn__icon--${a.tone}`}>
+                        <a.icon size={16} aria-hidden />
+                      </span>
+                      <span className="attn__main">
+                        <span className="attn__title">{a.title}</span>
+                        <span className="attn__sub">{a.sub}</span>
+                      </span>
+                      <ChevronRight size={16} className="attn__go" aria-hidden />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {attention.length > 7 && (
+                <div className="card__foot">
+                  <span>{attention.length - 7} more</span>
+                  <Link className="link" to="/clinics">
+                    All clinics <ArrowRight size={14} />
+                  </Link>
+                </div>
+              )}
+            </section>
+          )}
+
           <div className="kpis">
             <Kpi
               tone="dark"
@@ -265,90 +300,6 @@ export default function OverviewPage() {
 
             <section className="card span-4">
               <div className="card__head">
-                <h2>Needs attention</h2>
-                {attention.length > 0 && (
-                  <span className="pill pill--danger">{attention.length}</span>
-                )}
-              </div>
-              {attention.length === 0 ? (
-                <Empty
-                  compact
-                  tone="ok"
-                  icon={CircleCheck}
-                  title="All clear"
-                  body="No overdue invoices, no trials running out, no clinics gone quiet."
-                />
-              ) : (
-                <ul className="attn">
-                  {attention.slice(0, 7).map((a) => (
-                    <li key={a.key}>
-                      <Link to={a.to} className="attn__item">
-                        <span className={`attn__icon attn__icon--${a.tone}`}>
-                          <a.icon size={16} aria-hidden />
-                        </span>
-                        <span className="attn__main">
-                          <span className="attn__title">{a.title}</span>
-                          <span className="attn__sub">{a.sub}</span>
-                        </span>
-                        <ChevronRight size={16} className="attn__go" aria-hidden />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {attention.length > 7 && (
-                <div className="card__foot">
-                  <span>{attention.length - 7} more</span>
-                  <Link className="link" to="/clinics">
-                    All clinics <ArrowRight size={14} />
-                  </Link>
-                </div>
-              )}
-            </section>
-          </div>
-
-          <div className="grid">
-            <section className="card span-4">
-              <div className="card__head">
-                <div>
-                  <h2>Revenue by plan</h2>
-                  <p className="card__sub">Share of monthly recurring revenue</p>
-                </div>
-              </div>
-              <ShareBars
-                empty="No paying clinics yet."
-                rows={data.plans
-                  .filter((p) => p.mrr > 0)
-                  .sort((a, b) => b.mrr - a.mrr)
-                  .map((p) => ({
-                    key: p.id,
-                    label: p.name,
-                    value: p.mrr,
-                    display: formatEuro(p.mrr),
-                    note: `${p.paying_count} clinic${p.paying_count === 1 ? '' : 's'}`,
-                  }))}
-              />
-            </section>
-
-            <section className="card span-4">
-              <div className="card__head card__head--flush">
-                <div>
-                  <h2>New clinics</h2>
-                  <p className="card__sub">Clinics set up each month</p>
-                </div>
-              </div>
-              <ColumnChart
-                columns={growth}
-                series={[{ name: 'New clinics', color: 'var(--data-1)' }]}
-                format={(n) => String(n)}
-                integer
-                height={200}
-                ariaLabel="New clinics set up each month, last six months"
-              />
-            </section>
-
-            <section className="card span-4">
-              <div className="card__head">
                 <h2>Recent activity</h2>
                 <Link className="link" to="/activity">
                   View all <ArrowRight size={14} />
@@ -392,6 +343,51 @@ export default function OverviewPage() {
               )}
             </section>
           </div>
+
+          {/* Plan mix and growth are for a monthly look, not a daily one. */}
+          <details className="insights">
+            <summary className="insights__toggle">Plans and growth</summary>
+            <div className="grid">
+              <section className="card span-6">
+                <div className="card__head">
+                  <div>
+                    <h2>Revenue by plan</h2>
+                    <p className="card__sub">Share of monthly recurring revenue</p>
+                  </div>
+                </div>
+                <ShareBars
+                  empty="No paying clinics yet."
+                  rows={data.plans
+                    .filter((p) => p.mrr > 0)
+                    .sort((a, b) => b.mrr - a.mrr)
+                    .map((p) => ({
+                      key: p.id,
+                      label: p.name,
+                      value: p.mrr,
+                      display: formatEuro(p.mrr),
+                      note: `${p.paying_count} clinic${p.paying_count === 1 ? '' : 's'}`,
+                    }))}
+                />
+              </section>
+
+              <section className="card span-6">
+                <div className="card__head card__head--flush">
+                  <div>
+                    <h2>New clinics</h2>
+                    <p className="card__sub">Clinics set up each month</p>
+                  </div>
+                </div>
+                <ColumnChart
+                  columns={growth}
+                  series={[{ name: 'New clinics', color: 'var(--data-1)' }]}
+                  format={(n) => String(n)}
+                  integer
+                  height={200}
+                  ariaLabel="New clinics set up each month, last six months"
+                />
+              </section>
+            </div>
+          </details>
 
           {data.tenants.length === 0 && (
             <section className="card" style={{ marginTop: 16 }}>

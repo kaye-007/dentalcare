@@ -566,6 +566,12 @@ export interface FleetUsage {
   storageByKind: StorageByKind[];
   /** Soft-deleted documents: storage we still pay for, no clinic can see. */
   reclaimable: { files: number; bytes: number };
+  /** Where uploads are kept; on the server's own disk, how much room is left. */
+  backend?: {
+    driver: 's3' | 'local' | 'off';
+    diskFreeBytes: number | null;
+    diskTotalBytes: number | null;
+  };
 }
 
 export interface TenantUsage extends TenantUsageRow {

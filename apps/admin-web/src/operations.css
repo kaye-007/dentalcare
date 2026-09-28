@@ -1177,3 +1177,82 @@ a.kpi:hover {
     padding: 24px 20px;
   }
 }
+
+/* ── overview: what needs doing first ───────────────────────────
+   The attention list is acted on, so it leads the page. Plan mix and
+   growth fold away under one summary line. */
+.attn-card {
+  margin-bottom: 20px;
+}
+.insights {
+  margin-top: 20px;
+}
+.insights__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.insights__toggle::-webkit-details-marker {
+  display: none;
+}
+.insights__toggle::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.18s ease;
+}
+.insights[open] > .insights__toggle::before {
+  transform: rotate(45deg);
+}
+.insights__toggle:hover {
+  color: var(--ink);
+}
+.insights > .grid {
+  margin-top: 8px;
+}
+
+/* ── usage: where files are kept ───────────────────────────── */
+.storagebar {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.storagebar__meter {
+  display: block;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-tint);
+  overflow: hidden;
+}
+.storagebar__meter > span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+.storagebar--low {
+  border-color: var(--warn-fg);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+.storagebar--low .storagebar__meter > span {
+  background: var(--warn-fg);
+}
+.storagebar--off {
+  color: var(--danger-fg);
+}

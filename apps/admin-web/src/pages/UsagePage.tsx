@@ -176,6 +176,8 @@ export default function UsagePage() {
             />
           </div>
 
+          {usage.backend && <StorageBackend backend={usage.backend} />}
+
           <section className="card">
             <div className="card__toolbar">
               <h2 style={{ margin: 0, fontSize: 15.5, fontWeight: 600 }}>By clinic</h2>
@@ -339,5 +341,43 @@ function LastSeen({ iso, active }: { iso: string | null; active: boolean }) {
     <span className="pill pill--warn">{label}</span>
   ) : (
     <>{label}</>
+  );
+}
+
+/**
+ * Where the files physically are. On this server's own disk the free space is
+ * the number to watch: when it runs out, every clinic's uploads stop at once.
+ */
+function StorageBackend({ backend }: { backend: NonNullable<FleetUsage['backend']> }) {
+  if (backend.driver === 'off') {
+    return (
+      <p className="banner storagebar storagebar--off">
+        Uploads are switched off on this server. Clinics cannot add documents, photos or logos until
+        STORAGE_DRIVER is unset or a bucket is configured.
+      </p>
+    );
+  }
+  if (backend.driver === 's3') {
+    return <p className="storagebar">Files are kept in the S3-compatible bucket.</p>;
+  }
+  const free = backend.diskFreeBytes;
+  const total = backend.diskTotalBytes;
+  const usedPct = free !== null && total ? Math.round(((total - free) / total) * 100) : null;
+  const low = free !== null && total ? free / total < 0.1 : false;
+  return (
+    <div className={`storagebar${low ? ' storagebar--low' : ''}`}>
+      <span>
+        <strong>Files are kept on this server&rsquo;s disk.</strong>{' '}
+        {free !== null && total
+          ? `${formatBytes(free)} free of ${formatBytes(total)}.`
+          : 'Free space could not be read.'}
+        {low ? ' Space is running low — add disk or clean up soon.' : ''}
+      </span>
+      {usedPct !== null && (
+        <span className="storagebar__meter" aria-hidden>
+          <span style={{ width: `${usedPct}%` }} />
+        </span>
+      )}
+    </div>
   );
 }
