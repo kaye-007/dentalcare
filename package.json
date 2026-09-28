@@ -38,6 +38,7 @@
     "dev:setup:reset": "node scripts/dev-setup.js --reset",
     "smoke": "node scripts/smoke-api.js",
     "doctor": "node scripts/doctor.js",
+    "demo:reset": "npm run demo:reset -w @dentalcare/api",
     "admin:create": "npm run bootstrap-admin -w @dentalcare/api",
     "shared:build": "npm run build -w @dentalcare/shared"
   },

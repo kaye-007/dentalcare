@@ -5,9 +5,10 @@
  * expense, reminder, and platform admin. It exists so a demo environment can
  * be returned to a known-empty state before seeding.
  *
- *   npm run reset-demo
+ *   DEMO_ENV=true npm run reset-demo
  *
- * Guarded against production by scripts/lib/guard.js. Reference data that the
+ * Refuses to run unless DEMO_ENV=true is set for the command, and is also
+ * guarded against production hosts by scripts/lib/guard.js. Reference data that the
  * application needs to function (subscription `plans`) is preserved unless
  * --plans is passed.
  */
@@ -15,7 +16,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 const { Pool } = require('pg');
-const { assertNotProduction } = require('./lib/guard');
+const { assertNotProduction, assertDemoEnvironment } = require('./lib/guard');
 
 /**
  * Order matters only for readability — TRUNCATE ... CASCADE handles the
@@ -23,6 +24,8 @@ const { assertNotProduction } = require('./lib/guard');
  * demo data.
  */
 const TENANT_TABLES = [
+  // Lab work (0020) refers to patients, plan items, and the labs below.
+  'lab_orders',
   // Phase 4 — clinical charting. tooth_records was here; migration 0015 drops
   // that table, so truncating it threw and no reset ever completed.
   'perio_measurements',
@@ -58,8 +61,10 @@ const TENANT_TABLES = [
   // count printed below is the truth.
   'stock_movements',
   'inventory_items',
-  // Append-only audit trail. See APPEND_ONLY_TRIGGER below for why this one
-  // needs its guard lifted for the length of the reset.
+  // Labs and suppliers (0020), which items and lab work refer to.
+  'partners',
+  // Append-only audit trail. See NO_TRUNCATE_TRIGGERS_SQL below for why its
+  // guard is lifted for the length of the reset.
   'clinic_audit_log',
   'clinic_settings',
   'users',
@@ -69,19 +74,29 @@ const TENANT_TABLES = [
 const PLATFORM_TABLES = ['audit_log', 'platform_admins'];
 
 /**
- * clinic_audit_log refuses TRUNCATE for every role, the owner included, and
- * the tenants cascade reaches it — so without this the reset failed outright
- * and printed nothing but the trigger's message.
+ * Several tables refuse TRUNCATE for every role, the owner included: the
+ * clinic audit log, the patient access log, and the cash drawer's evidence
+ * (events, counts, reviews, approvals). The tenants cascade reaches all of
+ * them, so a reset used to fail outright on the first one it met.
  *
- * Disabling the guard inside the transaction is the same deliberate act the
- * integration fixtures use (test/integration/fixtures.ts). ALTER TABLE is
- * transactional in Postgres: if the truncate fails, the rollback restores the
- * trigger too, so the guard can never be left switched off. The runtime role
- * has no rights over the trigger, and this script refuses production.
+ * Their guards are found by name rather than listed here, so a future
+ * append-only table cannot silently break the reset again. Disabling them
+ * inside the transaction is the same deliberate act the integration fixtures
+ * use (test/integration/fixtures.ts). ALTER TABLE is transactional in
+ * Postgres: if the truncate fails, the rollback restores every trigger, so a
+ * guard can never be left switched off. The runtime role has no rights over
+ * these triggers, and this script refuses anything not marked as a demo.
  */
-const APPEND_ONLY_TRIGGER = 'clinic_audit_log_no_truncate';
+const NO_TRUNCATE_TRIGGERS_SQL = `
+  SELECT tgrelid::regclass::text AS tbl, tgname AS name
+    FROM pg_trigger
+   WHERE NOT tgisinternal AND right(tgname, 12) = '_no_truncate'
+   ORDER BY 1`;
 
 async function main() {
+  // Explicit opt-in first: DEMO_ENV=true for this command, then the
+  // production and local-host checks on the connection string.
+  assertDemoEnvironment({ action: 'reset' });
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is not set. Copy .env.example to .env first.');
   }
@@ -95,22 +110,38 @@ async function main() {
     ? [...TENANT_TABLES, ...PLATFORM_TABLES, 'plans']
     : [...TENANT_TABLES, ...PLATFORM_TABLES];
 
-  console.log(`\n  Resetting ${host}/${dbName}`);
-  console.log(
-    `  Truncating ${tables.length} tables${alsoPlans ? ' (including plans)' : ''}\n`,
-  );
-
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const client = await pool.connect();
   try {
+    // Say exactly what is about to disappear. A demo database holds the demo
+    // clinic and perhaps a few test clinics; a list of real practice names
+    // here is the last chance to notice the wrong DATABASE_URL.
+    const { rows: clinics } = await client.query(
+      'SELECT name, subdomain FROM tenants ORDER BY created_at',
+    );
+    console.log(`\n  Resetting ${host}/${dbName}`);
+    console.log(
+      `  Removing ${clinics.length} clinic${clinics.length === 1 ? '' : 's'}` +
+        (clinics.length ? ':' : ''),
+    );
+    for (const c of clinics) console.log(`    - ${c.name} (${c.subdomain})`);
+    console.log(
+      `  Truncating ${tables.length} tables${alsoPlans ? ' (including plans)' : ''}\n`,
+    );
+
     await client.query('BEGIN');
-    await client.query(`ALTER TABLE clinic_audit_log DISABLE TRIGGER ${APPEND_ONLY_TRIGGER}`);
+    const { rows: guards } = await client.query(NO_TRUNCATE_TRIGGERS_SQL);
+    for (const g of guards) {
+      await client.query(`ALTER TABLE ${g.tbl} DISABLE TRIGGER ${g.name}`);
+    }
     await client.query(`TRUNCATE TABLE ${tables.join(', ')} RESTART IDENTITY CASCADE`);
-    await client.query(`ALTER TABLE clinic_audit_log ENABLE TRIGGER ${APPEND_ONLY_TRIGGER}`);
+    for (const g of guards) {
+      await client.query(`ALTER TABLE ${g.tbl} ENABLE TRIGGER ${g.name}`);
+    }
     await client.query('COMMIT');
     console.log('  Reset complete. Run `npm run seed` to load the demo clinic.\n');
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
     client.release();

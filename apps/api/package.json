@@ -23,6 +23,7 @@
     "migrate:create": "node-pg-migrate create -m migrations",
     "seed": "node scripts/seed-demo.js",
     "reset-demo": "node scripts/reset-demo.js",
+    "demo:reset": "node scripts/reset-demo.js && node scripts/seed-demo.js",
     "bootstrap-admin": "node scripts/bootstrap-admin.js"
   },
   "dependencies": {

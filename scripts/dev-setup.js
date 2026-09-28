@@ -40,7 +40,7 @@ const PUBLISHED_PASSWORDS = [
 
 const RESET = process.argv.includes('--reset');
 // Demo data is opt-in. A clean database with the schema, the app role and
-// your own administrator is the normal case; the Vienna demo clinic is a
+// your own administrator is the normal case; the demo clinic is a
 // fixture for exercising the UI, not something to hand a real deployment.
 const WITH_DEMO = process.argv.includes('--with-demo');
 
@@ -477,16 +477,21 @@ async function main() {
     }
     die('the app role is over-privileged — rebuild with: npm run dev:setup:reset');
   }
-  ok('money, audit, clinical-record, stock and commercial-state privileges are still revoked');
+  ok(
+    'money, audit, clinical-record, stock and commercial-state privileges are still revoked',
+  );
   await admin.end();
 
   /* ── 6. demo data ───────────────────────────────────────────────────── */
   if (WITH_DEMO) {
     step('6. demo data');
     try {
+      // --with-demo is the explicit opt-in the seed's DEMO_ENV guard asks
+      // for, so it is set for this one command and nowhere else.
       execSync('npm run seed -w @dentalcare/api', {
         cwd: path.resolve(__dirname, '..'),
         stdio: 'inherit',
+        env: { ...process.env, DEMO_ENV: 'true' },
       });
     } catch {
       die('seed failed — the error is above.');
@@ -502,7 +507,7 @@ async function main() {
      never compared. `ready` used to print instructions for fixing that by
      hand; it is one prompt instead.
 
-     Not the demo clinic. `--with-demo` still exists and still seeds Vienna
+     Not the demo clinic. `--with-demo` still exists and still seeds the demo clinic
      with a year of history; this makes YOUR clinic, with your account, which
      is what a real first run wants. */
   step('7. clinic');
@@ -640,7 +645,7 @@ function ready(seeded) {
     npm run web:dev      ->  clinic   http://localhost:5173
     npm run admin:dev    ->  console  http://localhost:5174
 
-  Demo clinic  ->  demo@dentx.app / Demo@2026!
+  Demo clinic  ->  demo@dentx.app / Demo@2026!   (all demo accounts: docs/DEMO_ACCOUNTS.md)
   Demo console ->  admin@dentx.app / Demo@2026!
 `);
     return;

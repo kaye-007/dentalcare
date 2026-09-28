@@ -51,6 +51,34 @@ function assertNotProduction(connectionString, opts = {}) {
 }
 
 /**
+ * Refuse unless the environment says, in so many words, that it is a demo.
+ *
+ * The host checks above catch the obvious production database. They do not
+ * catch a developer's own clinic data on localhost, or a staging database
+ * reached through an SSH tunnel on 127.0.0.1. Wiping or re-seeding is
+ * therefore opt-in: DEMO_ENV=true has to be set for this run, on purpose.
+ * Nothing in the repository sets it by default, and the production env
+ * examples never mention it.
+ *
+ * @param {{ action?: string }} [opts]
+ */
+function assertDemoEnvironment(opts = {}) {
+  const action = opts.action || 'seed';
+  if (process.env.DEMO_ENV !== 'true') {
+    throw new Error(
+      `Refusing to ${action}: this environment is not marked as a demo.\n` +
+        '  The demo scripts only run where DEMO_ENV=true is set for the command, e.g.\n' +
+        '    DEMO_ENV=true npm run demo:reset',
+    );
+  }
+  if (process.env.RUNTIME === 'workers') {
+    throw new Error(
+      `Refusing to ${action}: RUNTIME=workers is the deployed Cloudflare runtime.`,
+    );
+  }
+}
+
+/**
  * Refuse to touch a database whose schema is behind the migrations on disk.
  *
  * Without this, a stale database fails on the first INSERT that needs a column
@@ -92,4 +120,9 @@ async function assertSchemaCurrent(client, migrationsDir) {
   );
 }
 
-module.exports = { assertNotProduction, assertSchemaCurrent, LOCAL_HOSTS };
+module.exports = {
+  assertNotProduction,
+  assertDemoEnvironment,
+  assertSchemaCurrent,
+  LOCAL_HOSTS,
+};

@@ -14,17 +14,19 @@
 // The guard is plain JS invoked by node scripts, so it is required rather than
 // imported; there is no .d.ts and none is warranted for 40 lines.
 
-const { assertNotProduction, assertSchemaCurrent, LOCAL_HOSTS } = require('./guard') as {
-  assertNotProduction: (
-    url: string,
-    opts?: { overrideVar?: string; action?: string },
-  ) => { host: string; dbName: string };
-  assertSchemaCurrent: (
-    client: { query: (sql: string) => Promise<{ rows: { name: string }[] }> },
-    migrationsDir?: string,
-  ) => Promise<void>;
-  LOCAL_HOSTS: string[];
-};
+const { assertNotProduction, assertDemoEnvironment, assertSchemaCurrent, LOCAL_HOSTS } =
+  require('./guard') as {
+    assertDemoEnvironment: (opts?: { action?: string }) => void;
+    assertNotProduction: (
+      url: string,
+      opts?: { overrideVar?: string; action?: string },
+    ) => { host: string; dbName: string };
+    assertSchemaCurrent: (
+      client: { query: (sql: string) => Promise<{ rows: { name: string }[] }> },
+      migrationsDir?: string,
+    ) => Promise<void>;
+    LOCAL_HOSTS: string[];
+  };
 
 const LOCAL = 'postgres://u:p@localhost:5432/dentalcare';
 
@@ -192,5 +194,42 @@ describe('assertSchemaCurrent', () => {
     await expect(
       assertSchemaCurrent(clientWith(['0001_init', '0002_users', '0003_isolation']), dir),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('assertDemoEnvironment', () => {
+  const env = process.env;
+  beforeEach(() => {
+    process.env = { ...env };
+    delete process.env.DEMO_ENV;
+    delete process.env.RUNTIME;
+  });
+  afterAll(() => {
+    process.env = env;
+  });
+
+  it('refuses when DEMO_ENV is not set', () => {
+    expect(() => assertDemoEnvironment({ action: 'reset' })).toThrow(
+      /not marked as a demo/,
+    );
+  });
+
+  it.each(['1', 'yes', 'TRUE', 'false', ''])(
+    'refuses DEMO_ENV=%s: only the literal "true" counts',
+    (v) => {
+      process.env.DEMO_ENV = v;
+      expect(() => assertDemoEnvironment()).toThrow(/not marked as a demo/);
+    },
+  );
+
+  it('allows DEMO_ENV=true', () => {
+    process.env.DEMO_ENV = 'true';
+    expect(() => assertDemoEnvironment()).not.toThrow();
+  });
+
+  it('refuses the deployed Workers runtime even when DEMO_ENV=true', () => {
+    process.env.DEMO_ENV = 'true';
+    process.env.RUNTIME = 'workers';
+    expect(() => assertDemoEnvironment()).toThrow(/RUNTIME=workers/);
   });
 });
