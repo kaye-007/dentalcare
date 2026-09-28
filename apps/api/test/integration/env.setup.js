@@ -1,23 +1,26 @@
 /**
- * Load the repository .env before the integration suite reads process.env.
+ * The environment of every integration test file.
  *
- * Without this, `npm run test:integration` on a developer machine failed four
- * suites at import — tenant-isolation, role, privileges and double-booking,
- * which are precisely the ones that prove the isolation model. Jest reports
- * that as "Test suite failed to run", which reads like a flake rather than a
- * missing variable, and the four suites everyone most wants green were the
- * four nobody could run without exporting DATABASE_URL by hand first.
+ * The repository .env is read, because the suites need its secrets and
+ * settings, and a missing variable used to fail the four isolation suites at
+ * import with an error that read like a flake. dotenv never overwrites a
+ * variable that is already set, so an explicitly configured run still wins.
  *
- * CI is unaffected on purpose. It sets both URLs in the job environment and
- * ships no .env, and dotenv never overwrites a variable that is already set —
- * so an explicitly configured environment still wins, and a missing .env is
- * silently fine.
+ * Which DATABASE is not taken from .env, though: its DATABASE_URL is the
+ * developer's own database. scripts/lib/test-database.js decides, and
+ * global.setup.js has already refused the run if nothing suitable is named.
  */
 const path = require('path');
+const { resolveTestDatabase } = require('../../scripts/lib/test-database');
 
-require('dotenv').config({
+const exported = { ...process.env };
+const { parsed } = require('dotenv').config({
   path: path.resolve(__dirname, '../../../../.env'),
 });
+
+const target = resolveTestDatabase(exported, parsed ?? {});
+process.env.DATABASE_URL = target.databaseUrl;
+process.env.APP_DATABASE_URL = target.appDatabaseUrl;
 
 /**
  * MFA is required by default, which would put every suite's administrator

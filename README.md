@@ -204,11 +204,26 @@ npm test -w @dentalcare/api                    # unit — no database
 npm run test:integration -w @dentalcare/api    # against Postgres, as the real roles
 ```
 
-Unit: 26 suites, 541 tests — configuration gates, permissions, money, the
+The integration suite writes to the database it runs against, so it never
+uses the development database in `.env`. Give it one of its own, once:
+
+```bash
+createdb dentalcare_test        # or: docker exec <postgres> createdb -U dentalcare dentalcare_test
+DATABASE_URL=postgres://dentalcare:dentalcare@localhost:5432/dentalcare_test npm run migrate:up
+# then in .env:
+#   TEST_DATABASE_URL=postgres://dentalcare:dentalcare@localhost:5432/dentalcare_test
+#   TEST_APP_DATABASE_URL=postgres://app_user:app_user_dev_pw@localhost:5432/dentalcare_test
+```
+
+Without that it refuses to start and says why. CI uses its own throwaway
+database.
+
+Unit: 49 suites, 778 tests — configuration gates, permissions, money, the
 billing, stock and lot engines, TOTP and session tokens, reminder wording and
-delivery policy. Integration: 22 suites, 355 tests — tenant isolation and
-privileges, sessions and MFA, the clinical record, money, inventory lots and
-SMS delivery, each against a real database. Figures from 2026-09-14.
+delivery policy. Integration: 36 suites, 525 tests — tenant isolation and
+privileges, sessions and MFA, the clinical record, money, inventory lots,
+lab work, WhatsApp and SMS delivery, each against a real database. Figures
+from 2026-09-28.
 
 ## Licence
 

@@ -22,9 +22,12 @@ module.exports = {
   roots: ['<rootDir>/test'],
   testRegex: '\\.itest\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
-  // Reads the repository .env before any suite imports test/integration/db.ts.
-  // See that file: without it, the four suites that prove tenant isolation
-  // threw at import on any machine that had not exported the URLs by hand.
+  // The suite writes to the database it runs against, so which one is decided
+  // by scripts/lib/test-database.js: TEST_DATABASE_URL, or exported URLs in CI
+  // or for a database named for tests. Never the development database in
+  // .env. global.setup refuses the run once, before any suite; env.setup
+  // applies the choice (and the rest of .env) in every test file.
+  globalSetup: '<rootDir>/test/integration/global.setup.js',
   setupFiles: ['<rootDir>/test/integration/env.setup.js'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
