@@ -13,6 +13,34 @@ project. The cleanup report that described the divergence was deleted in the
 
 ## Fixed
 
+### Security program — 2026-09-28 (migrations 0023–0025)
+
+Evidence, commits and what remains: [SECURITY_PROGRAM.md](./SECURITY_PROGRAM.md).
+
+- **Failed sign-ins are locked out, durably.** They are counted in the
+  database (0025), so the limit holds across every Worker isolate:
+  - 10 failures per account in 15 minutes locks it for 15, whether or not the
+    account exists;
+  - 100 failures per address locks that address;
+  - keys are HMACs, so the table holds no email or IP;
+  - an unknown address costs the same bcrypt work, so timing reveals no
+    account.
+- **Login CSRF on Google sign-in closed.** The callback requires the nonce
+  cookie set by the browser that started the sign-in.
+- **The RLS boot check fails closed** in production.
+- **`app_user` lost INSERT on `tenants`** (0025).
+- **Money routes refuse a repeated request.** `@Idempotent` covers seven
+  routes, and invoices, expenses and adjustments store the key under a unique
+  index (0024).
+- **"Today" is the clinic's date** (0023). Invoice dates no longer disagree
+  with fiscal dates after midnight.
+- **Production must choose where documents are stored.** A container disk is
+  no longer picked silently.
+- **Backup and restore tooling, with a rehearsed restore.** The restore
+  refuses non-empty targets and checks schema, rows and row security.
+- **Secret scanning in CI; HSTS on both SPAs; the integration suite refuses
+  the development database.**
+
 ### Production-hardening pass — 2026-09-14 (migrations 0003–0008)
 
 Each item closes a gap found by reading the code, and each is covered by the
@@ -209,9 +237,18 @@ Checked explicitly so they are not "fixed" into breakage later.
 
 ## Outstanding
 
-Closed since the previous revision of this table: refresh-token rotation and
-revocation, the shared JWT secret (`PLATFORM_JWT_SECRET`), the missing
-clinic-plane audit trail, and patient data in the reminder log.
+Closed since the previous revision of this table:
+
+- refresh-token rotation and revocation;
+- the shared JWT secret (`PLATFORM_JWT_SECRET`);
+- the missing clinic-plane audit trail;
+- patient data in the reminder log;
+- migrations 0009–0011 never run. On 2026-09-28, 0001–0025 ran from zero on a
+  fresh database with the whole integration suite, 556 tests.
+
+Also closed on 2026-09-28: the in-memory-only login throttle, login CSRF, the
+fail-open RLS boot check, duplicate money writes, and `app_user` INSERT on
+`tenants`. See above.
 
 | Severity | Issue                                                                        | Note                                                                                                                                                                                                                                                                                |
 | -------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -224,31 +261,39 @@ clinic-plane audit trail, and patient data in the reminder log.
 | Low      | Patient documents keep a soft delete                                         | Admin-only and audited, but not the entered-in-error model of the clinical record.                                                                                                                                                                                                  |
 | Low      | Uploads pass through the API                                                 | No pre-signed direct-to-bucket upload, which large imaging studies will need.                                                                                                                                                                                                       |
 | Low      | The baseline migration interpolates `APP_DB_PASSWORD` into SQL               | A password containing a quote breaks or alters `CREATE ROLE`. Documented in `.env.production.example`.                                                                                                                                                                              |
-| High     | Migrations 0009–0011 have not been run                                       | Written without a database available. Run `migrate:up` and the integration suite (including `role.itest.ts`, which checks RLS on the four new tenant tables) before merging.                                                                                                        |
 | High     | Fiscalization not exercised against DPT's test CIS                           | Signatures verify with xml-crypto; the element set, SOAPAction values and endpoint paths are to the published schema as understood. Needs a test certificate and registered codes. Corrective invoices are not implemented, so a registered invoice cannot yet be corrected in-app. |
 | Medium   | Fiscal signing keys share MFA_ENCRYPTION_KEYS                                | Sealed with AES-256-GCM bound to the clinic. A key rotation must re-seal certificates as well as MFA factors.                                                                                                                                                                       |
 | Medium   | Viber delivery is unconfirmed                                                | Vonage reports status to an application-level JWT-signed webhook that is not built; a Viber reminder reads "sent", never "delivered", and a non-Viber number fails silently.                                                                                                        |
 | Medium   | Platform stats and export rely on the privileged role reading across tenants | As the tenants list and reminder scheduler already did. If the platform role is ever made least-privilege and subject to FORCE RLS, these queries return zeros.                                                                                                                     |
 | Low      | Clinic export is capped at 200,000 rows and built in memory                  | Larger clinics must be exported from a database backup.                                                                                                                                                                                                                             |
 | Low      | Opening balances from an import are ledger adjustments                       | Correct, append-only, and labelled with the file name; a wrong import is corrected by opposing adjustments, one patient at a time.                                                                                                                                                  |
+| Medium   | A fiscal cash declaration can be sent twice across a crash                   | The tax authority is called before the row is written. The Idempotency-Key covers double clicks and retries, but a process dying between the call and the write leaves the next attempt free to declare again. Write a pending row first, with the CIS work.                        |
+| Low      | The per-address sign-in counter trusts CF-Connecting-IP                      | Correct behind Cloudflare, which sets it. On a deployment not behind Cloudflare a client can set the header itself; the per-account lockout does not depend on it.                                                                                                                  |
+| Low      | The Idempotency-Key is optional                                              | A client that sends none gets no duplicate protection beyond the database's own guards. The clinic app always sends one; making it required (428) is a decision (SECURITY_PROGRAM.md §4).                                                                                           |
 
 ## Test coverage
 
-Run on 2026-09-14 against PostgreSQL 16:
+Run on 2026-09-28 against PostgreSQL 16:
 
-- `npm test -w @dentalcare/api` — unit, no database: 26 suites, 541 tests,
-  including the shared package's money, permission and reminder specs.
+- `npm test` — unit, no database: 55 suites, 857 tests, including the
+  shared package's money, permission and reminder specs, the sign-in lockout
+  keys, the OAuth browser binding, the boot check, and the backup and
+  secret-scan tooling.
 - `npm run test:integration -w @dentalcare/api` — against a real database as
-  the real roles: 22 suites, 355 tests.
+  the real roles, from a fresh migration to 0025: 39 suites, 556 tests. They
+  pass with the process clock on UTC, UTC+14 and Europe/Tirane.
 
 The integration suites that carry the security claims above:
 
-| Suite                                                               | Proves                                                                                            |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `role.itest.ts`, `tenant-isolation.itest.ts`, `privileges.itest.ts` | RLS on every tenant table, cross-clinic reads and writes refused, revoked privileges stay revoked |
-| `api-sessions.itest.ts`, `api-mfa.itest.ts`, `api-auth.itest.ts`    | Rotation, replay revocation, MFA enrolment and challenge with enforcement required                |
-| `clinical-record.itest.ts`, `api-clinical.itest.ts`                 | No deletes, withdrawal with reason, signing locks, access log                                     |
-| `money.itest.ts`                                                    | Cents, one currency per clinic, cancellation reverses the ledger                                  |
-| `api-inventory-lots.itest.ts`                                       | Lot balance at commit, recall refusals, who received a lot                                        |
-| `reminders-delivery.itest.ts`                                       | SMS contents, skips, retries, opt-out, signed receipts that cannot cross clinics                  |
-| `tenant-middleware.itest.ts`                                        | The exact list of routes that run without a clinic                                                |
+| Suite                                                               | Proves                                                                                                                              |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `role.itest.ts`, `tenant-isolation.itest.ts`, `privileges.itest.ts` | RLS on every tenant table, cross-clinic reads and writes refused, revoked privileges stay revoked                                   |
+| `api-sessions.itest.ts`, `api-mfa.itest.ts`, `api-auth.itest.ts`    | Rotation, replay revocation, MFA enrolment and challenge with enforcement required                                                  |
+| `clinical-record.itest.ts`, `api-clinical.itest.ts`                 | No deletes, withdrawal with reason, signing locks, access log                                                                       |
+| `money.itest.ts`                                                    | Cents, one currency per clinic, cancellation reverses the ledger                                                                    |
+| `api-inventory-lots.itest.ts`                                       | Lot balance at commit, recall refusals, who received a lot                                                                          |
+| `reminders-delivery.itest.ts`                                       | SMS contents, skips, retries, opt-out, signed receipts that cannot cross clinics                                                    |
+| `tenant-middleware.itest.ts`                                        | The exact list of routes that run without a clinic                                                                                  |
+| `auth-lockout.itest.ts`                                             | A lockout set on one API process holds on another; unknown addresses lock the same way; one address spraying accounts is locked out |
+| `money-idempotency.itest.ts`                                        | A repeated key replays; a rerun after a lost replay is refused by the unique index; no duplicate invoice, expense or adjustment     |
+| `clinic-day.itest.ts`                                               | Every date the API writes for "today" is the clinic's, when its clock and the server's disagree                                     |

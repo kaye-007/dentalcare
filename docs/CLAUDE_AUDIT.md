@@ -72,10 +72,10 @@ Present and wired end-to-end (API route + SPA screen), by static inspection:
   clinic activity trail, settings (clinic profile, VAT, fiscal, channels,
   features), staff & payroll, sessions & MFA self-service, Google sign-in.
 - **Platform plane:** tenants (create wizard, suspend/reactivate, trial, delete
-  - restore window, subdomain change with typed confirmation), plans +
-    entitlements + per-tenant overrides, platform billing (subscription invoices,
-    payments), usage/storage, cross-tenant activity, platform audit, platform
-    auth with mandatory MFA in production.
+  and restore window, subdomain change with typed confirmation), plans,
+  entitlements and per-tenant overrides, platform billing (subscription
+  invoices, payments), usage/storage, cross-tenant activity, platform audit,
+  platform auth with mandatory MFA in production.
 
 ## 3. Database / migration inventory
 
