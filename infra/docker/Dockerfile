@@ -58,6 +58,11 @@ COPY --from=build /app/apps/api/dist ./apps/api/dist
 # The built shared package, and only its build output — no sources, no tests.
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 
+# Uploaded files (X-rays, documents, logos) when no S3 bucket is set. The
+# folder must belong to `node`, and compose mounts a named volume over it so
+# the files outlive the container.
+RUN mkdir -p /app/storage && chown node:node /app/storage
+
 # Drop privileges — the node image ships an unprivileged `node` user.
 USER node
 

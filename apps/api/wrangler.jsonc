@@ -74,7 +74,7 @@
   "routes": [{ "pattern": "api.dentalcare.com", "custom_domain": true }],
 
   // Non-secret configuration only. JWT_SECRET, PLATFORM_JWT_SECRET,
-  // MFA_ENCRYPTION_KEYS, GOOGLE_CLIENT_SECRET, the S3 credentials and
+  // MFA_ENCRYPTION_KEYS, WHATSAPP_ENCRYPTION_KEYS, GOOGLE_CLIENT_SECRET, the S3 credentials and
   // TWILIO_AUTH_TOKEN are secrets:  wrangler secret put TWILIO_AUTH_TOKEN
   //
   // SMS stays off ("log") until an account is ready. To turn it on, set
