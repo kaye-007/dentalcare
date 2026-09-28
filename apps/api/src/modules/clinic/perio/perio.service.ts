@@ -234,7 +234,7 @@ export class PerioService {
       const { rows } = await client.query<{ id: string }>(
         `INSERT INTO perio_exams
            (tenant_id, patient_id, examined_on, clinician_id, note, created_by)
-         VALUES ($1,$2,coalesce($3::date, CURRENT_DATE),$4,$5,$6) RETURNING id`,
+         VALUES ($1,$2,coalesce($3::date, clinic_today()),$4,$5,$6) RETURNING id`,
         [
           tenantId,
           patientId,

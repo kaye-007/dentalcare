@@ -24,9 +24,17 @@ let adminToken: string;
 let receptionToken: string;
 let itemId: string;
 
-/** A calendar date `offset` days from now, as the API takes it. */
-const day = (offset: number) =>
-  new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+/**
+ * A calendar date `offset` days from the clinic's today, as the API takes it.
+ * Counted from the database's clinic_today() (0023), not this machine's
+ * clock, so the suite means the same thing at 23:30 UTC as at noon.
+ */
+let today = '';
+const day = (offset: number) => {
+  const d = new Date(`${today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offset);
+  return d.toISOString().slice(0, 10);
+};
 
 interface Lot {
   id: string;
@@ -40,6 +48,10 @@ interface Lot {
 beforeAll(async () => {
   api = await startApi();
   s = await createScenario();
+  today = await asTenant(s.a.id, async (c) => {
+    const { rows } = await c.query<{ d: string }>('SELECT clinic_today()::text AS d');
+    return rows[0]!.d;
+  });
 
   const email = `reception-${Math.random().toString(36).slice(2, 8)}@test.local`;
   await owner().query(

@@ -108,13 +108,17 @@ export class EstimateService {
         quote_currency: string | null;
         logo_storage_key: string | null;
         brand_color: string | null;
+        today: string;
+        valid_until: string;
       }>(
+        // Issued and valid until are dates on the clinic's clock (0023).
         `SELECT t.name, cs.legal_name, cs.tax_number, cs.address, cs.city, cs.phone, cs.email,
                 cs.website, cs.currency, cs.vat_rate_bp, cs.quote_currency, cs.logo_storage_key,
-                cs.brand_color
+                cs.brand_color, clinic_today()::text AS today,
+                (clinic_today() + $2::int)::text AS valid_until
            FROM tenants t LEFT JOIN clinic_settings cs ON cs.tenant_id = t.id
           WHERE t.id = $1`,
-        [tenantId],
+        [tenantId, VALID_DAYS],
       );
       const clinic = clinicRows[0]!;
       const currency: CurrencyCode = isCurrency(clinic.currency)
@@ -174,9 +178,6 @@ export class EstimateService {
       clinic.logo_storage_key && this.storage.isConfigured
         ? await this.storage.signedViewUrl(clinic.logo_storage_key).catch(() => null)
         : null;
-    const issued = new Date();
-    const validUntil = new Date(issued.getTime() + VALID_DAYS * 24 * 60 * 60 * 1000);
-
     return {
       clinic: {
         name: clinic.name,
@@ -205,8 +206,8 @@ export class EstimateService {
         createdAt: plan.created_at,
         acceptedAt: plan.accepted_at,
       },
-      issuedOn: issued.toISOString().slice(0, 10),
-      validUntil: validUntil.toISOString().slice(0, 10),
+      issuedOn: clinic.today,
+      validUntil: clinic.valid_until,
       currency,
       quote:
         quoteCurrency && rate

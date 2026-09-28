@@ -7,9 +7,10 @@ import { parseQuantity } from './stock-engine';
  * ── Dates ─────────────────────────────────────────────────────────────────
  *
  * Every date here is an ISO calendar date, "2026-09-14", and `today` is always
- * passed in. The service takes it from the database's CURRENT_DATE, so the
- * list, the alerts and the refusal to use an expired lot all agree, and a
- * test can say what day it is.
+ * passed in. The service takes it from the database's clinic_today() — the
+ * date on the clinic's clock, not the server's — so the list, the alerts and
+ * the refusal to use an expired lot all agree, and a test can say what day it
+ * is.
  *
  * A lot is usable ON its expiry date and expired from the day after. That is
  * how the date on a packet is read.

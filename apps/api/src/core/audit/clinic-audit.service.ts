@@ -253,9 +253,18 @@ export class ClinicAuditService {
     if (filter.entityType) add('a.entity_type = $$', filter.entityType);
     if (filter.entityId) add('a.entity_id = $$', filter.entityId);
     if (filter.actorUserId) add('a.actor_user_id = $$', filter.actorUserId);
-    if (filter.from) add('a.created_at >= $$::date', filter.from);
+    // Days are the clinic's (0023): its midnight, not the server's UTC one.
+    if (filter.from)
+      add(
+        'a.created_at >= ($$::date::timestamp AT TIME ZONE clinic_zone())',
+        filter.from,
+      );
     // Inclusive of the whole end day, which is what a date picker means.
-    if (filter.to) add("a.created_at < ($$::date + interval '1 day')", filter.to);
+    if (filter.to)
+      add(
+        'a.created_at < (($$::date + 1)::timestamp AT TIME ZONE clinic_zone())',
+        filter.to,
+      );
 
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 

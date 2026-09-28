@@ -40,9 +40,8 @@ interface LabRow {
   overdue: boolean;
 }
 
-/** The clinic's today, on its own clock (clinic_settings.timezone). */
-const TODAY = `(now() AT TIME ZONE coalesce(
-  (SELECT timezone FROM clinic_settings LIMIT 1), 'Europe/Tirane'))::date`;
+/** The clinic's today, on its own clock (0023). */
+const TODAY = 'clinic_today()';
 
 const SELECT = `
   SELECT o.id, o.patient_id, (p.first_name || ' ' || p.last_name) AS patient_name,

@@ -19,10 +19,15 @@ import { collectionRate } from '@/modules/clinic/finance';
  * year of history.
  */
 
-/** Clamp a requested window so one query cannot scan an unbounded range. */
-function resolveRange(fromRaw?: string, toRaw?: string) {
+/**
+ * Clamp a requested window so one query cannot scan an unbounded range. The
+ * default window ends on the clinic's today (0023), not the server's.
+ */
+async function resolveRange(client: PoolClient, fromRaw?: string, toRaw?: string) {
   const isDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
-  const to = isDate(toRaw) ? toRaw! : new Date().toISOString().slice(0, 10);
+  const to = isDate(toRaw)
+    ? toRaw!
+    : (await client.query<{ d: string }>('SELECT clinic_today()::text AS d')).rows[0]!.d;
   if (isDate(fromRaw)) return { from: fromRaw!, to };
   // Default window: the twelve months ending today.
   const d = new Date(`${to}T00:00:00Z`);
@@ -50,10 +55,10 @@ export class AnalyticsService {
    * misses that it is invoicing far more than it collects.
    */
   async revenue(granularity: 'day' | 'month', fromRaw?: string, toRaw?: string) {
-    const { from, to } = resolveRange(fromRaw, toRaw);
     const bucket = granularity === 'day' ? 'day' : 'month';
 
     return this.tx(async (client) => {
+      const { from, to } = await resolveRange(client, fromRaw, toRaw);
       const { rows } = await client.query<{
         period: string;
         billed: string;
@@ -73,11 +78,11 @@ export class AnalyticsService {
             GROUP BY 1
          ),
          collected AS (
-           SELECT date_trunc($3, paid_at)::date AS period,
+           SELECT date_trunc($3, paid_at AT TIME ZONE clinic_zone())::date AS period,
                   sum(amount) AS amount, count(*) AS n
              FROM payments
             WHERE voided_at IS NULL
-              AND paid_at::date BETWEEN $1::date AND $2::date
+              AND (paid_at AT TIME ZONE clinic_zone())::date BETWEEN $1::date AND $2::date
             GROUP BY 1
          )
          SELECT date_trunc($3, p.period)::date::text AS period,
@@ -129,8 +134,8 @@ export class AnalyticsService {
    * actually performed each item, which is the honest basis for this number.
    */
   async byDentist(fromRaw?: string, toRaw?: string) {
-    const { from, to } = resolveRange(fromRaw, toRaw);
     return this.tx(async (client) => {
+      const { from, to } = await resolveRange(client, fromRaw, toRaw);
       const { rows } = await client.query<{
         clinician_id: string | null;
         clinician_name: string | null;
@@ -176,8 +181,8 @@ export class AnalyticsService {
    * that admits the gap.
    */
   async byOperatory(fromRaw?: string, toRaw?: string) {
-    const { from, to } = resolveRange(fromRaw, toRaw);
     return this.tx(async (client) => {
+      const { from, to } = await resolveRange(client, fromRaw, toRaw);
       const { rows } = await client.query<{
         operatory_id: string | null;
         operatory_name: string | null;
@@ -203,7 +208,7 @@ export class AnalyticsService {
                   sum(EXTRACT(EPOCH FROM (ends_at - starts_at)) / 60)::bigint AS booked_minutes
              FROM appointments
             WHERE status IN ('completed','checked_in','in_progress')
-              AND starts_at::date BETWEEN $1::date AND $2::date
+              AND (starts_at AT TIME ZONE clinic_zone())::date BETWEEN $1::date AND $2::date
             GROUP BY operatory_id
          )
          SELECT o.id AS operatory_id,
@@ -240,8 +245,8 @@ export class AnalyticsService {
    * free-text description.
    */
   async byProcedure(fromRaw?: string, toRaw?: string) {
-    const { from, to } = resolveRange(fromRaw, toRaw);
     return this.tx(async (client) => {
+      const { from, to } = await resolveRange(client, fromRaw, toRaw);
       const { rows } = await client.query<{
         label: string;
         code: string | null;
@@ -281,8 +286,8 @@ export class AnalyticsService {
 
   /** Everything the dashboard needs for its headline figures, in one call. */
   async dashboard(fromRaw?: string, toRaw?: string) {
-    const { from, to } = resolveRange(fromRaw, toRaw);
     return this.tx(async (client) => {
+      const { from, to } = await resolveRange(client, fromRaw, toRaw);
       const { rows } = await client.query<{
         billed: string;
         collected: string;
@@ -298,7 +303,7 @@ export class AnalyticsService {
              WHERE status <> 'cancelled' AND issued_at BETWEEN $1::date AND $2::date)::text AS billed,
            (SELECT coalesce(sum(amount),0) FROM payments
              WHERE voided_at IS NULL
-               AND paid_at::date BETWEEN $1::date AND $2::date)::text AS collected,
+               AND (paid_at AT TIME ZONE clinic_zone())::date BETWEEN $1::date AND $2::date)::text AS collected,
            (SELECT coalesce(sum(i.total - coalesce(
                      (SELECT sum(amount) FROM payments
                        WHERE invoice_id = i.id AND voided_at IS NULL), 0)), 0)
@@ -312,7 +317,7 @@ export class AnalyticsService {
              WHERE status IN ('unpaid','partially_paid'))::text AS unpaid_count,
            (SELECT count(DISTINCT patient_id) FROM appointments
              WHERE status = 'completed'
-               AND starts_at::date BETWEEN $1::date AND $2::date)::text AS patients_seen,
+               AND (starts_at AT TIME ZONE clinic_zone())::date BETWEEN $1::date AND $2::date)::text AS patients_seen,
            (SELECT count(*) FROM clinical_procedures
              WHERE status = 'completed'
                AND entered_in_error_at IS NULL

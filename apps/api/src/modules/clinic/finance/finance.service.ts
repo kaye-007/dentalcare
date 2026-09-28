@@ -197,7 +197,7 @@ export class FinanceService {
           WHERE cp.patient_id = $1
             AND cp.status = 'completed'
             AND cp.entered_in_error_at IS NULL
-            AND cp.performed_on >= CURRENT_DATE - 30
+            AND cp.performed_on >= clinic_today() - 30
             AND NOT EXISTS (
                   SELECT 1 FROM invoice_line_items li
                     JOIN invoices i ON i.id = li.invoice_id
@@ -395,7 +395,7 @@ export class FinanceService {
             `INSERT INTO invoices
                (tenant_id, patient_id, seq, invoice_number, subtotal, tax_amount, total,
                 vat_rate_bp, issued_at, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::date, CURRENT_DATE), $10) RETURNING id`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::date, clinic_today()), $10) RETURNING id`,
             [
               tenantId,
               dto.patientId,
@@ -441,7 +441,7 @@ export class FinanceService {
             `INSERT INTO ledger_entries
                (tenant_id, patient_id, invoice_id, entry_type, amount, description,
                 occurred_on, created_by)
-             VALUES ($1,$2,$3,'charge',$4,$5, coalesce($6::date, CURRENT_DATE), $7)`,
+             VALUES ($1,$2,$3,'charge',$4,$5, coalesce($6::date, clinic_today()), $7)`,
             [
               tenantId,
               dto.patientId,
@@ -921,7 +921,7 @@ export class FinanceService {
     return this.db.withTenant(tenantId, async (client) => {
       const { rows } = await client.query(
         `INSERT INTO expenses (tenant_id, category, amount, expense_date, note, created_by)
-         VALUES ($1,$2,$3, coalesce($4::date, CURRENT_DATE), $5, $6)
+         VALUES ($1,$2,$3, coalesce($4::date, clinic_today()), $5, $6)
          RETURNING id, category, amount, expense_date::text AS expense_date, note`,
         [
           tenantId,
@@ -1001,16 +1001,14 @@ export class FinanceService {
         from_d: string | null;
         to_d: string | null;
       }>(
-        `WITH local AS (
-           SELECT (now() AT TIME ZONE coalesce(
-                     (SELECT timezone FROM clinic_settings LIMIT 1), 'Europe/Tirane'))::date AS d)
+        `WITH local AS (SELECT clinic_today() AS d)
          SELECT CASE $1 WHEN 'today' THEN d WHEN 'month' THEN date_trunc('month', d)::date END::text AS from_d,
                 CASE $1 WHEN 'today' THEN d + 1 WHEN 'month' THEN (date_trunc('month', d) + interval '1 month')::date END::text AS to_d
            FROM local`,
         [period],
       );
       const range = period === 'all' ? null : [zone[0]!.from_d, zone[0]!.to_d];
-      const tzSql = `coalesce((SELECT timezone FROM clinic_settings LIMIT 1), 'Europe/Tirane')`;
+      const tzSql = 'clinic_zone()';
       const invFilter = range ? `AND issued_at >= $1::date AND issued_at < $2::date` : '';
       const payFilter = range
         ? `AND (paid_at AT TIME ZONE ${tzSql})::date >= $1::date AND (paid_at AT TIME ZONE ${tzSql})::date < $2::date`

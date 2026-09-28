@@ -257,7 +257,7 @@ export class InventoryService {
    */
   private async today(client: PoolClient): Promise<string> {
     const { rows } = await client.query<{ today: string }>(
-      'SELECT CURRENT_DATE::text AS today',
+      'SELECT clinic_today()::text AS today',
     );
     return rows[0]!.today;
   }
@@ -304,7 +304,7 @@ export class InventoryService {
         where.push(`EXISTS (SELECT 1 FROM inventory_lots l
                              WHERE l.item_id = inventory_items.id
                                AND l.quantity > 0
-                               AND l.expires_on <= CURRENT_DATE + inventory_items.expiry_warning_days)`);
+                               AND l.expires_on <= clinic_today() + inventory_items.expiry_warning_days)`);
       }
 
       const today = await this.today(client);
@@ -353,7 +353,7 @@ export class InventoryService {
         `${LOT_SELECT}
           WHERE i.status = 'active' AND l.quantity > 0
             AND (l.status = 'recalled'
-                 OR l.expires_on <= CURRENT_DATE + i.expiry_warning_days)
+                 OR l.expires_on <= clinic_today() + i.expiry_warning_days)
           ORDER BY l.expires_on NULLS LAST, lower(i.name)`,
       );
       const lots = lotRows.map((r) => mapLot(r, today));

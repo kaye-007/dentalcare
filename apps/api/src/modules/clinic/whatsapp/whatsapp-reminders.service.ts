@@ -518,8 +518,11 @@ export class WhatsAppRemindersService {
       where.push(sql.replace('$$', `$${params.length}`));
     };
     if (q.batchId) add('s.batch_id = $$', q.batchId);
-    if (q.from) add('s.created_at >= $$::date', q.from);
-    if (q.to) add(`s.created_at < $$::date + 1`, q.to);
+    // The clinic's days (0023), not the server's.
+    if (q.from)
+      add('s.created_at >= ($$::date::timestamp AT TIME ZONE clinic_zone())', q.from);
+    if (q.to)
+      add('s.created_at < (($$::date + 1)::timestamp AT TIME ZONE clinic_zone())', q.to);
     if (q.status) add('s.status = $$', q.status);
     const { rows } = await client.query<{
       id: string;

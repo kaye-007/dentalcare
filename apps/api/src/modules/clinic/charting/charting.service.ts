@@ -682,7 +682,7 @@ export class ChartingService {
             treatment_id, plan_item_id, appointment_id, description, clinician_id,
             status, fee, performed_on, note, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-                 coalesce($14::date, CURRENT_DATE),$15,$16)
+                 coalesce($14::date, clinic_today()),$15,$16)
          RETURNING id`,
         [
           tenantId,

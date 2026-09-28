@@ -209,8 +209,8 @@ export class BillingService {
                 subtotal, discount_amount, tax_amount, total,
                 currency, vat_rate_bp, issued_at, due_on, notes, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-                     coalesce($12::date, CURRENT_DATE),
-                     coalesce($12::date, CURRENT_DATE) + ($13 || ' days')::interval,
+                     coalesce($12::date, clinic_today()),
+                     coalesce($12::date, clinic_today()) + ($13 || ' days')::interval,
                      $14,$15)
              RETURNING id`,
             [
@@ -266,7 +266,7 @@ export class BillingService {
             `INSERT INTO ledger_entries
                (tenant_id, patient_id, invoice_id, entry_type, amount, currency,
                 description, occurred_on, created_by)
-             VALUES ($1,$2,$3,'charge',$4,$5,$6, coalesce($7::date, CURRENT_DATE), $8)`,
+             VALUES ($1,$2,$3,'charge',$4,$5,$6, coalesce($7::date, clinic_today()), $8)`,
             [
               tenantId,
               plan.patient_id,
@@ -504,7 +504,7 @@ export class BillingService {
         `INSERT INTO ledger_entries
            (tenant_id, patient_id, entry_type, amount, currency, description,
             occurred_on, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6, coalesce($7::date, CURRENT_DATE), $8)`,
+         VALUES ($1,$2,$3,$4,$5,$6, coalesce($7::date, clinic_today()), $8)`,
         [
           tenantId,
           patientId,
@@ -559,7 +559,7 @@ export class BillingService {
                 coalesce((SELECT sum(amount) FROM payments
                          WHERE invoice_id = i.id AND voided_at IS NULL), 0)::text AS paid,
                 i.issued_at::text AS issued_at, i.due_on::text AS due_on,
-                (CURRENT_DATE - i.issued_at)::int AS days_outstanding,
+                (clinic_today() - i.issued_at)::int AS days_outstanding,
                 i.currency
            FROM invoices i
            JOIN patients p ON p.id = i.patient_id

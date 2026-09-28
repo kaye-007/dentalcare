@@ -287,7 +287,7 @@ export class StaffService {
       if (!staff.rowCount) throw new NotFoundException('Staff member not found');
       const { rows } = await client.query(
         `INSERT INTO salary_payments (tenant_id, staff_id, position, amount, paid_on, note, created_by)
-         VALUES ($1,$2,$3,$4, coalesce($5::date, CURRENT_DATE), $6, $7)
+         VALUES ($1,$2,$3,$4, coalesce($5::date, clinic_today()), $6, $7)
          RETURNING id, amount, paid_on::text AS paid_on, note, position`,
         [
           tenantId,

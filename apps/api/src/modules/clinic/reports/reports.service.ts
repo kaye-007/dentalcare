@@ -24,8 +24,8 @@ import { TenantContextService } from '@/core/tenancy/tenant-context';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The clinic's zone, for turning instants into its calendar days. */
-const TZ = `coalesce((SELECT timezone FROM clinic_settings LIMIT 1), 'Europe/Tirane')`;
+/** The clinic's zone, for turning instants into its calendar days (0023). */
+const TZ = 'clinic_zone()';
 /** An instant column as the clinic's calendar date. */
 const day = (col: string) => `(${col} AT TIME ZONE ${TZ})::date`;
 
