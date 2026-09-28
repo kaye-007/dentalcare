@@ -21,6 +21,7 @@ import {
   RequestContextModule,
 } from '@/core/request-context/request-context';
 import { EntitlementsModule } from '@/core/entitlements/entitlements.service';
+import { AuthThrottleModule } from '@/core/auth-throttle/auth-throttle.module';
 import { IdempotencyInterceptor } from '@/core/idempotency/idempotency.interceptor';
 import { FeaturesModule } from '@/modules/clinic/features';
 import { CashDrawerModule } from '@/modules/clinic/cash-drawer';
@@ -120,6 +121,7 @@ function prettyTransport() {
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     DatabaseModule,
     RequestContextModule,
+    AuthThrottleModule,
     EntitlementsModule,
     AuthzModule,
     ClinicAuditModule,

@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '@/core/database/database.service';
+import { AuthThrottleService } from '@/core/auth-throttle/auth-throttle.service';
+import { NO_SUCH_ACCOUNT_HASH } from '@/core/security/bcrypt';
 import { MfaService, mfaFailureMessage } from '@/core/mfa/mfa.service';
 import {
   createSession,
@@ -77,6 +79,7 @@ export class PlatformAuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly mfa: MfaService,
+    private readonly throttle: AuthThrottleService,
   ) {}
 
   async login(
@@ -84,6 +87,10 @@ export class PlatformAuthService {
     password: string,
     meta: RequestMeta,
   ): Promise<PlatformLoginResult> {
+    // Counted in the database (0025), like a clinic sign-in.
+    const keys = this.throttle.keys('platform', email);
+    await this.throttle.assertOpen('admin', keys);
+
     const { rows } = await this.db.adminQuery<AdminRow>(
       `SELECT id, email, password_hash, full_name, status
          FROM platform_admins
@@ -92,11 +99,16 @@ export class PlatformAuthService {
       [email],
     );
     const admin = rows[0];
-    const invalid = new UnauthorizedException('Invalid email or password');
-    if (!admin) throw invalid;
-
-    const ok = await bcrypt.compare(password, admin.password_hash);
-    if (!ok) throw invalid;
+    // Same bcrypt work for an unknown address as for a wrong password.
+    const ok = await bcrypt.compare(
+      password,
+      admin?.password_hash ?? NO_SUCH_ACCOUNT_HASH,
+    );
+    if (!admin || !ok) {
+      await this.throttle.failed('admin', keys);
+      throw new UnauthorizedException('Invalid email or password');
+    }
+    await this.throttle.succeeded('admin', keys);
     if (admin.status !== 'active') {
       throw new UnauthorizedException('This account is disabled');
     }

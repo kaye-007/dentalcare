@@ -89,10 +89,13 @@ describe('the platform login', () => {
    * on the route as well as the address.
    */
   it('stops answering sooner than the clinic login', async () => {
+    const nobody = `nobody-${Math.random().toString(36).slice(2, 10)}@nodex.test`;
     const statuses: number[] = [];
     for (let i = 0; i < 8; i++) {
       const res = await call(api, 'POST', '/api/platform/auth/login', {
-        body: { email: 'nobody@nodex.test', password: 'wrong-on-purpose' },
+        // A fresh address each run: the account lockout (0025) remembers
+        // failures in the database, and this is about the per-route limit.
+        body: { email: nobody, password: 'wrong-on-purpose' },
       });
       statuses.push(res.status);
     }

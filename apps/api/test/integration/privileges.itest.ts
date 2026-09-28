@@ -111,6 +111,43 @@ describe('a clinic cannot rewrite its own commercial state (B1)', () => {
   });
 });
 
+describe('what 0025 took away or kept behind functions', () => {
+  it('cannot create a clinic', async () => {
+    const code = await errorCodeOf(
+      asTenant(s.a.id, (c) =>
+        c.query(
+          `INSERT INTO tenants (id, name, subdomain) VALUES ($1, 'Twin', 'twin-x')`,
+          [s.a.id],
+        ),
+      ),
+    );
+    expect(code).toBe(DENIED);
+  });
+
+  it.each([
+    ['SELECT', 'SELECT * FROM auth_throttle'],
+    ['UPDATE', 'UPDATE auth_throttle SET locked_until = NULL'],
+    ['DELETE', 'DELETE FROM auth_throttle'],
+  ])('cannot %s the sign-in failures directly', async (_verb, sql) => {
+    const code = await errorCodeOf(asTenant(s.a.id, (c) => c.query(sql)));
+    expect(code).toBe(DENIED);
+  });
+
+  it('counts a failure only through the functions sign-in uses', async () => {
+    const key = `clinic:${'b'.repeat(64)}`;
+    const until = await asTenant(s.a.id, async (c) => {
+      await c.query('SELECT auth_throttle_fail($1, 1, 15, 15)', [key]);
+      const { rows } = await c.query<{ until: Date | null }>(
+        'SELECT auth_throttle_locked_until($1::text[]) AS until',
+        [[key]],
+      );
+      await c.query('SELECT auth_throttle_clear($1)', [key]);
+      return rows[0]!.until;
+    });
+    expect(until).toBeInstanceOf(Date);
+  });
+});
+
 describe('the platform tables are out of reach', () => {
   it.each([
     ['platform_admins', 'SELECT * FROM platform_admins'],

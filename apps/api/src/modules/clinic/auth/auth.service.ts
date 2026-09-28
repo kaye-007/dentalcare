@@ -13,7 +13,8 @@ import { PoolClient } from 'pg';
 import { UsersService, AuthUserRow } from '@/modules/clinic/users';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { DatabaseService } from '@/core/database/database.service';
-import { BCRYPT_ROUNDS } from '@/core/security/bcrypt';
+import { BCRYPT_ROUNDS, NO_SUCH_ACCOUNT_HASH } from '@/core/security/bcrypt';
+import { AuthThrottleService } from '@/core/auth-throttle/auth-throttle.service';
 import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
 import { MfaService, mfaFailureMessage } from '@/core/mfa/mfa.service';
 import { clinicCurrency } from '@/core/money/clinic-currency';
@@ -113,19 +114,30 @@ export class AuthService {
     private readonly db: DatabaseService,
     private readonly mfa: MfaService,
     private readonly audit: ClinicAuditService,
+    private readonly throttle: AuthThrottleService,
   ) {}
 
   /* ─────────────────────────── sign-in ─────────────────────────── */
 
   async login(email: string, password: string, meta: RequestMeta): Promise<LoginResult> {
     const tenantId = this.tenant.getRequiredTenantId();
+    // Failed sign-ins are counted in the database (0025), so the limit holds
+    // across every isolate; a locked account is refused before any bcrypt.
+    const keys = this.throttle.keys('clinic', `${tenantId}:${email}`);
+    await this.throttle.assertOpen('app', keys);
+
     const user = await this.users.findForAuthByEmail(tenantId, email);
-
-    const invalid = new UnauthorizedException('Invalid email or password');
-    if (!user) throw invalid;
-
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) throw invalid;
+    // An unknown address costs the same work as a wrong password, so the time
+    // a refusal takes does not say which accounts exist.
+    const ok = await bcrypt.compare(
+      password,
+      user?.password_hash ?? NO_SUCH_ACCOUNT_HASH,
+    );
+    if (!user || !ok) {
+      await this.throttle.failed('app', keys);
+      throw new UnauthorizedException('Invalid email or password');
+    }
+    await this.throttle.succeeded('app', keys);
 
     this.assertMaySignIn(user);
     return this.continueSignIn(user, meta);
