@@ -25,6 +25,7 @@ import { PageHeader, EmptyState, StatusPill, LoadingRows } from '../components/u
 import RevenueChart from '../components/RevenueChart';
 import BarBreakdown, { type BarRow } from '../components/BarBreakdown';
 import { dateLocale } from '../lib/strings';
+import { clinicToday, plusDays, plusYears } from '../lib/clinic-time';
 
 /**
  * The clinic's financial dashboard.
@@ -37,22 +38,18 @@ import { dateLocale } from '../lib/strings';
 type Range = '30d' | '90d' | '12m' | 'ytd';
 
 function rangeFor(r: Range): { from: string; to: string; granularity: 'day' | 'month' } {
-  const today = new Date();
-  const to = today.toISOString().slice(0, 10);
-  const d = new Date(today);
+  // Ranges end on the clinic's today, not the browser's or UTC's.
+  const to = clinicToday();
   switch (r) {
     case '30d':
-      d.setDate(d.getDate() - 30);
-      return { from: d.toISOString().slice(0, 10), to, granularity: 'day' };
+      return { from: plusDays(to, -30), to, granularity: 'day' };
     case '90d':
-      d.setDate(d.getDate() - 90);
-      return { from: d.toISOString().slice(0, 10), to, granularity: 'day' };
+      return { from: plusDays(to, -90), to, granularity: 'day' };
     case 'ytd':
-      return { from: `${today.getFullYear()}-01-01`, to, granularity: 'month' };
+      return { from: `${to.slice(0, 4)}-01-01`, to, granularity: 'month' };
     case '12m':
     default:
-      d.setFullYear(d.getFullYear() - 1);
-      return { from: d.toISOString().slice(0, 10), to, granularity: 'month' };
+      return { from: plusYears(to, -1), to, granularity: 'month' };
   }
 }
 

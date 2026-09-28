@@ -139,3 +139,27 @@ export function toWallString(at: string): string {
 export function fromWallString(wall: string): string {
   return fromWall(new Date(wall)).toISOString();
 }
+
+/**
+ * Today on the clinic's clock, "2026-09-28". Never the browser's date and
+ * never UTC's: at 00:30 in Tirana, `new Date().toISOString()` still says
+ * yesterday. The API's clinic_today() gives the same answer.
+ */
+export function clinicToday(): string {
+  const w = wallNow();
+  return `${w.getFullYear()}-${pad(w.getMonth() + 1)}-${pad(w.getDate())}`;
+}
+
+/** The calendar date `n` days after `date`. Calendar arithmetic, no zone. */
+export function plusDays(date: string, n: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The calendar date `n` years after `date`; 29 February rolls to 1 March. */
+export function plusYears(date: string, n: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCFullYear(d.getUTCFullYear() + n);
+  return d.toISOString().slice(0, 10);
+}

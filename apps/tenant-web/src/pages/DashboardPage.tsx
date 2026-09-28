@@ -68,7 +68,10 @@ function todayLabel() {
   });
 }
 function monthLabel() {
-  return new Date().toLocaleDateString(dateLocale(), { month: 'long', year: 'numeric' });
+  return new Date().toLocaleDateString(
+    dateLocale(),
+    inClinicZone({ month: 'long', year: 'numeric' }),
+  );
 }
 function fmtTime(s: string) {
   return new Date(s).toLocaleTimeString(

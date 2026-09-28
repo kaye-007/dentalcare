@@ -33,6 +33,7 @@ import {
 import { useAuth } from '../lib/auth';
 import { EmptyState, Modal, StatusPill, LoadingRows, useConfirm } from './ui';
 import CameraCaptureModal from './CameraCaptureModal';
+import { clinicToday } from '../lib/clinic-time';
 
 /**
  * Patient documents — X-rays, clinical photos, consent forms, referrals.
@@ -457,7 +458,7 @@ function UploadModal({
   const [kind, setKind] = useState<DocumentKind>(defaults?.kind ?? guessKind(files[0]!));
   const [photoTag, setPhotoTag] = useState<PhotoTag | ''>(defaults?.photoTag ?? '');
   const [tooth, setTooth] = useState('');
-  const [takenOn, setTakenOn] = useState(new Date().toLocaleDateString('en-CA'));
+  const [takenOn, setTakenOn] = useState(clinicToday);
   const [caption, setCaption] = useState('');
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

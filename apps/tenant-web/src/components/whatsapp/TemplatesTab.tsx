@@ -16,6 +16,7 @@ import {
   humanError,
 } from '../../lib/api';
 import { EmptyState, Modal, StatusPill, LoadingRows, useConfirm } from '../ui';
+import { clinicISO, clinicToday, clinicZone, plusDays } from '../../lib/clinic-time';
 
 const LANGUAGES = [
   { code: 'sq', label: 'Albanian (sq)' },
@@ -252,15 +253,14 @@ function TemplateEditor({
   const [busy, setBusy] = useState(false);
   const body = useRef<HTMLTextAreaElement>(null);
 
-  // Sample patient, tomorrow at 09:00 Tirana time.
+  // Sample patient, tomorrow at 09:00 on the clinic's clock (a fixed +02:00
+  // was an hour out every winter).
   const sample = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    const at = new Date(`${d.toISOString().slice(0, 10)}T09:00:00+02:00`);
+    const at = new Date(clinicISO(plusDays(clinicToday(), 1), '09:00'));
     return whatsAppReminderValues({
       ...WHATSAPP_SAMPLE,
       startsAt: at,
-      timeZone: 'Europe/Tirane',
+      timeZone: clinicZone(),
       languageCode: form.languageCode,
     });
   }, [form.languageCode]);

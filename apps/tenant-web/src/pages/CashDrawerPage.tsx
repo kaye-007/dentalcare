@@ -32,6 +32,7 @@ import {
   timeOf,
   varianceLabel,
 } from '../components/drawer/drawer-text';
+import { clinicToday, plusDays } from '../lib/clinic-time';
 
 /**
  * The cash drawer: one for the desk. Start the day with the cash in it, take
@@ -448,10 +449,9 @@ function CashOutModal({
 
 /* ── oversight: what needs a manager, and the past days ───── */
 
+/** The clinic's date `days` ago (its calendar, not the browser's). */
 function isoDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return plusDays(clinicToday(), -days);
 }
 
 /** A past day's flags in words, or '' when it has none. */

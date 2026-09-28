@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../../lib/auth';
 import { EmptyState, LoadingRows } from '../ui';
 import { dateLocale } from '../../lib/strings';
+import { clinicToday } from '../../lib/clinic-time';
 
 function fmt(d: string) {
   // A bare date, read as a calendar day — never shifted by the browser's zone.
@@ -24,7 +25,8 @@ function fmt(d: string) {
   });
 }
 
-const today = () => new Date().toLocaleDateString('en-CA');
+/** The clinic's today; a closure is a date on its calendar. */
+const today = clinicToday;
 
 /**
  * Holidays, closures and time off. The weekly pattern of who works when stays

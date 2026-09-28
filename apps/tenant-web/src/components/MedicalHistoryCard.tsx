@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../lib/auth';
 import { StatusPill, LoadingRows } from './ui';
 import { WithdrawModal } from './VoidModal';
+import { clinicToday } from '../lib/clinic-time';
 
 /**
  * Allergies, conditions and current medications for one patient.
@@ -435,7 +436,7 @@ function MedicationRow({
               onClick={() =>
                 act(() =>
                   historyApi.updateMedication(patientId, medication.id, {
-                    endedOn: new Date().toISOString().slice(0, 10),
+                    endedOn: clinicToday(),
                   }),
                 )
               }

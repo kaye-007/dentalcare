@@ -8,6 +8,7 @@ import VoidModal, { VoidedNote } from '../components/VoidModal';
 import { currencySymbol, formatMoney, toDate } from '../lib/format';
 import MoneyInput from '../components/MoneyInput';
 import { dateLocale } from '../lib/strings';
+import { clinicToday } from '../lib/clinic-time';
 
 const CATEGORIES: { key: ExpenseCategory; label: string }[] = [
   { key: 'rent', label: 'Rent' },
@@ -204,7 +205,7 @@ function ExpenseModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = clinicToday();
   const [category, setCategory] = useState<ExpenseCategory>('materials');
   const [amount, setAmount] = useState<number | null>(null);
   const [date, setDate] = useState(today);

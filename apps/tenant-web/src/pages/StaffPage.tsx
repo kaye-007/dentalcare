@@ -25,6 +25,7 @@ import {
 import { plural, toDate } from '../lib/format';
 import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS, type Role } from '../lib/permissions';
 import { dateLocale } from '../lib/strings';
+import { clinicToday, plusDays } from '../lib/clinic-time';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** Roles whose people see patients unless the clinic says otherwise. */
@@ -298,8 +299,8 @@ function StaffProfile({
       .list(member.id)
       .then(setHours)
       .catch(() => setHours([]));
-    const today = new Date().toISOString().slice(0, 10);
-    const inAYear = new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10);
+    const today = clinicToday();
+    const inAYear = plusDays(today, 365);
     closuresApi
       .list(today, inAYear)
       .then((all) => setTimeOff(all.filter((c) => c.staffId === member.id)))

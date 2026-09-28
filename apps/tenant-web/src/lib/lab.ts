@@ -1,6 +1,6 @@
 import { toE164 } from '@dentalcare/shared';
 import type { LabOrder, LabStatus } from './api';
-import { wallNow } from './clinic-time';
+import { clinicToday } from './clinic-time';
 import { dateLocale } from './strings';
 
 /**
@@ -47,12 +47,6 @@ export function workLabel(o: Pick<LabOrder, 'work' | 'teeth'>) {
     : o.work;
 }
 
-const pad = (n: number) => String(n).padStart(2, '0');
-/** The clinic's today, "2026-09-28". */
-export function clinicToday() {
-  const w = wallNow();
-  return `${w.getFullYear()}-${pad(w.getMonth() + 1)}-${pad(w.getDate())}`;
-}
 const daysBetween = (from: string, to: string) =>
   Math.round(
     (Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000,

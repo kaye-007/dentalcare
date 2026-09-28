@@ -16,7 +16,7 @@ import { auditApi, type AuditEntry } from '../lib/api';
 import { PageHeader, EmptyState, StatusPill, LoadingRows } from '../components/ui';
 import { ROLE_LABELS, type Role } from '../lib/permissions';
 import { dateLocale } from '../lib/strings';
-import { inClinicZone, toWall, wallNow } from '../lib/clinic-time';
+import { clinicToday, inClinicZone, plusDays, toWall, wallNow } from '../lib/clinic-time';
 
 /**
  * The clinic's activity trail — doctor-only.
@@ -222,9 +222,7 @@ export default function ActivityPage() {
 
   const from = useMemo(() => {
     if (!days) return undefined;
-    const d = new Date();
-    d.setDate(d.getDate() - days + 1);
-    return d.toISOString().slice(0, 10);
+    return plusDays(clinicToday(), -days + 1);
   }, [days]);
 
   useEffect(() => {
