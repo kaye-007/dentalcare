@@ -9,18 +9,63 @@ const opts = { dateFormat: 'DMY' as const, countryCode: '355' };
 
 describe('guessMapping', () => {
   it('maps English and Albanian headers and leaves unknown columns unmapped', () => {
-    expect(guessMapping(['Emri', 'Mbiemri', 'Telefon', 'E-mail', 'Datelindja', 'Favourite colour'])).toEqual([
-      'firstName',
-      'lastName',
-      'phone',
-      'email',
+    expect(
+      guessMapping([
+        'Emri',
+        'Mbiemri',
+        'Telefon',
+        'E-mail',
+        'Datelindja',
+        'Favourite colour',
+      ]),
+    ).toEqual(['firstName', 'lastName', 'phone', 'email', 'birthDate', null]);
+  });
+
+  it('matches headers with or without Albanian diacritics', () => {
+    expect(guessMapping(['DATËLINDJA', 'Qyteti', 'Adresë'])).toEqual([
       'birthDate',
-      null,
+      'city',
+      'address',
     ]);
+    expect(guessMapping(['Adrese'])).toEqual(['address']);
   });
 
   it('never maps two columns to one field', () => {
     expect(guessMapping(['Name', 'First name'])).toEqual(['firstName', null]);
+  });
+});
+
+describe('a name in one column', () => {
+  it('reads a whole-name column in English or Albanian as the full name', () => {
+    expect(guessMapping(['Emri Mbiemri', 'Telefoni'])).toEqual(['fullName', 'phone']);
+    expect(guessMapping(['Pacienti', 'Nr. telefoni'])).toEqual(['fullName', 'phone']);
+  });
+
+  it('reads a lone "Name" as the whole name, but beside a surname as the first name', () => {
+    expect(guessMapping(['Name', 'Phone'])).toEqual(['fullName', 'phone']);
+    expect(guessMapping(['Name', 'Surname'])).toEqual(['firstName', 'lastName']);
+  });
+
+  it('splits on the last space: the last word is the surname', () => {
+    const { value, errors } = normalizeImportRow(
+      { fullName: '  Ana  Maria Hoxha ' },
+      opts,
+    );
+    expect(errors).toEqual([]);
+    expect(value).toMatchObject({ firstName: 'Ana Maria', lastName: 'Hoxha' });
+  });
+
+  it('says a surname is missing when the column holds one word', () => {
+    const { errors } = normalizeImportRow({ fullName: 'Erisa' }, opts);
+    expect(errors.map((e) => e.field)).toContain('lastName');
+  });
+
+  it('prefers separate columns when a file has both', () => {
+    const { value } = normalizeImportRow(
+      { fullName: 'Erisa Kola', firstName: 'Erisa', lastName: 'Kola-Hoxha' },
+      opts,
+    );
+    expect(value.lastName).toBe('Kola-Hoxha');
   });
 });
 
@@ -73,14 +118,28 @@ describe('normalizeImportRow', () => {
 
   it('flags every problem on a bad row, by field', () => {
     const { errors } = normalizeImportRow(
-      { firstName: '', lastName: 'X', phone: 'ask at reception', email: 'not-an-email', balance: 'lots' },
+      {
+        firstName: '',
+        lastName: 'X',
+        phone: 'ask at reception',
+        email: 'not-an-email',
+        balance: 'lots',
+      },
       opts,
     );
-    expect(errors.map((e) => e.field).sort()).toEqual(['balance', 'email', 'firstName', 'phone']);
+    expect(errors.map((e) => e.field).sort()).toEqual([
+      'balance',
+      'email',
+      'firstName',
+      'phone',
+    ]);
   });
 
   it('reads a credit as a negative balance', () => {
-    expect(normalizeImportRow({ firstName: 'A', lastName: 'B', balance: '-30' }, opts).value.balance).toBe(-3000);
+    expect(
+      normalizeImportRow({ firstName: 'A', lastName: 'B', balance: '-30' }, opts).value
+        .balance,
+    ).toBe(-3000);
   });
 });
 

@@ -11,6 +11,11 @@ import { toE164 } from './reminders';
 export const IMPORT_FIELDS = [
   'firstName',
   'lastName',
+  /**
+   * First and last name in one column ("Erisa Kola"), as many clinic lists
+   * keep them. Split on the last space: the last word is the surname.
+   */
+  'fullName',
   'phone',
   'email',
   'birthDate',
@@ -26,6 +31,7 @@ export type ImportField = (typeof IMPORT_FIELDS)[number];
 export const IMPORT_FIELD_LABELS: Readonly<Record<ImportField, string>> = Object.freeze({
   firstName: 'First name',
   lastName: 'Last name',
+  fullName: 'Full name',
   phone: 'Phone',
   email: 'Email',
   birthDate: 'Date of birth',
@@ -48,6 +54,19 @@ export type ImportDateFormat = (typeof IMPORT_DATE_FORMATS)[number];
 const HEADER_ALIASES: Readonly<Record<ImportField, readonly string[]>> = {
   firstName: ['first name', 'firstname', 'first', 'given name', 'name', 'emri', 'emër'],
   lastName: ['last name', 'lastname', 'surname', 'family name', 'mbiemri', 'mbiemër'],
+  fullName: [
+    'full name',
+    'fullname',
+    'patient',
+    'patient name',
+    'name and surname',
+    'pacienti',
+    'pacient',
+    'emri dhe mbiemri',
+    'emri mbiemri',
+    'emër mbiemër',
+    'emri i plotë',
+  ],
   phone: ['phone', 'mobile', 'telephone', 'tel', 'cell', 'phone number', 'telefon', 'telefoni', 'celular', 'nr. telefoni'],
   email: ['email', 'e-mail', 'mail', 'email address'],
   birthDate: ['date of birth', 'dob', 'birth date', 'birthdate', 'birthday', 'datelindja', 'data e lindjes', 'ditëlindja'],
@@ -59,19 +78,55 @@ const HEADER_ALIASES: Readonly<Record<ImportField, readonly string[]>> = {
   balance: ['balance', 'opening balance', 'amount owed', 'debt', 'outstanding', 'balanca', 'detyrim', 'borxh'],
 };
 
-/** A first guess at which column is which, by header name. Unmatched columns map to nothing. */
+/**
+ * A header as compared: lower case, single spaces, and without diacritics,
+ * so "Datëlindja", "Datelindja" and "DATËLINDJA" are one spelling. Albanian
+ * files are typed on keyboards with and without ë and ç.
+ */
+const headerKey = (h: string) =>
+  h
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[_\s]+/g, ' ');
+
+/**
+ * A first guess at which column is which, by header name. Unmatched columns
+ * map to nothing. A lone "Name" column with no surname column beside it holds
+ * whole names, so it is read as the full name rather than as first names.
+ */
 export function guessMapping(headers: readonly string[]): (ImportField | null)[] {
   const taken = new Set<ImportField>();
-  return headers.map((h) => {
-    const key = h.trim().toLowerCase().replace(/[_\s]+/g, ' ');
+  const mapped = headers.map((h): ImportField | null => {
+    const key = headerKey(h);
     for (const field of IMPORT_FIELDS) {
-      if (!taken.has(field) && HEADER_ALIASES[field].includes(key)) {
+      if (!taken.has(field) && HEADER_ALIASES[field].some((a) => headerKey(a) === key)) {
         taken.add(field);
         return field;
       }
     }
     return null;
   });
+  if (taken.has('firstName') && !taken.has('lastName') && !taken.has('fullName')) {
+    const i = mapped.indexOf('firstName');
+    const nameish = (h: string) =>
+      (['firstName', 'lastName', 'fullName'] as const).some((f) =>
+        HEADER_ALIASES[f].some((a) => headerKey(a) === headerKey(h)),
+      );
+    const alone = headers.filter(nameish).length === 1;
+    if (alone && ['name', 'emri', 'emer'].includes(headerKey(headers[i] ?? ''))) {
+      mapped[i] = 'fullName';
+    }
+  }
+  return mapped;
+}
+
+/** "Ana Maria Hoxha" → first "Ana Maria", last "Hoxha": the last word is the surname. */
+export function splitFullName(raw: string): { firstName: string; lastName: string } {
+  const words = raw.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return { firstName: words[0] ?? '', lastName: '' };
+  return { firstName: words.slice(0, -1).join(' '), lastName: words[words.length - 1]! };
 }
 
 export type RawImportRow = Partial<Record<ImportField, string>>;
@@ -156,8 +211,11 @@ export function normalizeImportRow(
     return v === '' ? null : v.slice(0, max);
   };
 
-  const firstName = text('firstName', 100);
-  const lastName = text('lastName', 100);
+  // A whole name fills whichever half the file does not give separately.
+  const whole = text('fullName', 200);
+  const split = whole ? splitFullName(whole) : null;
+  const firstName = text('firstName', 100) ?? (split?.firstName ? split.firstName.slice(0, 100) : null);
+  const lastName = text('lastName', 100) ?? (split?.lastName ? split.lastName.slice(0, 100) : null);
   if (!firstName) errors.push({ field: 'firstName', message: 'First name is missing' });
   if (!lastName) errors.push({ field: 'lastName', message: 'Last name is missing' });
 

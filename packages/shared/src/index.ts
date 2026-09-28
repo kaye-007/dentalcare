@@ -124,6 +124,8 @@ export {
 
 export { detectDelimiter, parseCsv, type CsvDelimiter } from './csv';
 
+export { columnName, writeXlsx, type Cell, type Sheet } from './xlsx-write';
+
 export {
   IMPORT_BATCH_LIMIT,
   IMPORT_DATE_FORMATS,
@@ -200,3 +202,32 @@ export {
   type MessagePurpose,
   type MessageValues,
 } from './messages';
+
+export {
+  META_LANGUAGE_CODE,
+  META_TEMPLATE_NAME,
+  WHATSAPP_BATCH_LIMIT,
+  WHATSAPP_DEFAULT_PREVIEWS,
+  WHATSAPP_EXCLUSIONS,
+  WHATSAPP_EXCLUSION_LABELS,
+  WHATSAPP_OPT_IN_SOURCES,
+  WHATSAPP_OPT_IN_SOURCE_LABELS,
+  WHATSAPP_SAMPLE,
+  WHATSAPP_SEND_STATUSES,
+  WHATSAPP_SEND_STATUS_LABELS,
+  WHATSAPP_REMINDER_VARIABLES,
+  dateLanguage,
+  formatReminderWhen,
+  isLiveSend,
+  renderWhatsAppPreview,
+  templateVariables,
+  unknownWhatsAppVariables,
+  whatsAppExclusion,
+  whatsAppRecipient,
+  whatsAppReminderValues,
+  type WhatsAppExclusion,
+  type WhatsAppOptInSource,
+  type WhatsAppSendStatus,
+  type WhatsAppValues,
+  type WhatsAppVariable,
+} from './whatsapp';

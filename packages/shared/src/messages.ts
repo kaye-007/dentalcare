@@ -30,6 +30,8 @@ export const MESSAGE_PURPOSES = [
   'appointment_reminder',
   'post_procedure_followup',
   'unpaid_balance',
+  /** It is time for a check-up, and nothing is booked (0022). */
+  'recall_invitation',
 ] as const;
 export type MessagePurpose = (typeof MESSAGE_PURPOSES)[number];
 
@@ -44,6 +46,7 @@ export const MESSAGE_PURPOSE_NAMES: Readonly<Record<MessagePurpose, string>> =
     appointment_reminder: 'Appointment reminder',
     post_procedure_followup: 'Post-procedure follow-up',
     unpaid_balance: 'Unpaid balance notice',
+    recall_invitation: 'Check-up invitation',
   });
 
 /** The short name used in TWILIO_WHATSAPP_CONTENT_SIDS ("followup.sq:HX…"). */
@@ -52,6 +55,7 @@ export const MESSAGE_PURPOSE_KEYS: Readonly<Record<MessagePurpose, string>> =
     appointment_reminder: 'reminder',
     post_procedure_followup: 'followup',
     unpaid_balance: 'balance',
+    recall_invitation: 'recall',
   });
 
 /** Placeholders each kind can be written with. */
@@ -74,6 +78,7 @@ export const MESSAGE_PLACEHOLDERS: Readonly<Record<MessagePurpose, readonly stri
       'dentist',
     ],
     unpaid_balance: ['first_name', 'clinic', 'balance', 'clinic_phone'],
+    recall_invitation: ['first_name', 'clinic', 'visit_date', 'clinic_phone'],
   });
 
 export type MessageValues = Readonly<Record<string, string>>;
@@ -110,6 +115,20 @@ const BUILT_IN: Readonly<
         'Hi {first_name}, a friendly note that there is an outstanding balance of {balance} on your account at {clinic}. To settle it or ask about it, call {clinic_phone}. Thank you!',
       withoutPhone:
         'Hi {first_name}, a friendly note that there is an outstanding balance of {balance} on your account at {clinic}. To settle it or ask about it, please contact the clinic. Thank you!',
+    },
+  },
+  recall_invitation: {
+    sq: {
+      withPhone:
+        'Përshëndetje {first_name}, nga vizita juaj e fundit në {clinic} më {visit_date} ka kaluar pak kohë dhe është koha për kontrollin e radhës. Për të lënë një takim, na shkruani këtu ose telefononi {clinic_phone}.',
+      withoutPhone:
+        'Përshëndetje {first_name}, nga vizita juaj e fundit në {clinic} më {visit_date} ka kaluar pak kohë dhe është koha për kontrollin e radhës. Për të lënë një takim, na shkruani këtu.',
+    },
+    en: {
+      withPhone:
+        'Hi {first_name}, it has been a while since your last visit to {clinic} on {visit_date}, and it is time for your next check-up. To book, reply here or call {clinic_phone}.',
+      withoutPhone:
+        'Hi {first_name}, it has been a while since your last visit to {clinic} on {visit_date}, and it is time for your next check-up. To book, reply here.',
     },
   },
 };
@@ -158,6 +177,7 @@ export const WHATSAPP_VARIABLES: Readonly<Record<MessagePurpose, readonly string
     appointment_reminder: ['first_name', 'date', 'time', 'dentist', 'clinic'],
     post_procedure_followup: ['first_name', 'clinic', 'visit_date', 'clinic_phone'],
     unpaid_balance: ['first_name', 'balance', 'clinic', 'clinic_phone'],
+    recall_invitation: ['first_name', 'clinic', 'visit_date', 'clinic_phone'],
   });
 
 export function whatsappVariables(

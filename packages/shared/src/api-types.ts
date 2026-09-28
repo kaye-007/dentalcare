@@ -35,7 +35,12 @@ export type PerioSite = (typeof PERIO_SITES)[number];
  * upload; the API rejects anything outside this set.
  */
 export const DOCUMENT_KINDS = [
+  /** Intraoral: periapical, bitewing. */
   'xray',
+  /** A panoramic radiograph (OPG) (0021). */
+  'panoramic',
+  /** Cone-beam CT: the DICOM series or the imaging centre's report (0021). */
+  'cbct',
   'photo',
   'consent',
   'referral',

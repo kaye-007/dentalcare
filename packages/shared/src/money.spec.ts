@@ -29,6 +29,12 @@ describe('formatMoney', () => {
   it('refuses to print nonsense', () => {
     expect(formatMoney(Number.NaN, 'EUR')).toBe('—');
   });
+
+  it('writes lek the Albanian way, the sign after the amount', () => {
+    expect(formatMoney(300_000, 'ALL')).toBe('3,000 L');
+    expect(formatMoney(5_000_050, 'ALL')).toBe('50,000.50 L');
+    expect(formatMoney(-50_000, 'ALL')).toBe('-500 L');
+  });
 });
 
 describe('parseMoney', () => {
@@ -101,6 +107,15 @@ describe('currencies', () => {
 
   it('has a symbol for each', () => {
     expect(currencySymbol('EUR')).toBe('€');
+    expect(currencySymbol('ALL')).toBe('L');
     for (const c of CURRENCIES) expect(currencySymbol(c).length).toBeGreaterThan(0);
+  });
+});
+
+describe('parseMoney with the lek sign', () => {
+  it('reads back what formatMoney writes for ALL', () => {
+    expect(parseMoney('3,000 L')).toBe(300_000);
+    expect(parseMoney('3,000 L')).toBe(300_000);
+    expect(parseMoney('50,000.50 L')).toBe(5_000_050);
   });
 });

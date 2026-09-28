@@ -198,6 +198,17 @@ export const PERMISSIONS = [
   'inventory:manage',
 
   /**
+   * Lab work (0020): the crowns, bridges and appliances made by a dental
+   * laboratory, where each one is, and when it is due back. Clinical staff
+   * order it; reception sends it, chases it and signs it back in, so both
+   * sides hold both. Not the accountant: a lab job names the patient and the
+   * treatment, and the lab's charges reach the reports without it.
+   */
+  'lab:read',
+  /** Order lab work, move it along (sent, received, fitted), and name the lab. */
+  'lab:write',
+
+  /**
    * The clinic activity trail and the record-access log. Doctor-only: the
    * logs exist so that the person being recorded cannot curate them, and
    * reading every entry is most of the way to knowing which ones to work
@@ -299,6 +310,8 @@ const DENTIST: readonly Permission[] = [
   'reminders:send',
   'inventory:read',
   'inventory:write',
+  'lab:read',
+  'lab:write',
 ];
 
 /**
@@ -323,6 +336,8 @@ const HYGIENIST: readonly Permission[] = [
   'reminders:read',
   'inventory:read',
   'inventory:write',
+  'lab:read',
+  'lab:write',
 ];
 
 /**
@@ -347,6 +362,8 @@ const ASSISTANT: readonly Permission[] = [
   'reminders:read',
   'inventory:read',
   'inventory:write',
+  'lab:read',
+  'lab:write',
 ];
 
 /**
@@ -394,6 +411,8 @@ const RECEPTIONIST: readonly Permission[] = [
   'reminders:send',
   'inventory:read',
   'inventory:write',
+  'lab:read',
+  'lab:write',
   'drawer:operate',
 ];
 

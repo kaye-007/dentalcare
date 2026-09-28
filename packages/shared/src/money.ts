@@ -64,7 +64,28 @@ function formatter(currency: CurrencyCode, fractionDigits: 0 | 2, locale: string
 }
 
 /**
- * Minor units -> "€45" or "€37.50".
+ * The lek is written the way Albania writes it — "3,000 L", the sign after
+ * the amount — not Intl's "ALL 3,000", which reads as a code in a table.
+ */
+const SUFFIX_SYMBOL: Partial<Record<CurrencyCode, string>> = { ALL: 'L' };
+
+const plainFormatters = new Map<string, Intl.NumberFormat>();
+
+function plain(fractionDigits: 0 | 2, locale: string) {
+  const key = `${locale}|${fractionDigits}`;
+  let f = plainFormatters.get(key);
+  if (!f) {
+    f = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    });
+    plainFormatters.set(key, f);
+  }
+  return f;
+}
+
+/**
+ * Minor units -> "€45", "€37.50" or "3,000 L".
  *
  * A whole amount drops the ".00", which keeps a price list readable; anything
  * with cents always shows both digits, so nothing is ever rounded away on
@@ -77,11 +98,21 @@ export function formatMoney(
 ): string {
   if (!Number.isFinite(minor)) return '—';
   const whole = Number.isInteger(minor) && minor % MINOR_UNITS === 0;
+  const suffix = SUFFIX_SYMBOL[currency];
+  if (suffix) {
+    // A no-break space, so "3,000 L" never wraps between the two.
+    return `${plain(whole ? 0 : 2, locale).format(minor / MINOR_UNITS)}\u00a0${suffix}`;
+  }
   return formatter(currency, whole ? 0 : 2, locale).format(minor / MINOR_UNITS);
 }
 
 /** "€", "L", "CHF" — for a field label. */
-export function currencySymbol(currency: CurrencyCode, locale: string = MONEY_LOCALE): string {
+export function currencySymbol(
+  currency: CurrencyCode,
+  locale: string = MONEY_LOCALE,
+): string {
+  const suffix = SUFFIX_SYMBOL[currency];
+  if (suffix) return suffix;
   return (
     formatter(currency, 0, locale)
       .formatToParts(0)
@@ -95,7 +126,9 @@ export function moneyInputValue(minor: number): string {
   const abs = Math.abs(Math.trunc(minor));
   const major = Math.floor(abs / MINOR_UNITS);
   const cents = abs % MINOR_UNITS;
-  return cents === 0 ? `${sign}${major}` : `${sign}${major}.${String(cents).padStart(2, '0')}`;
+  return cents === 0
+    ? `${sign}${major}`
+    : `${sign}${major}.${String(cents).padStart(2, '0')}`;
 }
 
 /**
@@ -117,7 +150,7 @@ export function parseMoney(input: string): number | null {
   const s = input
     .replace(/[\s\u00a0\u202f]/g, '')
     .replace(/^(?:€|\$|£|CHF|ALL|Lek[eë]?)/i, '')
-    .replace(/(?:€|\$|£|CHF|ALL|Lek[eë]?)$/i, '');
+    .replace(/(?:€|\$|£|CHF|ALL|Lek[eë]?|L)$/i, '');
   if (!/^\d[\d.,]*$/.test(s)) return null;
 
   const lastDot = s.lastIndexOf('.');
@@ -140,7 +173,8 @@ export function parseMoney(input: string): number | null {
   if (!isGrouped(grouped, decimalAt >= 0 ? s[decimalAt]! : null)) return null;
 
   const minor =
-    Number(grouped.replace(/[.,]/g, '')) * MINOR_UNITS + Number(fractionPart.padEnd(2, '0'));
+    Number(grouped.replace(/[.,]/g, '')) * MINOR_UNITS +
+    Number(fractionPart.padEnd(2, '0'));
   return Number.isSafeInteger(minor) ? minor : null;
 }
 
