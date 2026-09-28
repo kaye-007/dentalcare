@@ -48,6 +48,11 @@ jobs:
       - name: Format (whole repository)
         run: npm run format:check
 
+      # A private key, provider token or credentialed database URL in any
+      # file fails the build; see scripts/secret-scan.js for the allowlist.
+      - name: Secrets
+        run: npm run secrets:check
+
       - name: Typecheck
         run: npm run typecheck
 
