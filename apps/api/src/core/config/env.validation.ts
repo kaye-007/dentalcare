@@ -293,6 +293,18 @@ const envSchema = z
       }
     }
 
+    // STORAGE_DRIVER=s3 with no bucket used to fall back to the local disk
+    // without a word, which is the opposite of what the setting says.
+    const s3Ready = present.length === 3;
+    if (val.STORAGE_DRIVER === 's3' && !s3Ready) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STORAGE_DRIVER'],
+        message:
+          's3 needs a bucket — set S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY',
+      });
+    }
+
     // A malformed keyring is a boot failure everywhere: the alternative is
     // discovering it on the first enrollment, or never being able to open a
     // secret sealed under a key that parsed differently.
@@ -365,6 +377,34 @@ const envSchema = z
     }
 
     if (val.NODE_ENV !== 'production') return;
+
+    // Where patient documents live is a decision in production, not a
+    // fallback. With no bucket they went to the server's own disk without a
+    // word: on a container without a volume they vanish at the next deploy,
+    // and they are in no database backup either way.
+    if (!val.STORAGE_DRIVER && !s3Ready) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STORAGE_DRIVER'],
+        message:
+          'required in production when no bucket is configured — set S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY for a bucket, STORAGE_DRIVER=local with STORAGE_DIR on a volume that is backed up, or STORAGE_DRIVER=off to run without uploads',
+      });
+    }
+    if (val.STORAGE_DRIVER === 'local' && val.RUNTIME === 'workers') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STORAGE_DRIVER'],
+        message: 'a Worker has no disk — use a bucket (S3_*) or STORAGE_DRIVER=off',
+      });
+    }
+    if (val.STORAGE_DRIVER === 'local' && !val.STORAGE_DIR) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STORAGE_DIR'],
+        message:
+          'required in production with STORAGE_DRIVER=local — a directory on a persistent volume, backed up with the database',
+      });
+    }
 
     // Without a public origin no delivery receipt can come back, and the
     // reminder log could only ever say a message was accepted. Development

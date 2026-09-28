@@ -50,6 +50,8 @@ describe('validateEnv', () => {
       PLATFORM_JWT_SECRET: PLATFORM_SECRET,
       MFA_ENCRYPTION_KEYS: MFA_KEYS,
       WHATSAPP_ENCRYPTION_KEYS: WHATSAPP_KEYS,
+      // Storage is its own test; these are about other settings.
+      STORAGE_DRIVER: 'off',
     };
 
     it('refuses to boot without APP_DATABASE_URL', () => {
@@ -93,6 +95,8 @@ describe('validateEnv', () => {
       APP_DATABASE_URL: 'postgres://app_user:p@localhost:5432/dentalcare',
       MFA_ENCRYPTION_KEYS: MFA_KEYS,
       WHATSAPP_ENCRYPTION_KEYS: WHATSAPP_KEYS,
+      // Storage is its own test; these are about other settings.
+      STORAGE_DRIVER: 'off',
     };
 
     // The clinic plane and the platform plane shared one key. A leak of the
@@ -145,6 +149,8 @@ describe('validateEnv', () => {
       NODE_ENV: 'production',
       APP_DATABASE_URL: 'postgres://app_user:p@localhost:5432/dentalcare',
       PLATFORM_JWT_SECRET: PLATFORM_SECRET,
+      // Storage is its own test; these are about other settings.
+      STORAGE_DRIVER: 'off',
     };
 
     it('requires MFA_ENCRYPTION_KEYS in production', () => {
@@ -206,5 +212,71 @@ describe('validateEnv', () => {
   it('only accepts 0 or 1 for ALLOW_TENANT_HEADER', () => {
     expect(() => validateEnv({ ...base, ALLOW_TENANT_HEADER: '1' })).not.toThrow();
     expect(() => validateEnv({ ...base, ALLOW_TENANT_HEADER: 'yes' })).toThrow();
+  });
+
+  /**
+   * Where patient documents live has to be decided in production. With no
+   * bucket they used to go to the server's own disk without a word, which on
+   * a container without a volume loses them at the next deploy.
+   */
+  describe('document storage', () => {
+    const prod = {
+      ...base,
+      NODE_ENV: 'production',
+      APP_DATABASE_URL: 'postgres://app_user:p@localhost:5432/dentalcare',
+      PLATFORM_JWT_SECRET: PLATFORM_SECRET,
+      MFA_ENCRYPTION_KEYS: MFA_KEYS,
+      WHATSAPP_ENCRYPTION_KEYS: WHATSAPP_KEYS,
+    };
+    const bucket = {
+      S3_BUCKET: 'docs',
+      S3_ACCESS_KEY_ID: 'id',
+      S3_SECRET_ACCESS_KEY: 'key',
+    };
+
+    it('refuses production with no bucket and no decision', () => {
+      expect(() => validateEnv(prod)).toThrow(/STORAGE_DRIVER/);
+    });
+
+    it('boots production with a bucket', () => {
+      expect(() => validateEnv({ ...prod, ...bucket })).not.toThrow();
+    });
+
+    it('boots production with uploads explicitly off', () => {
+      expect(() => validateEnv({ ...prod, STORAGE_DRIVER: 'off' })).not.toThrow();
+    });
+
+    it('boots production on the server disk only with a named directory', () => {
+      expect(() => validateEnv({ ...prod, STORAGE_DRIVER: 'local' })).toThrow(
+        /STORAGE_DIR/,
+      );
+      expect(() =>
+        validateEnv({ ...prod, STORAGE_DRIVER: 'local', STORAGE_DIR: '/app/storage' }),
+      ).not.toThrow();
+    });
+
+    it('refuses the server disk on Workers, which have none', () => {
+      expect(() =>
+        validateEnv({
+          ...prod,
+          RUNTIME: 'workers',
+          STORAGE_DRIVER: 'local',
+          STORAGE_DIR: '/app/storage',
+        }),
+      ).toThrow(/Worker has no disk/);
+    });
+
+    it('refuses STORAGE_DRIVER=s3 without a bucket, in development too', () => {
+      expect(() => validateEnv({ ...base, STORAGE_DRIVER: 's3' })).toThrow(
+        /s3 needs a bucket/,
+      );
+      expect(() =>
+        validateEnv({ ...base, STORAGE_DRIVER: 's3', ...bucket }),
+      ).not.toThrow();
+    });
+
+    it('leaves development free to use the disk without saying so', () => {
+      expect(() => validateEnv({ ...base, NODE_ENV: 'development' })).not.toThrow();
+    });
   });
 });

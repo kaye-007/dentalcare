@@ -65,6 +65,8 @@ describe('SMS configuration', () => {
       APP_DATABASE_URL: 'postgres://app_user@localhost/dentalcare',
       MFA_ENCRYPTION_KEYS: `k1:${Buffer.alloc(32, 7).toString('base64')}`,
       WHATSAPP_ENCRYPTION_KEYS: `w1:${Buffer.alloc(32, 9).toString('base64')}`,
+      // Storage is its own test; these are about other settings.
+      STORAGE_DRIVER: 'off',
     };
     expect(() => validateEnv(production)).toThrow(/PUBLIC_API_URL/);
     expect(() =>

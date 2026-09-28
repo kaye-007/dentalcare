@@ -95,6 +95,10 @@
     // approved. VONAGE_API_SECRET is a secret; the rest belong here.
     "WHATSAPP_PROVIDER": "none",
     "VIBER_PROVIDER": "none",
+    // Documents go to a bucket: a Worker has no disk. Put S3_BUCKET,
+    // S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY as secrets, or set this to
+    // "off" to run without uploads; the API will not start on neither.
+    "STORAGE_DRIVER": "s3",
     "S3_REGION": "auto",
     "S3_FORCE_PATH_STYLE": "1",
   },
