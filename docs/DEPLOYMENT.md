@@ -404,8 +404,61 @@ currencies other than lek, and TCR registration from the app.
 
 ### Backups and restore
 
-The platform backup is the database provider's point-in-time recovery — enable
-it and rehearse a restore to a new database before the first paying customer.
+Two layers, both needed:
+
+1. **The provider's point-in-time recovery.** Turn it on. It is the fastest way
+   back from a bad hour.
+2. **An independent logical backup**, restorable anywhere and checked end to
+   end, kept away from the provider that holds the original:
+
+   ```bash
+   # Against the privileged role (DATABASE_URL): it must see every clinic's rows.
+   npm run db:backup                    # -> backups/dentalcare-<time>.dump (+ .json, .schema.sql)
+
+   # Into an EMPTY database, never over live data; then it checks the result.
+   npm run db:restore -- --from backups/<file>.dump --into postgres://owner@host:5432/new_db
+   ```
+
+   The backup writes the archive, a manifest (last migration, row count per
+   table, SHA-256) and the schema. The restore refuses a target that holds any
+   table or an archive that does not match its manifest. Then it checks four
+   things and prints **Restored whole** or says what is missing:
+   - the schema is the source's;
+   - every table's row count and the last migration match;
+   - row security is enabled and forced on every table with a `tenant_id`;
+   - `app_user` cannot bypass it.
+
+   It creates `app_user` on a server that lacks it, with LOGIN only if
+   `APP_DB_PASSWORD` is set. `--check` re-runs the checks on a database already
+   restored.
+
+   The backup holds every clinic's patient records. Keep it encrypted and off
+   the application servers. `backups/` is git-ignored.
+
+**Uploaded documents are not in the database.** With a bucket, turn on
+versioning, or replicate it. On the server disk (`STORAGE_DRIVER=local`), back
+up `STORAGE_DIR` with the database, for example the compose volume:
+`docker run --rm -v dentalcare_uploads:/data -v "$PWD":/out alpine tar czf /out/uploads-<time>.tgz -C /data .`
+
+**Rehearsed on 2026-09-28**, locally, on the demo clinic (71 tables, 10,090 rows,
+migration 0025). This proves the tooling, not the provider:
+
+| Step                                                                          | Result                                            |
+| ----------------------------------------------------------------------------- | ------------------------------------------------- |
+| `db:backup`                                                                   | 2 s, 1.1 MB archive                               |
+| Restore onto a brand-new PostgreSQL 16 server (no `app_user`, empty database) | role created; restored in 4 s; **Restored whole** |
+| The API pointed at the restored database                                      | health 200, owner signed in, 300 patients listed  |
+| Restore over a database holding data                                          | refused, nothing touched                          |
+| A tampered archive (one byte changed)                                         | refused before any write                          |
+
+One check needed care: PostgreSQL re-prints a CHECK constraint with different
+parentheses after a dump and restore (`((a AND b) AND c)` returns as
+`(a AND b AND c)`). The comparison sets parentheses aside for such lines and
+reports how many there were. Every object still has to be there, word for word.
+
+**Still to do before the first paying clinic:** the same rehearsal against the
+real provider's backup and the staging database (see the checklist below).
+
 The console deliberately has **no** button that restores a database: a restore
 into the live shared schema rolls back every clinic at once, and restoring one
 clinic's rows means crossing append-only tables and locking triggers, which is
@@ -587,8 +640,10 @@ every one of them looks like something else from the outside.
       recovery code. Confirm `MFA_ENCRYPTION_KEYS` is the secret you backed up.
 
 - [ ] **A backup restored.** Not "backups are enabled" — a restore actually
-      performed into a scratch database and the schema diffed against
-      `npm run migrate:baseline -- --verify`.
+      performed: `npm run db:backup` against staging, then
+      `npm run db:restore -- --from … --into <an empty database elsewhere>`,
+      and it prints **Restored whole** (see [Backups and restore](#backups-and-restore)).
+      Rehearsed once locally on 2026-09-28; not yet against staging.
 
 Until every box above is ticked, this deployment is unproven. Do not describe
 it as production ready, and do not put a real clinic's records on it.

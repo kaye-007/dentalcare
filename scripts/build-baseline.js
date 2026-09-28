@@ -518,6 +518,13 @@ ${schemaSql}
 
 // ── main ────────────────────────────────────────────────────────────────
 
+/** The migrations the installed baseline says it replaced, or none. */
+function readSupersedes() {
+  if (!fs.existsSync(BASELINE)) return [];
+  const m = fs.readFileSync(BASELINE, 'utf8').match(/const SUPERSEDES = (\[[\s\S]*?\]);/);
+  return m ? JSON.parse(m[1]) : [];
+}
+
 async function main() {
   console.log(`\n${B}DentalCare — migration baseline${X}`);
   console.log(`${D}${ADMIN.hostname}:${ADMIN.port || 5432}${X}`);
@@ -531,9 +538,29 @@ async function main() {
    * The real history is every migration EXCEPT the baseline. Keeping those
    * separate is what stops the script verifying a candidate baseline against
    * a db_old that was itself built partly from that candidate.
+   *
+   * Migrations written after the squash (0002 onwards today) are not history
+   * either: they are live migrations that migrate:up applies on top of the
+   * baseline. The baseline names what it replaced (SUPERSEDES), so anything
+   * it does not name is later work, left out of both databases here. That
+   * the whole chain applies is proven by migrating from zero, which CI and
+   * scripts/db-restore.js both do. Counting later migrations as history was
+   * what broke --verify once 0002 existed.
    */
-  const history = onDisk.filter((f) => f !== '0001_baseline.js');
+  const supersedes = readSupersedes();
+  const later = onDisk.filter(
+    (f) =>
+      f !== '0001_baseline.js' &&
+      supersedes.length > 0 &&
+      !supersedes.includes(f.replace(/\.js$/, '')),
+  );
+  const history = onDisk.filter((f) => f !== '0001_baseline.js' && !later.includes(f));
   const isSquashed = history.length === 0;
+  if (later.length) {
+    info(
+      `${later.length} migration(s) after the baseline (${later[0]} .. ${later[later.length - 1]}) are live, not history`,
+    );
+  }
 
   if (isSquashed && !VERIFY_ONLY) {
     warn('\nAlready squashed — there is no history left to generate from.');
@@ -551,7 +578,7 @@ async function main() {
   try {
     /* ── 1. db_old — the real history, and nothing else ───────────────── */
     step('1. db_old (the migration history)');
-    const source = isSquashed ? onDisk : history;
+    const source = isSquashed ? onDisk.filter((f) => !later.includes(f)) : history;
     for (const file of source) {
       fs.copyFileSync(path.join(MIGRATIONS, file), path.join(oldDir, file));
     }

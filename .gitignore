@@ -51,3 +51,9 @@ packages/shared/dist
 # Uploaded files kept on local disk (STORAGE_DIR)
 apps/api/storage/
 /storage/
+
+# Database backups (scripts/db-backup.js): every clinic's records. Never commit.
+backups/
+
+# Written by scripts/build-baseline.js when a verify fails.
+.baseline-diff/
