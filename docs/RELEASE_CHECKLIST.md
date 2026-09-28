@@ -27,15 +27,16 @@ Not yet ready to onboard them as paying customers. Reasoning at the end.
 | Clinic — `demo.<host>` or `:5173` | `demo@dentx.app`  | `<redacted>` | Owner          |
 | Platform console — `:5174`        | `admin@dentx.app` | `<redacted>` | Platform admin |
 
-Additional clinic staff, all `<redacted>`, for demonstrating permissions:
+Additional clinic staff, all `<redacted>`, for demonstrating permissions.
+The full list, and how to reset the demo, is in
+[DEMO_ACCOUNTS.md](./DEMO_ACCOUNTS.md) (updated 2026-09-27).
 
-| Name                | Email                  | Access    | Position         |
-| ------------------- | ---------------------- | --------- | ---------------- |
-| Dr. Elira Shehu     | `e.shehu@dentx.app`    | Doctor    | Dentist          |
-| Dr. Endrit Krasniqi | `e.krasniqi@dentx.app` | Doctor    | Dentist          |
-| Dr. Anisa Prifti    | `a.prifti@dentx.app`   | Doctor    | Orthodontist     |
-| Migena Dervishi     | `m.dervishi@dentx.app` | Reception | Receptionist     |
-| Blerta Leka         | `b.leka@dentx.app`     | Reception | Dental Assistant |
+| Name               | Email                  | Access       | Position        |
+| ------------------ | ---------------------- | ------------ | --------------- |
+| Dr. Ardit Hoxha    | `a.hoxha@dentx.app`    | Dentist      | General Dentist |
+| Dr. Elira Dervishi | `e.dervishi@dentx.app` | Dentist      | Endodontist     |
+| Dr. Besnik Kola    | `b.kola@dentx.app`     | Dentist      | Oral Surgeon    |
+| Ana Kola           | `reception@dentx.app`  | Receptionist | Receptionist    |
 
 > **Deviation from spec.** The brief asked for a "Super Administrator" role
 > within the demo tenant. The schema permits exactly two clinic roles —

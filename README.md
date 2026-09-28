@@ -109,12 +109,16 @@ If it prints `ready`, the app will run. If it fails, it names the step.
 ### Demo data (local development only)
 
 ```bash
-npm run seed -w @dentalcare/api          # one clinic, twelve patients, a year of history
-npm run reset-demo -w @dentalcare/api    # wipe tenant + platform data, keep the schema
+DEMO_ENV=true npm run demo:reset                     # wipe EVERY clinic, then load the one demo clinic
+DEMO_ENV=true npm run seed -w @dentalcare/api        # the demo clinic, into an empty database
+DEMO_ENV=true npm run reset-demo -w @dentalcare/api  # wipe tenant + platform data, keep the schema
 ```
 
 The seed writes **documented credentials** (`demo@dentx.app`, and a platform
-admin `admin@dentx.app`, both with the password printed at the end of the run).
+admin `admin@dentx.app`, both with the password printed at the end of the run;
+every demo account is listed in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md)).
+Both scripts refuse to run unless `DEMO_ENV=true` is set for the command (in
+PowerShell: `$env:DEMO_ENV='true'; npm run demo:reset`).
 Both `seed` and `reset-demo` refuse to run when `NODE_ENV=production` or
 against a non-local database — see `scripts/lib/guard.js`.
 
