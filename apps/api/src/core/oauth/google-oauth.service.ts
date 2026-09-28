@@ -2,6 +2,7 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { OAuthPlane, OAuthState } from './oauth-state';
+import { bindingDomain } from './oauth-binding';
 
 /** Same shape the platform console enforces when a clinic is created. */
 export const SUBDOMAIN = /^[a-z0-9]([a-z0-9-]{1,28}[a-z0-9])?$/;
@@ -39,6 +40,18 @@ export class GoogleOAuthService {
   }
 
   /** The secret that signs the OAuth state. Shares JWT_SECRET's rotation. */
+  /**
+   * How the browser-binding cookie is written (oauth-binding.ts): scoped to
+   * the parent domain of the callback host, Secure in production.
+   */
+  get bindingCookieOpts(): { domain?: string; secure: boolean } {
+    const callback = process.env.GOOGLE_CALLBACK_URL;
+    return {
+      domain: callback ? bindingDomain(new URL(callback).hostname) : undefined,
+      secure: this.config.get<string>('NODE_ENV') === 'production',
+    };
+  }
+
   get stateSecret(): string {
     return this.config.get<string>('JWT_SECRET')!;
   }

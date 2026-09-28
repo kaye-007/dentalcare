@@ -1,7 +1,8 @@
 import { BadRequestException, ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Request } from 'express';
-import { createState, OAuthPlane, safeReturnPath } from './oauth-state';
+import { Request, Response } from 'express';
+import { createState, OAuthPlane, readState, safeReturnPath } from './oauth-state';
+import { bindingCookie } from './oauth-binding';
 import { GoogleOAuthService, RequestWithOAuth, SUBDOMAIN } from './google-oauth.service';
 
 /**
@@ -53,10 +54,17 @@ export abstract class BaseGoogleGuard extends AuthGuard('google') {
       typeof req.query.next === 'string' ? req.query.next : undefined,
     );
     // Stashed for getAuthenticateOptions, which passport calls next.
-    (req as RequestWithOAuth).oauthOutboundState = createState(
+    const state = createState(
       { plane: this.plane, tenant, next },
       this.oauth.stateSecret,
     );
+    (req as RequestWithOAuth).oauthOutboundState = state;
+    // This browser, and only this one, may finish the sign-in (oauth-binding.ts).
+    const { nonce } = readState(state, this.oauth.stateSecret);
+    context
+      .switchToHttp()
+      .getResponse<Response>()
+      .append('Set-Cookie', bindingCookie(nonce, this.oauth.bindingCookieOpts));
     return super.canActivate(context);
   }
 

@@ -1,6 +1,8 @@
 import { BadRequestException, ExecutionContext, Injectable } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Response } from 'express';
 import { InvalidOAuthState, readState } from './oauth-state';
+import { boundToThisBrowser, clearedBindingCookie } from './oauth-binding';
 import { GoogleOAuthService, RequestWithOAuth } from './google-oauth.service';
 
 /**
@@ -31,6 +33,20 @@ export class GoogleCallbackGuard extends AuthGuard('google') {
         message: err instanceof InvalidOAuthState ? err.message : 'Sign-in failed.',
       });
     }
+    // Login CSRF: a callback URL sent to someone else carries a state their
+    // browser never started. Checked before Google's code is exchanged.
+    if (!boundToThisBrowser(req.headers.cookie, req.oauthState.nonce)) {
+      throw new BadRequestException({
+        code: 'oauth_not_this_browser',
+        message:
+          'This sign-in was not started in this browser. Start again from the sign-in page.',
+      });
+    }
+    // Single use.
+    context
+      .switchToHttp()
+      .getResponse<Response>()
+      .append('Set-Cookie', clearedBindingCookie(this.oauth.bindingCookieOpts));
     return super.canActivate(context);
   }
 
