@@ -1,7 +1,13 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, TrendingDown, Undo2 } from 'lucide-react';
-import { financeApi, ApiError, type ExpenseRow, type ExpenseCategory } from '../lib/api';
+import {
+  financeApi,
+  ApiError,
+  type ExpenseRow,
+  type ExpenseCategory,
+  newIdempotencyKey,
+} from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { PageHeader, EmptyState, Modal, LoadingRows } from '../components/ui';
 import VoidModal, { VoidedNote } from '../components/VoidModal';
@@ -35,6 +41,8 @@ export default function ExpensesPage() {
   const [items, setItems] = useState<ExpenseRow[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [voiding, setVoiding] = useState<ExpenseRow | null>(null);
+  // One key per expense being voided, however many times Void is pressed.
+  const voidKey = useMemo(() => (voiding ? newIdempotencyKey() : undefined), [voiding]);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // "Add expense" from the topbar menu lands here with ?new=1. Open the form
@@ -178,7 +186,7 @@ export default function ExpensesPage() {
           confirmLabel={`Void ${formatMoney(voiding.amount)}`}
           onClose={() => setVoiding(null)}
           onConfirm={async (reason) => {
-            await financeApi.voidExpense(voiding.id, reason);
+            await financeApi.voidExpense(voiding.id, reason, voidKey);
             setVoiding(null);
             await load();
           }}
@@ -209,6 +217,8 @@ function ExpenseModal({
   const [category, setCategory] = useState<ExpenseCategory>('materials');
   const [amount, setAmount] = useState<number | null>(null);
   const [date, setDate] = useState(today);
+  // One key for this expense, however many times Save is pressed (0024).
+  const [idemKey] = useState(newIdempotencyKey);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -222,12 +232,15 @@ function ExpenseModal({
     setError(null);
     setBusy(true);
     try {
-      await financeApi.createExpense({
-        category,
-        amount,
-        expenseDate: date,
-        note: note.trim() || undefined,
-      });
+      await financeApi.createExpense(
+        {
+          category,
+          amount,
+          expenseDate: date,
+          note: note.trim() || undefined,
+        },
+        idemKey,
+      );
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save expense.');

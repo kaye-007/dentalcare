@@ -9,6 +9,7 @@ import {
   type InvoiceSummaryRow,
   type LineItemPayload,
   type Treatment,
+  newIdempotencyKey,
 } from '../lib/api';
 import {
   PageHeader,
@@ -259,6 +260,8 @@ function NewInvoiceModal({
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
+  // One key for this invoice, however many times Create is pressed (0024).
+  const [idemKey] = useState(newIdempotencyKey);
   const [patientId, setPatientId] = useState(initialPatient?.id ?? '');
   const [patientName, setPatientName] = useState(initialPatient?.name ?? '');
   const [treatments, setTreatments] = useState<Treatment[]>([]);
@@ -383,13 +386,16 @@ function NewInvoiceModal({
     setError(null);
     setBusy(true);
     try {
-      const created = await financeApi.createInvoice({
-        patientId,
-        items: items.map(({ key: _k, chartNote: _n, ...rest }) => ({
-          ...rest,
-          description: rest.description.trim(),
-        })),
-      });
+      const created = await financeApi.createInvoice(
+        {
+          patientId,
+          items: items.map(({ key: _k, chartNote: _n, ...rest }) => ({
+            ...rest,
+            description: rest.description.trim(),
+          })),
+        },
+        idemKey,
+      );
       onCreated(created.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the invoice.');

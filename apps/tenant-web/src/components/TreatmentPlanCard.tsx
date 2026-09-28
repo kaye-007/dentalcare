@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useRef, useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ClipboardList, FileText, Plus, Printer, Trash2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
@@ -15,6 +15,7 @@ import {
   type Treatment,
   type TreatmentPlan,
   humanError,
+  newIdempotencyKey,
 } from '../lib/api';
 import { formatMoney as money } from '../lib/format';
 import MoneyInput from './MoneyInput';
@@ -170,6 +171,8 @@ function PlanBlock({
   const [declining, setDeclining] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
   const [invoiceNotice, setInvoiceNotice] = useState<string | null>(null);
+  // One key per "Invoice completed work" action, renewed once it succeeds.
+  const billKey = useRef(newIdempotencyKey());
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -371,7 +374,12 @@ function PlanBlock({
                     disabled={busy}
                     onClick={() =>
                       act(async () => {
-                        const inv = await billingApi.generateFromPlan(plan.id);
+                        const inv = await billingApi.generateFromPlan(
+                          plan.id,
+                          {},
+                          billKey.current,
+                        );
+                        billKey.current = newIdempotencyKey();
                         setInvoiceNotice(
                           `Invoice ${inv.invoiceNumber} created — ${money(inv.total)}` +
                             (inv.taxAmount > 0

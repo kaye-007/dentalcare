@@ -171,12 +171,15 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  // One key for registering this invoice, however many times it is pressed.
+  const fiscalKey = useRef(newIdempotencyKey());
+
   async function fiscalize() {
     if (!inv) return;
     setError(null);
     setBusy('fiscal');
     try {
-      setFiscal(await fiscalApi.fiscalize(inv.id));
+      setFiscal(await fiscalApi.fiscalize(inv.id, fiscalKey.current));
       setConfirmFiscal(false);
     } catch (err) {
       setError(

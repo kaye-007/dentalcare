@@ -2293,10 +2293,14 @@ export const fiscalApi = {
   cashDeposits() {
     return request<CashDeposit[]>('/fiscal/cash-deposits');
   },
-  registerCashDeposit(p: { operation: 'INITIAL' | 'WITHDRAW'; amount: number }) {
+  registerCashDeposit(
+    p: { operation: 'INITIAL' | 'WITHDRAW'; amount: number },
+    idempotencyKey?: string,
+  ) {
     return request<CashDeposit>('/fiscal/cash-deposits', {
       method: 'POST',
       body: JSON.stringify(p),
+      headers: idempotent(idempotencyKey),
     });
   },
   forInvoice(invoiceId: string) {
@@ -2306,8 +2310,11 @@ export const fiscalApi = {
   receipt(invoiceId: string) {
     return request<FiscalReceipt>(`/invoices/${invoiceId}/fiscal/receipt`);
   },
-  fiscalize(invoiceId: string) {
-    return request<FiscalRecord>(`/invoices/${invoiceId}/fiscal`, { method: 'POST' });
+  fiscalize(invoiceId: string, idempotencyKey?: string) {
+    return request<FiscalRecord>(`/invoices/${invoiceId}/fiscal`, {
+      method: 'POST',
+      headers: idempotent(idempotencyKey),
+    });
   },
   /** Everything still owed to the tax authority, with the 48-hour clock. */
   queue() {
@@ -2565,10 +2572,14 @@ export const financeApi = {
       `/invoices/unbilled?patientId=${encodeURIComponent(patientId)}`,
     );
   },
-  createInvoice(p: { patientId: string; issuedAt?: string; items: LineItemPayload[] }) {
+  createInvoice(
+    p: { patientId: string; issuedAt?: string; items: LineItemPayload[] },
+    idempotencyKey?: string,
+  ) {
     return request<InvoiceSummaryRow>('/invoices', {
       method: 'POST',
       body: JSON.stringify(p),
+      headers: idempotent(idempotencyKey),
     });
   },
   cancelInvoice(id: string) {
@@ -2610,18 +2621,26 @@ export const financeApi = {
     const s = category && category !== 'all' ? `?category=${category}` : '';
     return request<ExpenseRow[]>(`/expenses${s}`);
   },
-  createExpense(p: {
-    category: ExpenseCategory;
-    amount: number;
-    expenseDate?: string;
-    note?: string;
-  }) {
-    return request<ExpenseRow>('/expenses', { method: 'POST', body: JSON.stringify(p) });
+  createExpense(
+    p: {
+      category: ExpenseCategory;
+      amount: number;
+      expenseDate?: string;
+      note?: string;
+    },
+    idempotencyKey?: string,
+  ) {
+    return request<ExpenseRow>('/expenses', {
+      method: 'POST',
+      body: JSON.stringify(p),
+      headers: idempotent(idempotencyKey),
+    });
   },
-  voidExpense(id: string, reason: string) {
+  voidExpense(id: string, reason: string, idempotencyKey?: string) {
     return request<{ voided: true }>(`/expenses/${id}/void`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
+      headers: idempotent(idempotencyKey),
     });
   },
   voidPayment(id: string, reason: string) {
@@ -3081,10 +3100,12 @@ export const billingApi = {
       issuedAt?: string;
       notes?: string;
     } = {},
+    idempotencyKey?: string,
   ) {
     return request<GeneratedInvoice>(`/treatment-plans/${planId}/invoice`, {
       method: 'POST',
       body: JSON.stringify(opts),
+      headers: idempotent(idempotencyKey),
     });
   },
   ledger(patientId: string) {
@@ -3098,10 +3119,12 @@ export const billingApi = {
       description: string;
       occurredOn?: string;
     },
+    idempotencyKey?: string,
   ) {
     return request<PatientLedger>(`/patients/${patientId}/ledger/adjustments`, {
       method: 'POST',
       body: JSON.stringify(clean(p)),
+      headers: idempotent(idempotencyKey),
     });
   },
   receivables() {

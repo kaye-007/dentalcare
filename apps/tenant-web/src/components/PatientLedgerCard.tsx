@@ -7,6 +7,7 @@ import {
   type LedgerEntry,
   type PatientLedger,
   humanError,
+  newIdempotencyKey,
 } from '../lib/api';
 import { currencySymbol, formatMoney, toDate } from '../lib/format';
 import MoneyInput from './MoneyInput';
@@ -164,6 +165,8 @@ function AdjustmentForm({
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // One key for this adjustment, however many times it is submitted (0024).
+  const [idemKey] = useState(newIdempotencyKey);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -171,11 +174,15 @@ function AdjustmentForm({
     setBusy(true);
     setErr(null);
     try {
-      await billingApi.addAdjustment(patientId, {
-        entryType,
-        amount,
-        description: description.trim(),
-      });
+      await billingApi.addAdjustment(
+        patientId,
+        {
+          entryType,
+          amount,
+          description: description.trim(),
+        },
+        idemKey,
+      );
       onDone();
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : 'Could not record the adjustment.');

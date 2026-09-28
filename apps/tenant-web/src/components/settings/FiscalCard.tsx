@@ -6,6 +6,7 @@ import {
   type CashDeposit,
   type FiscalSettings,
   humanError,
+  newIdempotencyKey,
 } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { formatMoney } from '../../lib/format';
@@ -474,6 +475,9 @@ function CashCard() {
   const [amount, setAmount] = useState<number | null>(0);
   const [operation, setOperation] = useState<'INITIAL' | 'WITHDRAW'>('INITIAL');
   const save = useSave();
+  // One key per declaration, however many times it is sent; a new one once
+  // the tax authority has an answer.
+  const depositKey = useRef(newIdempotencyKey());
 
   useEffect(() => {
     fiscalApi
@@ -485,9 +489,13 @@ function CashCard() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     const out = await save.run(() =>
-      fiscalApi.registerCashDeposit({ operation, amount: amount ?? 0 }),
+      fiscalApi.registerCashDeposit(
+        { operation, amount: amount ?? 0 },
+        depositKey.current,
+      ),
     );
     if (out) {
+      depositKey.current = newIdempotencyKey();
       setDeposits((d) => [out, ...(d ?? [])]);
       if (out.status !== 'registered')
         save.setError(out.error ?? 'The tax authority did not confirm the declaration.');
