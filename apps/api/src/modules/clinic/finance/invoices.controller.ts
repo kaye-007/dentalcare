@@ -77,6 +77,7 @@ export class InvoicesController {
   }
 
   @Post()
+  @Idempotent()
   @RequirePermissions('invoices:write')
   create(@Body() dto: CreateInvoiceDto, @CurrentUser() user?: AccessTokenPayload) {
     return this.finance.createInvoice(dto, auditActor(user));

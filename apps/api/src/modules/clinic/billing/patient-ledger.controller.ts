@@ -16,6 +16,7 @@ import { auditActor } from '@/core/audit/clinic-audit.service';
 import { LogPatientAccess } from '@/core/audit/patient-access';
 import { BillingService } from './billing.service';
 import { LedgerAdjustmentDto } from './dto/billing.dto';
+import { Idempotent } from '@/core/idempotency/idempotency.interceptor';
 
 @Controller('patients/:patientId/ledger')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -31,6 +32,7 @@ export class PatientLedgerController {
 
   /** Write-offs and corrections change what a patient owes — admin only. */
   @Post('adjustments')
+  @Idempotent()
   @RequirePermissions('invoices:delete')
   adjust(
     @Param('patientId', ParseUUIDPipe) patientId: string,

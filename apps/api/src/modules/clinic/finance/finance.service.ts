@@ -376,6 +376,11 @@ export class FinanceService {
       const totals = calculateInvoice(lines.map((l) => l.input));
       const total = totals.total;
 
+      // The Idempotency-Key, when the request carried one, is stored on the
+      // invoice (0024): a retry that slips past the replay store fails on the
+      // unique index instead of issuing a second invoice.
+      const idempotencyKey = this.request.get()?.idempotencyKey ?? null;
+
       // Per-tenant sequential number, retried on a concurrent clash.
       //
       // Each attempt runs inside a SAVEPOINT. Without one the retry could not
@@ -394,8 +399,9 @@ export class FinanceService {
           const ins = await client.query<{ id: string }>(
             `INSERT INTO invoices
                (tenant_id, patient_id, seq, invoice_number, subtotal, tax_amount, total,
-                vat_rate_bp, issued_at, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::date, clinic_today()), $10) RETURNING id`,
+                vat_rate_bp, issued_at, created_by, idempotency_key)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::date, clinic_today()), $10, $11)
+             RETURNING id`,
             [
               tenantId,
               dto.patientId,
@@ -407,6 +413,7 @@ export class FinanceService {
               clinicRateBp,
               dto.issuedAt ?? null,
               actor.userId,
+              idempotencyKey,
             ],
           );
           const invoiceId = ins.rows[0]!.id;
@@ -469,7 +476,16 @@ export class FinanceService {
           return this.getInvoiceWithin(client, invoiceId);
         } catch (err: unknown) {
           await client.query('ROLLBACK TO SAVEPOINT invoice_seq');
-          const isClash = (err as { code?: string }).code === '23505';
+          const e = err as { code?: string; constraint?: string };
+          // The same request again, not a numbering clash: never retried.
+          if (e.code === '23505' && e.constraint === 'invoices_idempotency_key_unique') {
+            throw new ConflictException({
+              code: 'invoice_already_created',
+              message:
+                'This invoice was already created. Refresh the invoices to see it.',
+            });
+          }
+          const isClash = e.code === '23505';
           if (isClash && attempt < MAX_SEQ_ATTEMPTS - 1) continue;
           if (isClash) break;
           throw err;
@@ -919,19 +935,36 @@ export class FinanceService {
   createExpense(dto: CreateExpenseDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const { rows } = await client.query(
-        `INSERT INTO expenses (tenant_id, category, amount, expense_date, note, created_by)
-         VALUES ($1,$2,$3, coalesce($4::date, clinic_today()), $5, $6)
-         RETURNING id, category, amount, expense_date::text AS expense_date, note`,
-        [
-          tenantId,
-          dto.category,
-          dto.amount,
-          dto.expenseDate ?? null,
-          dto.note ?? null,
-          actor.userId,
-        ],
-      );
+      // Stored with the key (0024), so a retry past the replay store fails on
+      // the unique index instead of recording the spending twice.
+      const { rows } = await client
+        .query(
+          `INSERT INTO expenses
+             (tenant_id, category, amount, expense_date, note, created_by, idempotency_key)
+           VALUES ($1,$2,$3, coalesce($4::date, clinic_today()), $5, $6, $7)
+           RETURNING id, category, amount, expense_date::text AS expense_date, note`,
+          [
+            tenantId,
+            dto.category,
+            dto.amount,
+            dto.expenseDate ?? null,
+            dto.note ?? null,
+            actor.userId,
+            this.request.get()?.idempotencyKey ?? null,
+          ],
+        )
+        .catch((err: { code?: string; constraint?: string }) => {
+          if (
+            err.code === '23505' &&
+            err.constraint === 'expenses_idempotency_key_unique'
+          ) {
+            throw new ConflictException({
+              code: 'expense_already_recorded',
+              message: 'This expense was already recorded. Refresh the list to see it.',
+            });
+          }
+          throw err;
+        });
       const r = rows[0]!;
       await this.audit.record(client, actor, {
         action: 'expense.recorded',

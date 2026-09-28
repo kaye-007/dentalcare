@@ -21,6 +21,7 @@ import {
   UpdateFiscalSettingsDto,
 } from './dto/fiscal.dto';
 import { FiscalService } from './fiscal.service';
+import { Idempotent } from '@/core/idempotency/idempotency.interceptor';
 
 /** Clinic-level fiscalization: the register, the certificate, the operators, the cash float. */
 @Controller('fiscal')
@@ -84,6 +85,7 @@ export class FiscalSettingsController {
   }
 
   @Post('cash-deposits')
+  @Idempotent()
   @RequirePermissions('invoices:fiscalize')
   deposit(@Body() dto: CashDepositDto, @CurrentUser() user?: AccessTokenPayload) {
     return this.fiscal.registerCashDeposit(dto, auditActor(user));
@@ -114,6 +116,7 @@ export class InvoiceFiscalController {
    * the registration the first one made, and retries its delivery if pending.
    */
   @Post()
+  @Idempotent()
   @RequirePermissions('invoices:fiscalize')
   fiscalize(
     @Param('id', ParseUUIDPipe) id: string,

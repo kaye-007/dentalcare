@@ -7,6 +7,7 @@ import {
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
+import { RequestContextService } from '@/core/request-context/request-context';
 import {
   AGEING_BUCKETS,
   LEDGER_SIGN,
@@ -49,6 +50,7 @@ export class BillingService {
     private readonly db: DatabaseService,
     private readonly tenant: TenantContextService,
     private readonly audit: ClinicAuditService,
+    private readonly request: RequestContextService,
   ) {}
 
   private tx<T>(fn: (c: PoolClient) => Promise<T>) {
@@ -500,22 +502,39 @@ export class BillingService {
       const config = await this.billingConfig(client);
       const signed = dto.amount * LEDGER_SIGN[dto.entryType];
 
-      await client.query(
-        `INSERT INTO ledger_entries
-           (tenant_id, patient_id, entry_type, amount, currency, description,
-            occurred_on, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6, coalesce($7::date, clinic_today()), $8)`,
-        [
-          tenantId,
-          patientId,
-          dto.entryType,
-          signed,
-          config.currency,
-          dto.description.trim(),
-          dto.occurredOn ?? null,
-          actor.userId,
-        ],
-      );
+      // Stored with the key (0024), so a retry past the replay store fails on
+      // the unique index instead of adjusting the balance twice.
+      await client
+        .query(
+          `INSERT INTO ledger_entries
+             (tenant_id, patient_id, entry_type, amount, currency, description,
+              occurred_on, created_by, idempotency_key)
+           VALUES ($1,$2,$3,$4,$5,$6, coalesce($7::date, clinic_today()), $8, $9)`,
+          [
+            tenantId,
+            patientId,
+            dto.entryType,
+            signed,
+            config.currency,
+            dto.description.trim(),
+            dto.occurredOn ?? null,
+            actor.userId,
+            this.request.get()?.idempotencyKey ?? null,
+          ],
+        )
+        .catch((err: { code?: string; constraint?: string }) => {
+          if (
+            err.code === '23505' &&
+            err.constraint === 'ledger_entries_idempotency_key_unique'
+          ) {
+            throw new ConflictException({
+              code: 'adjustment_already_recorded',
+              message:
+                'This adjustment was already recorded. Refresh the account to see it.',
+            });
+          }
+          throw err;
+        });
       await this.audit.record(client, actor, {
         action: 'invoice.adjusted',
         entityType: 'patient',

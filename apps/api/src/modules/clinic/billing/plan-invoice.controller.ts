@@ -7,6 +7,7 @@ import { RequirePermissions } from '@/core/authz/permissions.decorator';
 import { auditActor } from '@/core/audit/clinic-audit.service';
 import { BillingService } from './billing.service';
 import { GenerateInvoiceDto } from './dto/billing.dto';
+import { Idempotent } from '@/core/idempotency/idempotency.interceptor';
 
 /* ═══════════════════════ controllers ═══════════════════════ */
 
@@ -16,6 +17,7 @@ export class PlanInvoiceController {
   constructor(private readonly billing: BillingService) {}
 
   @Post()
+  @Idempotent()
   @RequirePermissions('invoices:write')
   generate(
     @Param('planId', ParseUUIDPipe) planId: string,

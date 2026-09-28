@@ -16,6 +16,7 @@ import { AccessTokenPayload } from '@/shared/types/access-token';
 import { auditActor } from '@/core/audit/clinic-audit.service';
 import { CreateExpenseDto, VoidDto } from './dto/finance.dto';
 import { FinanceService } from './finance.service';
+import { Idempotent } from '@/core/idempotency/idempotency.interceptor';
 
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -29,12 +30,14 @@ export class ExpensesController {
   }
 
   @Post()
+  @Idempotent()
   @RequirePermissions('expenses:write')
   create(@Body() dto: CreateExpenseDto, @CurrentUser() user?: AccessTokenPayload) {
     return this.finance.createExpense(dto, auditActor(user));
   }
 
   @Post(':id/void')
+  @Idempotent()
   @RequirePermissions('expenses:void')
   voidExpense(
     @Param('id', ParseUUIDPipe) id: string,
