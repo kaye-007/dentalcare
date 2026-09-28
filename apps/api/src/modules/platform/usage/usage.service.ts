@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '@/core/database/database.service';
+import { StorageService } from '@/core/storage/storage.service';
 
 /**
  * What each clinic is actually consuming.
@@ -84,7 +85,7 @@ const PER_TENANT = `
 
 @Injectable()
 export class PlatformUsageService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService, private readonly storage: StorageService) {}
 
   /** Every clinic's consumption, heaviest first. */
   async fleet() {
@@ -130,6 +131,7 @@ export class PlatformUsageService {
       tenants,
       storageByKind: kinds.map((k) => ({ kind: k.kind, files: k.files, bytes: Number(k.bytes) })),
       reclaimable: { files: reclaim[0]!.files, bytes: Number(reclaim[0]!.bytes) },
+      backend: await this.storage.status(),
     };
   }
 

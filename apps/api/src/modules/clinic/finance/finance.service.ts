@@ -112,13 +112,21 @@ export class FinanceService {
   }
 
   /* ── invoices ── */
-  listInvoices(opts: { q?: string; status?: string }) {
+  listInvoices(opts: { q?: string; status?: string; patientId?: string }) {
     return this.tx(async (client) => {
       const where: string[] = [];
       const params: unknown[] = [];
-      if (opts.status && ['unpaid', 'partially_paid', 'paid', 'cancelled'].includes(opts.status)) {
+      // "open" is the two statuses that still owe: what the record and the
+      // dashboard ask for, without fetching everything to filter it locally.
+      if (opts.status === 'open') {
+        where.push(`i.status IN ('unpaid','partially_paid')`);
+      } else if (opts.status && ['unpaid', 'partially_paid', 'paid', 'cancelled'].includes(opts.status)) {
         params.push(opts.status);
         where.push(`i.status = $${params.length}`);
+      }
+      if (opts.patientId) {
+        params.push(opts.patientId);
+        where.push(`i.patient_id = $${params.length}`);
       }
       if (opts.q?.trim()) {
         params.push(`%${opts.q.trim()}%`);
@@ -131,6 +139,70 @@ export class FinanceService {
         params,
       );
       return rows.map(mapInv);
+    });
+  }
+
+  /**
+   * Completed work on the chart that no invoice covers yet — what **Bill**
+   * pre-fills, so reception confirms the dentist's record instead of typing
+   * it again.
+   *
+   * A procedure is covered when a live invoice line points at it (or at its
+   * plan item). Work charted before lines could point at procedures was
+   * billed by hand, so an unlinked procedure is also treated as covered once
+   * the patient has a hand-built invoice created after it. That errs towards
+   * suggesting too little: a missed suggestion costs a tap in the service
+   * picker, a wrong one could bill the same work twice. Only the last 30
+   * days are offered.
+   */
+  unbilledProcedures(patientId: string) {
+    return this.tx(async (client) => {
+      const { rows } = await client.query<{
+        id: string;
+        tooth: number | null;
+        description: string;
+        fee: number;
+        performed_on: string;
+        treatment_id: string | null;
+        is_taxable: boolean | null;
+        clinician_name: string | null;
+      }>(
+        `SELECT cp.id, cp.tooth, cp.description, cp.fee, cp.performed_on::text AS performed_on,
+                cp.treatment_id, t.is_taxable, u.full_name AS clinician_name
+           FROM clinical_procedures cp
+           LEFT JOIN treatments t ON t.id = cp.treatment_id
+           LEFT JOIN users u ON u.id = cp.clinician_id
+          WHERE cp.patient_id = $1
+            AND cp.status = 'completed'
+            AND cp.entered_in_error_at IS NULL
+            AND cp.performed_on >= CURRENT_DATE - 30
+            AND NOT EXISTS (
+                  SELECT 1 FROM invoice_line_items li
+                    JOIN invoices i ON i.id = li.invoice_id
+                   WHERE i.status <> 'cancelled'
+                     AND (li.procedure_id = cp.id
+                          OR (cp.plan_item_id IS NOT NULL AND li.plan_item_id = cp.plan_item_id)))
+            AND NOT EXISTS (
+                  SELECT 1 FROM invoices i
+                   WHERE i.patient_id = cp.patient_id
+                     AND i.status <> 'cancelled'
+                     AND i.created_at > cp.created_at
+                     AND NOT EXISTS (SELECT 1 FROM invoice_line_items li
+                                      WHERE li.invoice_id = i.id AND li.procedure_id IS NOT NULL))
+          ORDER BY cp.performed_on, cp.created_at
+          LIMIT 50`,
+        [patientId],
+      );
+      return rows.map((r) => ({
+        procedureId: r.id,
+        tooth: r.tooth,
+        description: r.description,
+        fee: r.fee,
+        performedOn: r.performed_on,
+        treatmentId: r.treatment_id,
+        vatCategory: vatCategoryOf(r.is_taxable),
+        clinicianName: r.clinician_name,
+      }));
     });
   }
 
@@ -209,6 +281,46 @@ export class FinanceService {
         }
       }
 
+      // Lines that bill charted work. Locked, so two desks billing the same
+      // visit at once cannot both succeed; checked, so work is billed once.
+      const procIds = dto.items.flatMap((it) => (it.procedureId ? [it.procedureId] : []));
+      const procs = new Map<string, { tooth: number | null; plan_item_id: string | null }>();
+      if (procIds.length) {
+        if (new Set(procIds).size !== procIds.length) {
+          throw new BadRequestException('The same treatment is on two lines of this invoice');
+        }
+        const { rows } = await client.query<{
+          id: string; tooth: number | null; plan_item_id: string | null;
+        }>(
+          `SELECT id, tooth, plan_item_id FROM clinical_procedures
+            WHERE id = ANY($1::uuid[]) AND patient_id = $2
+              AND status = 'completed' AND entered_in_error_at IS NULL
+            FOR UPDATE`,
+          [procIds, dto.patientId],
+        );
+        if (rows.length !== procIds.length) {
+          throw new BadRequestException(
+            'One of these treatments can no longer be billed. It may have been withdrawn or changed; reopen the invoice to see the current list.',
+          );
+        }
+        for (const r of rows) procs.set(r.id, { tooth: r.tooth, plan_item_id: r.plan_item_id });
+        const planItems = rows.flatMap((r) => (r.plan_item_id ? [r.plan_item_id] : []));
+        const { rows: billed } = await client.query<{ invoice_number: string }>(
+          `SELECT i.invoice_number
+             FROM invoice_line_items li
+             JOIN invoices i ON i.id = li.invoice_id
+            WHERE i.status <> 'cancelled'
+              AND (li.procedure_id = ANY($1::uuid[]) OR li.plan_item_id = ANY($2::uuid[]))
+            LIMIT 1`,
+          [procIds, planItems],
+        );
+        if (billed[0]) {
+          throw new ConflictException(
+            `Some of this work is already billed on ${billed[0].invoice_number}.`,
+          );
+        }
+      }
+
       // TVSH per line. This path used to write every line at 0% whatever the
       // treatment was, so cosmetic work billed here carried no VAT while the
       // same work billed from a plan did. Both paths now take the rate from
@@ -256,13 +368,15 @@ export class FinanceService {
           );
           const invoiceId = ins.rows[0]!.id;
           for (const [idx, { item, input, cost }] of lines.entries()) {
+            const proc = item.procedureId ? procs.get(item.procedureId) : undefined;
             await client.query(
               `INSERT INTO invoice_line_items
                  (tenant_id, invoice_id, treatment_id, description, quantity, unit_price,
-                  tax_rate_bp, tax_amount, amount, sort_order)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                  tax_rate_bp, tax_amount, amount, sort_order, procedure_id, plan_item_id, tooth)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
               [tenantId, invoiceId, item.treatmentId ?? null, item.description,
-               input.quantity, input.unitPrice, input.taxRateBp, cost.taxAmount, cost.total, idx],
+               input.quantity, input.unitPrice, input.taxRateBp, cost.taxAmount, cost.total, idx,
+               item.procedureId ?? null, proc?.plan_item_id ?? null, proc?.tooth ?? null],
             );
           }
           // The ledger is written inside the SAME transaction as the invoice.
@@ -282,7 +396,13 @@ export class FinanceService {
             entityType: 'invoice',
             entityId: invoiceId,
             summary: `Issued ${number} for ${await moneyText(client, total)}`,
-            metadata: { invoiceNumber: number, total, taxAmount: totals.taxAmount, lineItems: dto.items.length },
+            metadata: {
+              invoiceNumber: number,
+              total,
+              taxAmount: totals.taxAmount,
+              lineItems: dto.items.length,
+              ...(procIds.length ? { chartedProcedures: procIds.length } : {}),
+            },
           });
           return this.getInvoiceWithin(client, invoiceId);
         } catch (err: unknown) {
@@ -735,19 +855,37 @@ export class FinanceService {
    * but revenue against expenses is the doctor's alone. Same pattern as
    * StaffController.list withholding salary columns.
    */
-  summary(period: 'month' | 'all', includeAggregates: boolean) {
+  summary(period: 'today' | 'month' | 'all', includeAggregates: boolean) {
     return this.tx(async (client) => {
-      const monthCond = period === 'month';
-      const invFilter = monthCond ? `AND date_trunc('month', issued_at) = date_trunc('month', CURRENT_DATE)` : '';
-      const payFilter = monthCond ? `AND date_trunc('month', paid_at) = date_trunc('month', CURRENT_DATE)` : '';
-      const expFilter = monthCond ? `AND date_trunc('month', expense_date) = date_trunc('month', CURRENT_DATE)` : '';
+      // Periods are the clinic's days and months, not the database's. On UTC,
+      // a payment taken at 00:30 on the 1st in Tirana counted towards the
+      // previous month, and "today" would end at 02:00 local time.
+      const { rows: zone } = await client.query<{ from_d: string | null; to_d: string | null }>(
+        `WITH local AS (
+           SELECT (now() AT TIME ZONE coalesce(
+                     (SELECT timezone FROM clinic_settings LIMIT 1), 'Europe/Tirane'))::date AS d)
+         SELECT CASE $1 WHEN 'today' THEN d WHEN 'month' THEN date_trunc('month', d)::date END::text AS from_d,
+                CASE $1 WHEN 'today' THEN d + 1 WHEN 'month' THEN (date_trunc('month', d) + interval '1 month')::date END::text AS to_d
+           FROM local`,
+        [period],
+      );
+      const range = period === 'all' ? null : [zone[0]!.from_d, zone[0]!.to_d];
+      const tzSql = `coalesce((SELECT timezone FROM clinic_settings LIMIT 1), 'Europe/Tirane')`;
+      const invFilter = range ? `AND issued_at >= $1::date AND issued_at < $2::date` : '';
+      const payFilter = range
+        ? `AND (paid_at AT TIME ZONE ${tzSql})::date >= $1::date AND (paid_at AT TIME ZONE ${tzSql})::date < $2::date`
+        : '';
+      const expFilter = range ? `AND expense_date >= $1::date AND expense_date < $2::date` : '';
+      const args = range ?? [];
 
       const invoiced = await client.query<{ s: string }>(
         `SELECT coalesce(sum(total),0) AS s FROM invoices WHERE status <> 'cancelled' ${invFilter}`,
+        args,
       );
       const collected = await client.query<{ s: string }>(
         `SELECT coalesce(sum(amount),0) AS s FROM payments
           WHERE voided_at IS NULL ${payFilter}`,
+        args,
       );
       const outstanding = await client.query<{ s: string }>(
         `SELECT coalesce(sum(i.total - coalesce(p.paid,0)),0) AS s
@@ -761,6 +899,7 @@ export class FinanceService {
       const expenses = await client.query<{ s: string }>(
         `SELECT coalesce(sum(amount),0) AS s FROM expenses
           WHERE voided_at IS NULL ${expFilter}`,
+        args,
       );
       const base = { period, outstanding: Number(outstanding.rows[0]!.s) };
       if (!includeAggregates) return base;

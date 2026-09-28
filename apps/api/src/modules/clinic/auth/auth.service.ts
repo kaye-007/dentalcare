@@ -533,12 +533,17 @@ export class AuthService {
     const user = await this.currentUser(current);
     const role = this.requireRole(user);
     const ctx = this.tenant.get();
-    const { mfa, currency } = await this.db.withTenant(user.tenant_id, async (c) => ({
+    const { mfa, currency, timezone } = await this.db.withTenant(user.tenant_id, async (c) => ({
       mfa: {
         enrolled: (await this.mfa.status(c, 'clinic', user.id)).enrolled,
         required: await this.mfaRequired(c, user),
       },
       currency: await clinicCurrency(c),
+      // Appointment times are the clinic's wall clock, whatever zone the
+      // browser happens to be in. The SPA shows and books in this zone.
+      timezone:
+        (await c.query<{ timezone: string }>('SELECT timezone FROM clinic_settings LIMIT 1')).rows[0]?.timezone ??
+        'Europe/Tirane',
     }));
     return {
       id: user.id,
@@ -556,6 +561,8 @@ export class AuthService {
       mfa,
       /** Every amount this clinic's API returns is minor units of this currency. */
       currency,
+      /** The clinic's IANA time zone: appointments are shown and booked in it. */
+      timezone,
     };
   }
 

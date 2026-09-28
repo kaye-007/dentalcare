@@ -1,11 +1,11 @@
 import {
+  IsBoolean,
   IsEmail,
   IsIn,
   IsInt,
   IsISO8601,
   IsOptional,
   IsString,
-  Max,
   MaxLength,
   Min,
   MinLength,
@@ -48,16 +48,10 @@ export class CreateStaffDto {
   @MaxLength(80)
   position?: string;
 
+  /** Has a calendar column and a schedule. Omitted: dentists and hygienists do. */
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(100_000_000)
-  salaryAmount?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(300)
-  salaryNote?: string;
+  @IsBoolean()
+  seesPatients?: boolean;
 }
 
 export class UpdateStaffDto {
@@ -82,15 +76,8 @@ export class UpdateStaffDto {
   position?: string | null;
 
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(100_000_000)
-  salaryAmount?: number | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(300)
-  salaryNote?: string | null;
+  @IsBoolean()
+  seesPatients?: boolean;
 }
 
 export class ResetStaffPasswordDto {

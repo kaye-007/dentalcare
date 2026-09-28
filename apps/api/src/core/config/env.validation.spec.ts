@@ -11,6 +11,7 @@ import { validateEnv } from './env.validation';
 const STRONG_SECRET = 'a'.repeat(40);
 const PLATFORM_SECRET = 'b'.repeat(40);
 const MFA_KEYS = `k1:${Buffer.alloc(32, 7).toString('base64')}`;
+const WHATSAPP_KEYS = `w1:${Buffer.alloc(32, 9).toString('base64')}`;
 
 const base = {
   DATABASE_URL: 'postgres://u:p@localhost:5432/dentalcare',
@@ -48,6 +49,7 @@ describe('validateEnv', () => {
       NODE_ENV: 'production',
       PLATFORM_JWT_SECRET: PLATFORM_SECRET,
       MFA_ENCRYPTION_KEYS: MFA_KEYS,
+      WHATSAPP_ENCRYPTION_KEYS: WHATSAPP_KEYS,
     };
 
     it('refuses to boot without APP_DATABASE_URL', () => {
@@ -90,6 +92,7 @@ describe('validateEnv', () => {
       NODE_ENV: 'production',
       APP_DATABASE_URL: 'postgres://app_user:p@localhost:5432/dentalcare',
       MFA_ENCRYPTION_KEYS: MFA_KEYS,
+      WHATSAPP_ENCRYPTION_KEYS: WHATSAPP_KEYS,
     };
 
     // The clinic plane and the platform plane shared one key. A leak of the
@@ -148,6 +151,10 @@ describe('validateEnv', () => {
       expect(() => validateEnv(prodBase)).toThrow(/MFA_ENCRYPTION_KEYS/);
     });
 
+    it('requires WHATSAPP_ENCRYPTION_KEYS in production', () => {
+      expect(() => validateEnv({ ...prodBase, MFA_ENCRYPTION_KEYS: MFA_KEYS })).toThrow(/WHATSAPP_ENCRYPTION_KEYS/);
+    });
+
     it('refuses optional MFA in production', () => {
       expect(() =>
         validateEnv({ ...prodBase, MFA_ENCRYPTION_KEYS: MFA_KEYS, MFA_ENFORCEMENT: 'optional' }),
@@ -156,6 +163,10 @@ describe('validateEnv', () => {
 
     it('defaults to required', () => {
       expect(validateEnv({ ...base }).MFA_ENFORCEMENT).toBe('required');
+    });
+
+    it('refuses a malformed WhatsApp keyring in any environment', () => {
+      expect(() => validateEnv({ ...base, WHATSAPP_ENCRYPTION_KEYS: 'k1:short' })).toThrow(/WHATSAPP_ENCRYPTION_KEYS/);
     });
 
     it('refuses a malformed keyring in any environment', () => {

@@ -1,4 +1,6 @@
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { mkdir, readFile, rm, writeFile, access, statfs } from 'node:fs/promises';
+import { dirname, resolve, sep } from 'node:path';
 import {
   Injectable,
   InternalServerErrorException,
@@ -32,6 +34,14 @@ import { AwsClient } from 'aws4fetch';
  *    has not set up a bucket yet still gets patients, appointments and
  *    billing; only the documents endpoints answer 503.
  *
+ * 5. TWO BACKENDS, ONE CONTRACT. With S3 settings the files live in the
+ *    bucket. Without them, on a server with a disk (the Node container), they
+ *    live under STORAGE_DIR on that disk — no bucket, no monthly bill — and
+ *    are served by FilesController through the same kind of short-lived
+ *    signed link, so every caller and every privacy rule above is unchanged.
+ *    A Cloudflare Worker has no persistent disk, so there local storage stays
+ *    off and uploads answer 503 as before. STORAGE_DRIVER forces a choice.
+ *
  * 4. SIGNING IS DONE BY HAND, over fetch. This used to be @aws-sdk/client-s3
  *    plus @aws-sdk/s3-request-presigner. Both are large, and a Cloudflare
  *    Worker bundle is capped at 3 MiB compressed on the free plan — the SDK
@@ -51,8 +61,17 @@ export class StorageService implements OnModuleInit {
   private readonly region: string;
   private readonly pathStyle: boolean;
   private readonly signedUrlTtl: number;
+  /** Where files live when there is no bucket: an absolute directory, or null. */
+  private readonly localRoot: string | null = null;
+  private readonly urlSecret: Buffer;
 
   constructor(private readonly config: ConfigService) {
+    // Local download links are HMAC-signed. A dedicated secret if given,
+    // otherwise one derived from JWT_SECRET so a fresh install needs nothing.
+    const explicit = this.config.get<string>('STORAGE_SIGNING_SECRET');
+    this.urlSecret = createHmac('sha256', explicit || this.config.get<string>('JWT_SECRET') || 'dev')
+      .update('dentalcare:storage-url:v1')
+      .digest();
     this.signedUrlTtl = Number(this.config.get('S3_SIGNED_URL_TTL') ?? 300);
     this.region = this.config.get<string>('S3_REGION') ?? 'auto';
     this.pathStyle = this.config.get('S3_FORCE_PATH_STYLE') === '1';
@@ -62,18 +81,25 @@ export class StorageService implements OnModuleInit {
     const accessKeyId = this.config.get<string>('S3_ACCESS_KEY_ID');
     const secretAccessKey = this.config.get<string>('S3_SECRET_ACCESS_KEY');
 
-    // All three or none — env.validation already rejects a partial set, so
-    // reaching here with one missing means storage is deliberately off.
-    if (!bucket || !accessKeyId || !secretAccessKey) {
+    const driver = this.config.get<string>('STORAGE_DRIVER');
+    const s3Ready = Boolean(bucket && accessKeyId && secretAccessKey);
+
+    // All three or none — env.validation already rejects a partial set. With
+    // none (or STORAGE_DRIVER=local) the files go to this server's disk,
+    // wherever there is one to keep them on.
+    if (driver === 'off' || driver === 'local' || !s3Ready) {
       this.bucket = null;
       this.aws = null;
+      if (driver !== 'off' && hasPersistentDisk()) {
+        this.localRoot = resolve(this.config.get<string>('STORAGE_DIR') || 'storage');
+      }
       return;
     }
 
-    this.bucket = bucket;
+    this.bucket = bucket!;
     this.aws = new AwsClient({
-      accessKeyId,
-      secretAccessKey,
+      accessKeyId: accessKeyId!,
+      secretAccessKey: secretAccessKey!,
       service: 's3',
       region: this.region,
     });
@@ -81,7 +107,29 @@ export class StorageService implements OnModuleInit {
 
   /** Whether patient documents are available in this deployment. */
   get isConfigured(): boolean {
-    return this.aws !== null && this.bucket !== null;
+    return (this.aws !== null && this.bucket !== null) || this.localRoot !== null;
+  }
+
+  /** Which backend is in use — for the console's storage card and the logs. */
+  get driver(): 's3' | 'local' | 'off' {
+    return this.aws ? 's3' : this.localRoot ? 'local' : 'off';
+  }
+
+  /**
+   * The absolute path for a key on the local disk. Keys are built by this
+   * class, but the download route receives one from a URL, so it is checked
+   * again here: tenant-prefixed, no dot segments, and inside the root.
+   */
+  private localPath(key: string): string {
+    if (!this.localRoot) throw new ServiceUnavailableException('Local storage is not enabled');
+    if (!/^tenants\/[0-9a-f-]{36}\/[A-Za-z0-9._/-]+$/.test(key) || key.split('/').includes('..')) {
+      throw new ServiceUnavailableException('Invalid storage key');
+    }
+    const full = resolve(this.localRoot, key);
+    if (!full.startsWith(this.localRoot + sep)) {
+      throw new ServiceUnavailableException('Invalid storage key');
+    }
+    return full;
   }
 
   /**
@@ -92,8 +140,9 @@ export class StorageService implements OnModuleInit {
   private requireStorage(): { aws: AwsClient; bucket: string } {
     if (!this.aws || !this.bucket) {
       throw new ServiceUnavailableException(
-        'Document storage is not configured on this server. Set S3_BUCKET, ' +
-          'S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY to enable patient documents.',
+        'File storage is not available on this server. Run the API on a server ' +
+          'with a disk (files are then kept in STORAGE_DIR), or set S3_BUCKET, ' +
+          'S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY.',
       );
     }
     return { aws: this.aws, bucket: this.bucket };
@@ -133,6 +182,23 @@ export class StorageService implements OnModuleInit {
    * appointments and billing with it.
    */
   async onModuleInit(): Promise<void> {
+    if (this.localRoot) {
+      try {
+        await mkdir(this.localRoot, { recursive: true });
+        await access(this.localRoot);
+        const probe = resolve(this.localRoot, '.write-test');
+        await writeFile(probe, 'ok');
+        await rm(probe, { force: true });
+        this.log.log(`File storage ready on this server's disk (${this.localRoot})`);
+      } catch (err) {
+        this.log.error(
+          `File storage directory ${this.localRoot} is not writable: ${
+            err instanceof Error ? err.message : String(err)
+          }. Uploads will fail until it is.`,
+        );
+      }
+      return;
+    }
     if (!this.aws || !this.bucket) {
       this.log.warn(
         'Object storage is not configured — patient document upload and ' +
@@ -177,6 +243,16 @@ export class StorageService implements OnModuleInit {
    * a signed URL instead. Null when the object is gone.
    */
   async get(key: string, maxBytes = 5 * 1024 * 1024): Promise<Uint8Array | null> {
+    if (this.localRoot) {
+      try {
+        const body = new Uint8Array(await readFile(this.localPath(key)));
+        if (body.byteLength > maxBytes) throw new Error(`object is ${body.byteLength} bytes`);
+        return body;
+      } catch (err) {
+        this.log.warn(`Could not read ${key}: ${String(err)}`);
+        return null;
+      }
+    }
     const { aws, bucket } = this.requireStorage();
     try {
       const res = await aws.fetch(this.objectUrl(bucket, key), { method: 'GET' });
@@ -201,6 +277,19 @@ export class StorageService implements OnModuleInit {
     contentType: string,
     meta: Record<string, string> = {},
   ): Promise<void> {
+    if (this.localRoot) {
+      try {
+        const full = this.localPath(key);
+        await mkdir(dirname(full), { recursive: true });
+        await writeFile(full, body);
+        // The content type travels beside the file, as S3 keeps it on the object.
+        await writeFile(`${full}.meta.json`, JSON.stringify({ contentType, meta }));
+      } catch (err) {
+        this.log.error(`Upload failed for ${key}: ${String(err)}`);
+        throw new InternalServerErrorException('Could not store the file');
+      }
+      return;
+    }
     const { aws, bucket } = this.requireStorage();
     const headers: Record<string, string> = {
       'content-type': contentType,
@@ -264,6 +353,18 @@ export class StorageService implements OnModuleInit {
     query: Record<string, string>,
     failureMessage: string,
   ): Promise<string> {
+    if (this.localRoot) {
+      // Same shape of promise as a pre-signed S3 URL: this key, this
+      // disposition, until this time. Relative, so it resolves against
+      // whichever host serves the app and its /api.
+      const exp = Math.floor(Date.now() / 1000) + this.signedUrlTtl;
+      const disposition = query['response-content-disposition'] ?? '';
+      const sig = this.signLocal(key, exp, disposition);
+      const qs = new URLSearchParams({ e: String(exp), s: sig });
+      if (disposition) qs.set('d', disposition);
+      const path = key.split('/').map(encodeURIComponent).join('/');
+      return `/api/files/${path}?${qs.toString()}`;
+    }
     const { aws, bucket } = this.requireStorage();
     try {
       const url = new URL(this.objectUrl(bucket, key));
@@ -288,6 +389,16 @@ export class StorageService implements OnModuleInit {
    * leave the user staring at an error after the delete already succeeded.
    */
   async remove(key: string): Promise<void> {
+    if (this.localRoot) {
+      try {
+        const full = this.localPath(key);
+        await rm(full, { force: true });
+        await rm(`${full}.meta.json`, { force: true });
+      } catch (err) {
+        this.log.warn(`Orphaned file — row deleted but ${key} remains on disk: ${String(err)}`);
+      }
+      return;
+    }
     if (!this.aws || !this.bucket) return;
     try {
       const res = await this.aws.fetch(this.objectUrl(this.bucket, key), {
@@ -308,6 +419,77 @@ export class StorageService implements OnModuleInit {
   get urlTtlSeconds(): number {
     return this.signedUrlTtl;
   }
+
+  /**
+   * Where files are kept, and — on this server's own disk — how much room is
+   * left. For the console's Usage page: a disk that fills up stops uploads
+   * for every clinic at once, so it should be seen coming.
+   */
+  async status(): Promise<{
+    driver: 's3' | 'local' | 'off';
+    diskFreeBytes: number | null;
+    diskTotalBytes: number | null;
+  }> {
+    if (!this.localRoot) return { driver: this.driver, diskFreeBytes: null, diskTotalBytes: null };
+    try {
+      const st = await statfs(this.localRoot);
+      return {
+        driver: 'local',
+        diskFreeBytes: Number(st.bavail) * Number(st.bsize),
+        diskTotalBytes: Number(st.blocks) * Number(st.bsize),
+      };
+    } catch {
+      return { driver: 'local', diskFreeBytes: null, diskTotalBytes: null };
+    }
+  }
+
+  private signLocal(key: string, exp: number, disposition: string): string {
+    return createHmac('sha256', this.urlSecret)
+      .update(`${key}\n${exp}\n${disposition}`)
+      .digest('base64url');
+  }
+
+  /**
+   * Serve a locally stored file for a signed link, or null when the link is
+   * forged, altered, expired or points at nothing. Used by FilesController.
+   */
+  async openSigned(
+    key: string,
+    exp: string,
+    sig: string,
+    disposition: string,
+  ): Promise<{ body: Buffer; contentType: string; disposition: string } | null> {
+    if (!this.localRoot) return null;
+    const expires = Number(exp);
+    if (!Number.isInteger(expires) || expires < Math.floor(Date.now() / 1000)) return null;
+    const expected = Buffer.from(this.signLocal(key, expires, disposition));
+    const given = Buffer.from(sig);
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+    try {
+      const full = this.localPath(key);
+      const body = await readFile(full);
+      let contentType = 'application/octet-stream';
+      try {
+        contentType = JSON.parse(await readFile(`${full}.meta.json`, 'utf8')).contentType ?? contentType;
+      } catch {
+        /* a file without its sidecar is still served, as bytes */
+      }
+      return { body, contentType, disposition };
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * Whether this process can keep files: true on Node with a real filesystem,
+ * false inside a Cloudflare Worker, whose node:fs is an in-memory stand-in
+ * that forgets everything when the isolate goes away.
+ */
+function hasPersistentDisk(): boolean {
+  const ua = (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent;
+  if (ua === 'Cloudflare-Workers') return false;
+  return typeof process !== 'undefined' && Boolean(process.versions?.node);
 }
 
 /**

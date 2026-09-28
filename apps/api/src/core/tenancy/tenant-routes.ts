@@ -91,6 +91,15 @@ export const TENANT_MIDDLEWARE_EXCLUSIONS: readonly TenantExclusion[] = [
     method: RequestMethod.POST,
     because: 'called by the SMS provider; the clinic is named in a URL its signature covers',
   },
+  {
+    // GET only. Downloads of files kept on the API's own disk. The link was
+    // minted inside a clinic request; its HMAC signature covers the key —
+    // which starts with that clinic's id — and an expiry, as an S3
+    // pre-signed URL would. It needs no clinic of its own to be resolved.
+    path: 'files/{*path}',
+    method: RequestMethod.GET,
+    because: 'a signed, expiring download link; the signature names the clinic’s file',
+  },
 ];
 
 /** The shape Nest's `.exclude()` wants. */

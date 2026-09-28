@@ -44,6 +44,12 @@ describe('appointment status machine', () => {
     expect(canTransition('no_show', 'in_progress')).toBe(false);
   });
 
+  it('lets a check-in be taken back, but not treatment once it has started', () => {
+    expect(canTransition('checked_in', 'scheduled')).toBe(true);
+    expect(canTransition('in_progress', 'scheduled')).toBe(false);
+    expect(canTransition('in_progress', 'checked_in')).toBe(false);
+  });
+
   it('never allows a self-transition', () => {
     for (const s of APPOINTMENT_STATUSES) {
       expect(canTransition(s, s)).toBe(false);

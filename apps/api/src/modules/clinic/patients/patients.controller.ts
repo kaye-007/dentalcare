@@ -26,6 +26,7 @@ import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
 import { auditActor } from '@/core/audit/clinic-audit.service';
 import { LogPatientAccess, PatientAccessService } from '@/core/audit/patient-access';
+import { can, normalizeRole } from '@dentalcare/shared';
 
 @Controller('patients')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -42,13 +43,29 @@ export class PatientsController {
     @Query('status') status?: string,
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '20',
+    @CurrentUser() user?: AccessTokenPayload,
   ) {
+    // Next visit and balance only for roles that may see them anyway.
+    const role = normalizeRole(user?.role);
     return this.patients.list({
       q,
       status,
       page: Math.max(1, Number(page) || 1),
       pageSize: Math.min(100, Math.max(1, Number(pageSize) || 20)),
+      withNext: role !== null && can(role, 'appointments:read'),
+      withBalance: role !== null && can(role, 'invoices:read'),
     });
+  }
+
+  /**
+   * Patients due for a check-up: last completed visit more than `months`
+   * ago (3, 6 or 12; default 6) and nothing booked. Declared before `:id`.
+   */
+  @Get('recall')
+  @RequirePermissions('patients:read', 'appointments:read')
+  recall(@Query('months') months?: string) {
+    const m = Number(months);
+    return this.patients.recallDue([3, 6, 12].includes(m) ? m : 6);
   }
 
   @Get(':id')

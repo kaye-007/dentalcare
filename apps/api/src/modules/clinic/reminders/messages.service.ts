@@ -406,6 +406,23 @@ export class MessagesService {
       };
     }
 
+    if (dto.purpose === 'recall_invitation') {
+      // Invited back from the last time they were here.
+      const latest = await this.latestVisit(client, patientId);
+      if (!latest)
+        throw new BadRequestException(
+          'This patient has no visit yet to be invited back from.',
+        );
+      return {
+        values: {
+          ...base,
+          visit_date: formatAppointmentTime(latest.at, ctx.timezone, ctx.locale).date,
+        },
+        appointmentId: null,
+        invoiceId: null,
+      };
+    }
+
     if (dto.purpose === 'post_procedure_followup') {
       let visit: { id: string | null; at: Date; dentist: string | null } | null = null;
       if (dto.appointmentId) {

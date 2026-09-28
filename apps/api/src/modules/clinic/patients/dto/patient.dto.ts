@@ -1,4 +1,9 @@
-import { REMINDER_CHANNELS, type ReminderChannelId } from '@dentalcare/shared';
+import {
+  REMINDER_CHANNELS,
+  WHATSAPP_OPT_IN_SOURCES,
+  type ReminderChannelId,
+  type WhatsAppOptInSource,
+} from '@dentalcare/shared';
 import {
   ValidateIf,
   Matches,
@@ -60,6 +65,22 @@ export class CreatePatientDto {
   @ValidateIf((_, v) => v !== '' && v !== null)
   @IsIn([...REMINDER_CHANNELS])
   preferredChannel?: ReminderChannelId | '' | null;
+
+  /* ── WhatsApp reminders (0017) ──
+     The number reminders go to, when it is not the phone above. Written any
+     way the desk types it; stored as E.164. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== '' && v !== null)
+  @IsString() @MaxLength(40)
+  whatsappPhone?: string | null;
+
+  /** The patient agreed to appointment reminders on WhatsApp. */
+  @IsOptional() @IsBoolean()
+  whatsappOptIn?: boolean;
+
+  /** How the agreement was given. Defaults to in person. */
+  @IsOptional() @IsIn([...WHATSAPP_OPT_IN_SOURCES])
+  whatsappOptInSource?: WhatsAppOptInSource;
 
   /* ── emergency contact ──
      A name without a phone number is unusable in an emergency, and the

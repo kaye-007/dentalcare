@@ -17,6 +17,9 @@ export class FinanceSummaryController {
   summary(@Query('period') period?: string, @CurrentUser() user?: AccessTokenPayload) {
     const role = normalizeRole(user?.role);
     const full = role !== null && can(role, 'reports:read');
-    return this.finance.summary(period === 'all' ? 'all' : 'month', full);
+    return this.finance.summary(
+      period === 'all' ? 'all' : period === 'today' ? 'today' : 'month',
+      full,
+    );
   }
 }

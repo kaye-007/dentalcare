@@ -38,6 +38,14 @@ export class LineItemDto {
    */
   @IsOptional() @IsIn([...VAT_CATEGORIES])
   vatCategory?: VatCategory;
+
+  /**
+   * The charted procedure this line bills. The server checks it belongs to
+   * the patient, is completed and is not already on a live invoice, and
+   * takes the tooth from it; the price stays what reception agreed.
+   */
+  @IsOptional() @IsUUID()
+  procedureId?: string;
 }
 
 export class CreateInvoiceDto {

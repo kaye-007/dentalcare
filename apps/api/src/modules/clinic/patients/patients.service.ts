@@ -10,7 +10,7 @@ import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
 import { withdrawEntry } from '@/core/audit/clinical-record';
 import { StorageService } from '@/core/storage/storage.service';
-import { normalizeNationalId } from '@dentalcare/shared';
+import { normalizeNationalId, toE164, WHATSAPP_OPT_IN_SOURCE_LABELS } from '@dentalcare/shared';
 import {
   ArchivePatientDto,
   CreatePatientDto,
@@ -42,6 +42,29 @@ interface PatientRow {
   national_id?: string | null;
   preferred_channel?: string | null;
   photo_document_id?: string | null;
+  whatsapp_phone_e164?: string | null;
+  whatsapp_opt_in?: boolean;
+  whatsapp_opted_in_at?: string | null;
+  whatsapp_opt_in_source?: string | null;
+}
+
+/**
+ * Accents that the desk leaves off when typing a name — Albanian ë and ç
+ * above all — and the plain letters they are typed as. Uppercase included,
+ * because lower() only folds ASCII under the C locale.
+ */
+const ACCENTED = 'ëËçÇáàâäãÁÀÂÄÃéèêÉÈÊíìîïÍÌÎÏóòôöõÓÒÔÖÕúùûüÚÙÛÜñÑ';
+const PLAIN = 'eeccaaaaaaaaaaeeeeeeiiiiiiiioooooooooouuuuuuuunn';
+
+/** A column folded the same way as `fold`: plain letters, lowercase. */
+const FOLD = (col: string) => `lower(translate(${col}, '${ACCENTED}', '${PLAIN}'))`;
+
+/** What was typed, without accents and in lowercase. */
+function fold(text: string) {
+  return text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
 }
 
 /** A unique-index refusal on the national ID, in words. */
@@ -84,6 +107,11 @@ function mapPatient(r: PatientRow) {
     nationalId: r.national_id ?? null,
     preferredChannel: r.preferred_channel ?? null,
     photoDocumentId: r.photo_document_id ?? null,
+    // Consent to WhatsApp appointment reminders (0017): when, and how it was given.
+    whatsappPhone: r.whatsapp_phone_e164 ?? null,
+    whatsappOptIn: r.whatsapp_opt_in ?? false,
+    whatsappOptedInAt: r.whatsapp_opted_in_at ?? null,
+    whatsappOptInSource: r.whatsapp_opt_in_source ?? null,
   };
 }
 
@@ -92,7 +120,8 @@ const FULL = `id, first_name, last_name, phone, email, gender,
   emergency_contact_name, emergency_contact_relationship, emergency_contact_phone,
   archived_at, archive_reason,
   reminders_opt_out, reminders_opt_out_at, reminders_opt_out_source,
-  national_id, preferred_channel, photo_document_id`;
+  national_id, preferred_channel, photo_document_id,
+  whatsapp_phone_e164, whatsapp_opt_in, whatsapp_opted_in_at, whatsapp_opt_in_source`;
 
 /**
  * Patients and their notes.
@@ -118,7 +147,71 @@ export class PatientsService {
     return this.db.withTenant(this.tenant.getRequiredTenantId(), fn);
   }
 
-  async list(opts: { q?: string; status?: string; page: number; pageSize: number }) {
+  /**
+   * The recall list: active patients whose last completed visit is more than
+   * `months` ago, with nothing booked since. Derived, not stored: booking the
+   * patient is what takes them off it. Visits older than three years are
+   * left out; those patients have moved on, and a list of them is noise.
+   */
+  recallDue(months: number) {
+    return this.tx(async (client) => {
+      const { rows } = await client.query<{
+        id: string;
+        first_name: string;
+        last_name: string;
+        phone: string | null;
+        last_visit: Date;
+        last_reason: string | null;
+        last_dentist: string | null;
+      }>(
+        `SELECT p.id, p.first_name, p.last_name, p.phone,
+                last.starts_at AS last_visit, last.reason AS last_reason,
+                u.full_name AS last_dentist
+           FROM patients p
+           JOIN LATERAL (
+                  SELECT a.starts_at, a.reason, a.staff_id
+                    FROM appointments a
+                   WHERE a.patient_id = p.id AND a.status = 'completed'
+                   ORDER BY a.starts_at DESC
+                   LIMIT 1) last ON true
+           LEFT JOIN users u ON u.id = last.staff_id
+          WHERE p.status = 'active'
+            AND last.starts_at < now() - make_interval(months => $1)
+            AND last.starts_at > now() - interval '3 years'
+            AND NOT EXISTS (
+                  SELECT 1 FROM appointments f
+                   WHERE f.patient_id = p.id
+                     AND f.starts_at > now()
+                     AND f.status IN ('scheduled', 'checked_in'))
+          ORDER BY last.starts_at DESC
+          LIMIT 300`,
+        [months],
+      );
+      return {
+        months,
+        items: rows.map((r) => ({
+          id: r.id,
+          firstName: r.first_name,
+          lastName: r.last_name,
+          phone: r.phone,
+          lastVisit: r.last_visit,
+          lastReason: r.last_reason,
+          lastDentist: r.last_dentist,
+        })),
+      };
+    });
+  }
+
+  async list(opts: {
+    q?: string;
+    status?: string;
+    page: number;
+    pageSize: number;
+    /** Add each patient's next booking (needs appointments:read). */
+    withNext?: boolean;
+    /** Add each patient's account balance (needs invoices:read). */
+    withBalance?: boolean;
+  }) {
     const { q, status, page, pageSize } = opts;
     return this.tx(async (client) => {
       const where: string[] = [];
@@ -131,14 +224,46 @@ export class PatientsService {
         // reachable by explicitly filtering status=archived.
         where.push(`status <> 'archived'`);
       }
+      let orderSql = 'ORDER BY created_at DESC';
       if (q && q.trim()) {
-        params.push(`%${q.trim()}%`);
+        const term = q.trim();
+        params.push(`%${term}%`);
         const i = params.length;
+        // A name is found however it is typed: without its ë or ç ("Cela"
+        // finds Çela), and in either order ("Kola Erisa" finds Erisa Kola),
+        // each word matching the start of a first or last name.
+        const words = fold(term).split(/\s+/).filter(Boolean);
+        const byWords = words.map((w) => {
+          params.push(`${w}%`);
+          const k = params.length;
+          return `(${FOLD('first_name')} LIKE $${k} OR ${FOLD('last_name')} LIKE $${k}
+                   OR ${FOLD('first_name')} LIKE '% ' || $${k}
+                   OR ${FOLD('last_name')} LIKE '% ' || $${k})`;
+        });
+        params.push(`%${fold(term)}%`);
+        const folded = `${FOLD("first_name || ' ' || last_name")} LIKE $${params.length}`;
+        // A number is typed the way it is said — "069 123 4567" — and stored
+        // the way it was entered — "+355 69 123 4567". Compare digits only,
+        // without the trunk 0 or the country code, so either finds the other.
+        let phoneDigits = '';
+        const digits = term.replace(/\D/g, '');
+        if (digits.length >= 4 && /^[\d\s+().-]+$/.test(term)) {
+          params.push(`%${digits.replace(/^(?:00355|355|0)/, '')}%`);
+          phoneDigits = ` OR regexp_replace(coalesce(phone,''), '\\D', '', 'g') LIKE $${params.length}`;
+        }
         where.push(
           `(first_name ILIKE $${i} OR last_name ILIKE $${i} OR coalesce(phone,'') ILIKE $${i}
             OR coalesce(email,'') ILIKE $${i} OR (first_name || ' ' || last_name) ILIKE $${i}
-            OR coalesce(national_id,'') ILIKE $${i})`,
+            OR coalesce(national_id,'') ILIKE $${i}${phoneDigits}
+            OR ${folded}${byWords.length ? ` OR (${byWords.join(' AND ')})` : ''})`,
         );
+        // Whoever's name starts with what was typed comes first; the rest
+        // alphabetically, which is how the desk scans a list of namesakes.
+        params.push(`${fold(term)}%`);
+        const p = params.length;
+        orderSql = `ORDER BY (${FOLD('first_name')} LIKE $${p} OR ${FOLD('last_name')} LIKE $${p}
+                              OR ${FOLD("first_name || ' ' || last_name")} LIKE $${p}) DESC,
+                             first_name, last_name`;
       }
       const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
       params.push(pageSize, (page - 1) * pageSize);
@@ -146,11 +271,39 @@ export class PatientsService {
         `SELECT id, first_name, last_name, phone, email, city, status, created_at,
                 count(*) OVER() AS total
            FROM patients ${whereSql}
-          ORDER BY created_at DESC
+          ${orderSql}
           LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params,
       );
       const total = rows[0] ? Number(rows[0].total) : 0;
+
+      // What the desk asks of a list — when are they next in, do they owe —
+      // for this page's patients only, in one query each.
+      const ids = rows.map((r) => r.id);
+      const next = new Map<string, Date>();
+      const balance = new Map<string, number>();
+      if (ids.length && opts.withNext) {
+        const { rows: n } = await client.query<{ patient_id: string; starts_at: Date }>(
+          `SELECT patient_id, min(starts_at) AS starts_at
+             FROM appointments
+            WHERE patient_id = ANY($1::uuid[]) AND starts_at > now()
+              AND status IN ('scheduled', 'checked_in')
+            GROUP BY patient_id`,
+          [ids],
+        );
+        for (const r of n) next.set(r.patient_id, r.starts_at);
+      }
+      if (ids.length && opts.withBalance) {
+        const { rows: b } = await client.query<{ patient_id: string; balance: string }>(
+          `SELECT patient_id, sum(amount)::text AS balance
+             FROM ledger_entries
+            WHERE patient_id = ANY($1::uuid[])
+            GROUP BY patient_id`,
+          [ids],
+        );
+        for (const r of b) balance.set(r.patient_id, Number(r.balance));
+      }
+
       return {
         items: rows.map((r) => ({
           id: r.id,
@@ -161,6 +314,8 @@ export class PatientsService {
           city: r.city,
           status: r.status,
           createdAt: r.created_at,
+          ...(opts.withNext ? { nextAppointmentAt: next.get(r.id) ?? null } : {}),
+          ...(opts.withBalance ? { balance: balance.get(r.id) ?? 0 } : {}),
         })),
         total,
         page,
@@ -275,8 +430,77 @@ export class PatientsService {
         entityId: row.id,
         summary: `Registered ${row.first_name} ${row.last_name}`,
       });
-      return mapPatient(row);
+      return mapPatient((await this.applyWhatsApp(client, row.id, dto, actor)) ?? row);
     });
+  }
+
+  /**
+   * The WhatsApp number and consent (0017). Agreeing stamps when and how, and
+   * — being a fresh yes — lifts an earlier opt-out; withdrawing clears both.
+   * A change of consent is its own audit entry: it is the record that the
+   * clinic was allowed to write to this patient.
+   */
+  private async applyWhatsApp(
+    client: PoolClient,
+    id: string,
+    dto: CreatePatientDto,
+    actor: ClinicAuditActor,
+  ): Promise<PatientRow | null> {
+    if (dto.whatsappPhone === undefined && dto.whatsappOptIn === undefined && dto.whatsappOptInSource === undefined) {
+      return null;
+    }
+    const sets: string[] = [];
+    const params: unknown[] = [id];
+    if (dto.whatsappPhone !== undefined) {
+      let e164: string | null = null;
+      if (dto.whatsappPhone && dto.whatsappPhone.trim() !== '') {
+        const cc = await client.query<{ phone_country_code: string }>('SELECT phone_country_code FROM clinic_settings LIMIT 1');
+        e164 = toE164(dto.whatsappPhone, cc.rows[0]?.phone_country_code ?? '355');
+        if (!e164) throw new BadRequestException(`"${dto.whatsappPhone}" is not a usable WhatsApp number`);
+      }
+      params.push(e164);
+      sets.push(`whatsapp_phone_e164 = $${params.length}`);
+    }
+    if (dto.whatsappOptIn !== undefined) {
+      params.push(dto.whatsappOptIn);
+      const yes = `$${params.length}::boolean`;
+      params.push(dto.whatsappOptInSource ?? null);
+      const source = `$${params.length}::text`;
+      sets.push(
+        `whatsapp_opt_in = ${yes}`,
+        `whatsapp_opted_in_at = CASE WHEN ${yes} THEN coalesce(whatsapp_opted_in_at, now()) END`,
+        `whatsapp_opt_in_source = CASE WHEN ${yes} THEN coalesce(${source}, whatsapp_opt_in_source, 'in_person') END`,
+        `reminders_opt_out = CASE WHEN ${yes} THEN false ELSE reminders_opt_out END`,
+        `reminders_opt_out_at = CASE WHEN ${yes} THEN NULL ELSE reminders_opt_out_at END`,
+        `reminders_opt_out_source = CASE WHEN ${yes} THEN NULL ELSE reminders_opt_out_source END`,
+      );
+    } else if (dto.whatsappOptInSource !== undefined) {
+      params.push(dto.whatsappOptInSource);
+      sets.push(`whatsapp_opt_in_source = CASE WHEN whatsapp_opt_in THEN $${params.length} END`);
+    }
+    const before = await client.query<{ whatsapp_opt_in: boolean }>(
+      'SELECT whatsapp_opt_in FROM patients WHERE id = $1 FOR UPDATE',
+      [id],
+    );
+    if (!before.rows[0]) throw new NotFoundException('Patient not found');
+    const { rows } = await client.query<PatientRow>(
+      `UPDATE patients SET ${sets.join(', ')}, updated_at = now() WHERE id = $1 RETURNING ${FULL}`,
+      params,
+    );
+    const row = rows[0]!;
+    if (dto.whatsappOptIn !== undefined && dto.whatsappOptIn !== before.rows[0].whatsapp_opt_in) {
+      const how = row.whatsapp_opt_in_source as keyof typeof WHATSAPP_OPT_IN_SOURCE_LABELS | null;
+      await this.audit.record(client, actor, {
+        action: 'patient.whatsapp_consent',
+        entityType: 'patient',
+        entityId: id,
+        summary: dto.whatsappOptIn
+          ? `${row.first_name} ${row.last_name} agreed to WhatsApp reminders (${how ? WHATSAPP_OPT_IN_SOURCE_LABELS[how].toLowerCase() : 'in person'})`
+          : `${row.first_name} ${row.last_name} no longer agrees to WhatsApp reminders`,
+        metadata: { optIn: dto.whatsappOptIn, source: how },
+      });
+    }
+    return row;
   }
 
   async update(id: string, dto: UpdatePatientDto, actor: ClinicAuditActor) {
@@ -333,6 +557,8 @@ export class PatientsService {
     }
     return this.tx(async (client) => {
       if (sets.length === 0) {
+        const whatsapp = await this.applyWhatsApp(client, id, dto, actor);
+        if (whatsapp) return mapPatient(whatsapp);
         const cur = await client.query<PatientRow>(
           `SELECT ${FULL} FROM patients WHERE id = $1`,
           [id],
@@ -357,7 +583,7 @@ export class PatientsService {
         summary: `Updated ${row.first_name} ${row.last_name}'s details (${fields.join(', ')})`,
         metadata: { fields },
       });
-      return mapPatient(row);
+      return mapPatient((await this.applyWhatsApp(client, id, dto, actor)) ?? row);
     });
   }
 

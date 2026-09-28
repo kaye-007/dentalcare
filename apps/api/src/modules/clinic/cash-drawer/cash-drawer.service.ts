@@ -420,17 +420,17 @@ export class CashDrawerService {
     return rows[0];
   }
 
-  /** The session, only for the person who holds it. */
-  private async ownSession(
+  /**
+   * The session, in one of `statuses`. The drawer is the desk's, not one
+   * person's: whoever may operate it (the route checks `drawer:operate`) can
+   * take cash out, count and close it. Who did each step is on its event.
+   */
+  private async liveSession(
     client: PoolClient,
     id: string,
-    actor: ClinicAuditActor,
     statuses: SessionRow['status'][],
   ): Promise<SessionRow> {
     const s = await this.sessionRow(client, id, true);
-    if (s.opened_by !== actor.userId) {
-      throw new ForbiddenException('Only the person holding this drawer can do that');
-    }
     if (!statuses.includes(s.status)) {
       throw new ConflictException({
         code: 'drawer_wrong_state',
@@ -556,21 +556,37 @@ export class CashDrawerService {
   getSession(id: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
       const s = await this.sessionRow(client, id);
-      if (s.opened_by !== actor.userId && !can(actor.role, 'drawer:read')) {
+      if (!can(actor.role, 'drawer:operate') && !can(actor.role, 'drawer:read')) {
         throw new NotFoundException('Drawer session not found');
       }
       return this.view(client, s, actor);
     });
   }
 
-  /** The signed-in person's unclosed session, the drawers, and what opening one needs. */
+  /**
+   * The desk's unclosed session (the signed-in person's own first, for a
+   * clinic that still runs several drawers), the drawers, and what opening
+   * one needs.
+   */
   current(actor: ClinicAuditActor) {
     return this.tx(async (client) => {
       const { rows } = await client.query<SessionRow>(
-        `${SESSION_SELECT} WHERE s.opened_by = $1 AND s.status IN ${UNCLOSED}`,
+        `${SESSION_SELECT} WHERE s.status IN ${UNCLOSED}
+          ORDER BY (s.opened_by = $1) DESC, s.opened_at
+          LIMIT 1`,
         [actor.userId],
       );
       const policy = await this.policyWithin(client);
+      const ccy = await clinicCurrency(client);
+      // Cash usually stays in the drawer overnight, so the day starts with
+      // what the last close counted.
+      const last = await client.query<{ counted: number }>(
+        `SELECT r.counted FROM drawer_session_reviews r
+           JOIN drawer_sessions s ON s.id = r.session_id
+          WHERE r.currency = $1 AND s.status IN ('closed','force_closed')
+          ORDER BY s.closed_at DESC LIMIT 1`,
+        [ccy],
+      );
       const drawers = await client.query<{
         id: string;
         name: string;
@@ -593,6 +609,8 @@ export class CashDrawerService {
           heldBy: d.held_by_name,
           defaultFloat: Object.fromEntries(d.currencies.map((c) => [c, policy.defaultFloat[c] ?? 0])),
         })),
+        currency: ccy,
+        suggestedFloat: last.rows[0]?.counted ?? policy.defaultFloat[ccy] ?? 0,
         blindCount: policy.blindCount,
       };
     });
@@ -654,9 +672,50 @@ export class CashDrawerService {
 
   /* ── sessions: opening ────────────────────────────────────────────── */
 
+  /**
+   * The drawer to open when none is named: the clinic's only active one, or a
+   * new one holding the clinic currency when there is none yet. A clinic that
+   * turns the drawer on never has to set anything up to take cash.
+   */
+  private async clinicDrawerId(client: PoolClient, actor: ClinicAuditActor): Promise<string> {
+    const { rows } = await client.query<{ id: string }>(
+      'SELECT id FROM cash_drawers WHERE is_active ORDER BY created_at LIMIT 2',
+    );
+    if (rows.length === 1) return rows[0]!.id;
+    if (rows.length > 1) {
+      throw new BadRequestException({ code: 'drawer_choose', message: 'This clinic has several drawers. Choose which one to open.' });
+    }
+    const tenantId = this.tenant.getRequiredTenantId();
+    const ccy = await clinicCurrency(client);
+    const created = await client.query<{ id: string }>(
+      `INSERT INTO cash_drawers (tenant_id, location_id, name, tcr_code, currencies)
+       VALUES ($1,$2,'Cash drawer',NULL,$3)
+       ON CONFLICT (tenant_id, lower(name)) DO NOTHING
+       RETURNING id`,
+      [tenantId, await this.defaultLocationId(client), [ccy]],
+    );
+    if (!created.rows[0]) {
+      // A retired drawer already has the name: bring it back rather than fail.
+      const retired = await client.query<{ id: string }>(
+        `UPDATE cash_drawers SET is_active = true, updated_at = now()
+          WHERE lower(name) = 'cash drawer' RETURNING id`,
+      );
+      return retired.rows[0]!.id;
+    }
+    await this.audit.record(client, actor, {
+      action: 'drawer.created',
+      entityType: 'cash_drawer',
+      entityId: created.rows[0].id,
+      summary: `Added the cash drawer (${ccy}) on first use`,
+      metadata: { name: 'Cash drawer', currencies: [ccy], automatic: true },
+    });
+    return created.rows[0].id;
+  }
+
   async open(dto: OpenSessionDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     const opened = await this.tx(async (client) => {
+      const drawerId = dto.drawerId ?? (await this.clinicDrawerId(client, actor));
       const d = await client.query<{
         id: string;
         name: string;
@@ -665,7 +724,7 @@ export class CashDrawerService {
         currencies: CurrencyCode[];
         is_active: boolean;
       }>('SELECT id, name, location_id, tcr_code, currencies, is_active FROM cash_drawers WHERE id = $1 FOR UPDATE', [
-        dto.drawerId,
+        drawerId,
       ]);
       const drawer = d.rows[0];
       if (!drawer) throw new NotFoundException('Drawer not found');
@@ -769,15 +828,19 @@ export class CashDrawerService {
   /* ── cash payments (called from FinanceService, inside its transaction) ── */
 
   /**
-   * The session a cash payment by `actor` goes into, or null when the clinic
-   * does not use the cash drawer. Refuses — and so refuses the payment — when
-   * the drawer is on and this person holds no open drawer.
+   * The session a cash payment goes into, or null when the clinic does not
+   * use the cash drawer. The drawer is the desk's: the cash goes into the one
+   * that is open, whoever opened it (the taker's own first, for a clinic that
+   * still runs several). Refuses — and so refuses the payment — when the
+   * drawer is on and none is open.
    */
   async sessionForCashPayment(client: PoolClient, actor: ClinicAuditActor): Promise<string | null> {
     if (!(await this.entitlements.isEnabled(client, 'cash_drawer'))) return null;
     const { rows } = await client.query<{ id: string; status: string; currencies: CurrencyCode[] }>(
       `SELECT id, status, currencies FROM drawer_sessions
-        WHERE opened_by = $1 AND status IN ${UNCLOSED}
+        WHERE status IN ${UNCLOSED}
+        ORDER BY (status = 'open') DESC, (opened_by = $1) DESC, opened_at
+        LIMIT 1
         FOR UPDATE`,
       [actor.userId],
     );
@@ -785,20 +848,20 @@ export class CashDrawerService {
     if (!s) {
       throw new ConflictException({
         code: 'drawer_not_open',
-        message: 'Open your cash drawer before taking a cash payment.',
+        message: 'Open the cash drawer before taking a cash payment.',
       });
     }
     if (s.status !== 'open') {
       throw new ConflictException({
         code: 'drawer_counting',
-        message: 'Your drawer is being closed. Go back to the open drawer, or finish closing it and open a new one, before taking cash.',
+        message: 'The drawer is being closed for the day. Finish closing it and start a new day before taking cash.',
       });
     }
     const ccy = await clinicCurrency(client);
     if (!s.currencies.includes(ccy)) {
       throw new ConflictException({
         code: 'drawer_currency',
-        message: `Your drawer does not hold ${ccy}.`,
+        message: `The open drawer does not hold ${ccy}.`,
       });
     }
     return s.id;
@@ -850,7 +913,7 @@ export class CashDrawerService {
   async drop(sessionId: string, dto: DropDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     const done = await this.tx(async (client) => {
-      const s = await this.ownSession(client, sessionId, actor, ['open']);
+      const s = await this.liveSession(client, sessionId, ['open']);
       if (!s.currencies.includes(dto.currency)) throw new BadRequestException(`This drawer does not hold ${dto.currency}`);
       const expected = expectedCash(await readEvents(client, s.id))[dto.currency] ?? 0;
       if (dto.amount > expected) {
@@ -881,7 +944,7 @@ export class CashDrawerService {
   noSale(sessionId: string, reason: string, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.tx(async (client) => {
-      const s = await this.ownSession(client, sessionId, actor, ['open', 'counting']);
+      const s = await this.liveSession(client, sessionId, ['open', 'counting']);
       const ccy = s.currencies[0]!;
       await appendEvent(client, tenantId, s.id, {
         type: 'no_sale', currency: ccy, amount: 0, reason, actorUserId: actor.userId,
@@ -909,7 +972,7 @@ export class CashDrawerService {
       : null;
 
     return this.tx(async (client) => {
-      const s = await this.ownSession(client, sessionId, actor, ['open']);
+      const s = await this.liveSession(client, sessionId, ['open']);
       if (!s.currencies.includes(dto.currency)) throw new BadRequestException(`This drawer does not hold ${dto.currency}`);
 
       let approverId: string;
@@ -964,21 +1027,22 @@ export class CashDrawerService {
 
   /* ── closing ──────────────────────────────────────────────────────── */
 
+  /** What the desk did while this drawer was open — everyone at it, since the drawer is shared. */
   private async checklist(client: PoolClient, s: SessionRow) {
     const invoices = await client.query<{ id: string; invoice_number: string; patient_name: string; balance: string }>(
       `SELECT i.id, i.invoice_number, (p.first_name || ' ' || p.last_name) AS patient_name,
               i.total - coalesce((SELECT sum(amount) FROM payments pay
                                    WHERE pay.invoice_id = i.id AND pay.voided_at IS NULL), 0) AS balance
          FROM invoices i JOIN patients p ON p.id = i.patient_id
-        WHERE i.created_by = $1 AND i.created_at >= $2 AND i.status IN ('unpaid','partially_paid')
+        WHERE i.created_at >= $1 AND i.status IN ('unpaid','partially_paid')
         ORDER BY i.created_at`,
-      [s.opened_by, s.opened_at],
+      [s.opened_at],
     );
     const other = await client.query<{ method: string; n: string; total: string }>(
       `SELECT method, count(*) AS n, coalesce(sum(amount), 0) AS total FROM payments
-        WHERE created_by = $1 AND paid_at >= $2 AND voided_at IS NULL AND method IN ('card','bank')
+        WHERE paid_at >= $1 AND voided_at IS NULL AND method IN ('card','bank')
         GROUP BY method`,
-      [s.opened_by, s.opened_at],
+      [s.opened_at],
     );
     const by = (m: string) => other.rows.find((r) => r.method === m);
     return {
@@ -992,7 +1056,7 @@ export class CashDrawerService {
 
   startCount(sessionId: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      const s = await this.ownSession(client, sessionId, actor, ['open', 'counting']);
+      const s = await this.liveSession(client, sessionId, ['open', 'counting']);
       if (s.status === 'open') {
         await client.query(
           `UPDATE drawer_sessions SET status = 'counting', counting_started_at = now() WHERE id = $1`,
@@ -1007,7 +1071,7 @@ export class CashDrawerService {
   /** Back to taking cash, before anything was counted. */
   resumeOpen(sessionId: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      const s = await this.ownSession(client, sessionId, actor, ['counting']);
+      const s = await this.liveSession(client, sessionId, ['counting']);
       await client
         .query(`UPDATE drawer_sessions SET status = 'open' WHERE id = $1`, [s.id])
         .catch((err: { code?: string }) => {
@@ -1026,7 +1090,7 @@ export class CashDrawerService {
   submitCount(sessionId: string, dto: SubmitCountDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.tx(async (client) => {
-      const s = await this.ownSession(client, sessionId, actor, ['counting']);
+      const s = await this.liveSession(client, sessionId, ['counting']);
       const result = await this.recordCounts(client, tenantId, s, dto.counts, actor, { limitRecounts: true });
       await this.audit.record(client, actor, {
         action: 'drawer.counted',
@@ -1049,11 +1113,15 @@ export class CashDrawerService {
     counter: ClinicAuditActor,
     opts: { limitRecounts: boolean },
   ) {
-    const submitted = new Map<CurrencyCode, Record<string, number>>();
+    const submitted = new Map<CurrencyCode, { denominations: Record<string, number>; total: number | null }>();
     for (const c of counts) {
       if (submitted.has(c.currency)) throw new BadRequestException(`${c.currency} is counted twice`);
       if (!s.currencies.includes(c.currency)) throw new BadRequestException(`This drawer does not hold ${c.currency}`);
-      submitted.set(c.currency, c.denominations);
+      if ((c.denominations === undefined) === (c.total === undefined)) {
+        throw new BadRequestException(`Give the ${c.currency} count either note by note or as one total`);
+      }
+      // A typed total keeps an empty note-by-note record; the total is the count.
+      submitted.set(c.currency, { denominations: c.denominations ?? {}, total: c.total ?? null });
     }
     const missing = s.currencies.filter((c) => !submitted.has(c));
     if (missing.length) {
@@ -1073,8 +1141,8 @@ export class CashDrawerService {
     const expected = expectedCash((await readEvents(client, s.id)).filter((e) => e.type !== 'post_close_void'));
     const lines: { currency: CurrencyCode; counted: number; expected: number; variance: number; band: VarianceBand }[] = [];
     for (const c of s.currencies) {
-      const denominations = submitted.get(c)!;
-      const total = countTotal(c, denominations);
+      const { denominations, total: typed } = submitted.get(c)!;
+      const total = typed ?? countTotal(c, denominations);
       if (total === null) {
         throw new BadRequestException(`The ${c} count has a note or coin that does not exist, or a quantity that is not a whole number`);
       }
@@ -1093,7 +1161,7 @@ export class CashDrawerService {
   close(sessionId: string, dto: CloseSessionDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.tx(async (client) => {
-      const s = await this.ownSession(client, sessionId, actor, ['counting']);
+      const s = await this.liveSession(client, sessionId, ['counting']);
       const latest = await client.query<{ currency: CurrencyCode; total: number; expected: number }>(
         `SELECT DISTINCT ON (currency) currency, total, expected FROM drawer_counts
           WHERE session_id = $1 ORDER BY currency, attempt_no DESC`,
@@ -1272,19 +1340,26 @@ export class CashDrawerService {
       if (s.status !== 'pending_approval') {
         throw new ConflictException({ code: 'drawer_wrong_state', message: 'This drawer is not waiting for approval.' });
       }
-      const selfApproved = approverId === s.opened_by;
+      // The drawer is shared, so the one asking is whoever closed it, not
+      // necessarily whoever opened it in the morning.
+      const closer = await client.query<{ reviewed_by: string }>(
+        'SELECT reviewed_by FROM drawer_session_reviews WHERE session_id = $1 LIMIT 1',
+        [s.id],
+      );
+      const requestedBy = closer.rows[0]?.reviewed_by ?? s.opened_by;
+      const selfApproved = approverId === requestedBy;
       if (selfApproved && !(await this.soleAdministrator(client, approverId))) {
         throw new ForbiddenException({
           code: 'approval_required',
-          message: 'Another administrator must approve a variance on your own drawer.',
+          message: 'Another administrator must approve a difference you counted yourself.',
         });
       }
       const approvalId = await this.insertApproval(client, {
-        action: 'drawer_variance', sessionId: s.id, approverId, requestedBy: s.opened_by, method, reason, selfApproved,
+        action: 'drawer_variance', sessionId: s.id, approverId, requestedBy, method, reason, selfApproved,
       });
       await client.query(
-        `UPDATE drawer_sessions SET status = 'closed', closed_by = opened_by, closed_at = now() WHERE id = $1`,
-        [s.id],
+        `UPDATE drawer_sessions SET status = 'closed', closed_by = $2, closed_at = now() WHERE id = $1`,
+        [s.id, requestedBy],
       );
       await this.audit.record(client, actor, {
         action: 'drawer.variance_approved',

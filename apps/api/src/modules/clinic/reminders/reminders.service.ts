@@ -73,7 +73,7 @@ export const mapReminder = (r: ReminderRow) => ({
   id: r.id,
   appointmentId: r.appointment_id,
   patientId: r.patient_id,
-  /** appointment_reminder | post_procedure_followup | unpaid_balance */
+  /** appointment_reminder | post_procedure_followup | unpaid_balance | recall_invitation */
   purpose: r.purpose,
   invoiceId: r.invoice_id,
   /** Who sent it; null for an automatic reminder. */

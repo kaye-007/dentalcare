@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -19,7 +20,7 @@ import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
 import { can, normalizeRole } from '@dentalcare/shared';
 import { AvailabilityService } from './availability.service';
-import { CreateAvailabilityDto, UpdateAvailabilityDto } from './dto/scheduling.dto';
+import { CreateAvailabilityDto, SetHomeRoomDto, UpdateAvailabilityDto } from './dto/scheduling.dto';
 
 @Controller('availability')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -66,6 +67,18 @@ export class AvailabilityController {
     if (!owner) throw new NotFoundException('Availability entry not found');
     this.assertMayEdit(user, owner);
     return this.availability.remove(id);
+  }
+
+  /** A practitioner's home room follows the same rule as their hours. */
+  @Put('home-room/:staffId')
+  @RequirePermissions('appointments:read')
+  setHomeRoom(
+    @Param('staffId', ParseUUIDPipe) staffId: string,
+    @Body() dto: SetHomeRoomDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ) {
+    this.assertMayEdit(user, staffId);
+    return this.availability.setHomeRoom(staffId, dto);
   }
 
   private assertMayEdit(user: AccessTokenPayload, staffId: string) {

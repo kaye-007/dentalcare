@@ -28,14 +28,24 @@ interface StaffRow {
   role: string;
   status: string;
   position: string | null;
-  salary_amount: number | null;
-  salary_note: string | null;
+  sees_patients: boolean;
+  home_operatory_id: string | null;
+  two_step: boolean;
+  fiscal_operator_code: string | null;
   created_at: string;
 }
 
-const FULL = 'id, full_name, email, role, status, position, salary_amount, salary_note, created_at';
+// Salary is no longer part of a staff record (removed from the product,
+// 2026-09): the columns and the salary log stay in the database, unread here.
+const FULL = `id, full_name, email, role, status, position, sees_patients, home_operatory_id, fiscal_operator_code, created_at,
+  EXISTS (SELECT 1 FROM user_mfa_factors f WHERE f.user_id = users.id AND f.confirmed_at IS NOT NULL) AS two_step`;
 
-function mapStaff(r: StaffRow, includePayroll: boolean) {
+/**
+ * A staff record. Everyone at the clinic sees the team: who they are, what
+ * they do, whether they see patients. Only whoever manages staff also sees
+ * how each account signs in and its fiscal operator code.
+ */
+function mapStaff(r: StaffRow, forManager: boolean) {
   const base = {
     id: r.id,
     fullName: r.full_name,
@@ -43,11 +53,19 @@ function mapStaff(r: StaffRow, includePayroll: boolean) {
     role: r.role,
     status: r.status,
     position: r.position,
+    seesPatients: r.sees_patients,
+    /** The room their bookings start in. */
+    homeOperatoryId: r.home_operatory_id,
     createdAt: r.created_at,
   };
-  return includePayroll
-    ? { ...base, salaryAmount: r.salary_amount, salaryNote: r.salary_note }
+  return forManager
+    ? { ...base, twoStepEnabled: r.two_step, fiscalOperatorCode: r.fiscal_operator_code }
     : base;
+}
+
+/** Whether a role sees patients unless told otherwise. */
+function seesPatientsByDefault(role: string): boolean {
+  return role === 'dentist' || role === 'hygienist';
 }
 
 @Injectable()
@@ -63,12 +81,12 @@ export class StaffService {
     return this.db.withTenant(this.tenant.getRequiredTenantId(), fn);
   }
 
-  list(includePayroll: boolean) {
+  list(forManager: boolean) {
     return this.tx(async (client) => {
       const { rows } = await client.query<StaffRow>(
         `SELECT ${FULL} FROM users ORDER BY created_at`,
       );
-      return rows.map((r) => mapStaff(r, includePayroll));
+      return rows.map((r) => mapStaff(r, forManager));
     });
   }
 
@@ -79,10 +97,10 @@ export class StaffService {
       try {
         const { rows } = await client.query<StaffRow>(
           `INSERT INTO users (tenant_id, email, password_hash, full_name, role, status,
-                              position, salary_amount, salary_note)
-           VALUES ($1,$2,$3,$4,$5,'active',$6,$7,$8) RETURNING ${FULL}`,
+                              position, sees_patients)
+           VALUES ($1,$2,$3,$4,$5,'active',$6,$7) RETURNING ${FULL}`,
           [tenantId, dto.email, hash, dto.fullName, dto.role,
-           dto.position?.trim() || null, dto.salaryAmount ?? null, dto.salaryNote?.trim() || null],
+           dto.position?.trim() || null, dto.seesPatients ?? seesPatientsByDefault(dto.role)],
         );
         await this.audit.record(client, actor, {
           action: 'staff.created',
@@ -112,8 +130,7 @@ export class StaffService {
       role: 'role',
       status: 'status',
       position: 'position',
-      salaryAmount: 'salary_amount',
-      salaryNote: 'salary_note',
+      seesPatients: 'sees_patients',
     };
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -131,8 +148,7 @@ export class StaffService {
         return mapStaff(r.rows[0], true);
       }
       // Read the row BEFORE the write: "changed the role to admin" is worth
-      // little without what it was, and a salary that moves is the fact the
-      // doctor will want to see.
+      // little without what it was.
       const before = await client.query<StaffRow>(
         `SELECT ${FULL} FROM users WHERE id = $1`, [id],
       );
@@ -148,7 +164,7 @@ export class StaffService {
       const next = rows[0];
       const changed = Object.keys(cols).filter((k) => (dto as unknown as Record<string, unknown>)[k] !== undefined);
       const roleMoved = prev.role !== next.role;
-      const payMoved = prev.salary_amount !== next.salary_amount;
+      const seesMoved = prev.sees_patients !== next.sees_patients;
 
       // A disabled account, or one whose authority just changed, keeps no
       // session. Its access token lapses within JWT_ACCESS_TTL and the next
@@ -158,22 +174,19 @@ export class StaffService {
       } else if (roleMoved) {
         await revokeAllFor(client, 'user_sessions', id, 'role_changed');
       }
-      const salaryChange = payMoved
-        ? `from ${await moneyText(client, prev.salary_amount ?? 0)} to ${await moneyText(client, next.salary_amount ?? 0)}`
-        : '';
       await this.audit.record(client, actor, {
         action: 'staff.updated',
         entityType: 'user',
         entityId: id,
         summary: roleMoved
           ? `Changed ${next.full_name}'s access from ${prev.role} to ${next.role}`
-          : payMoved
-            ? `Changed ${next.full_name}'s salary ${salaryChange}`
+          : seesMoved
+            ? `${next.full_name} ${next.sees_patients ? 'now sees patients' : 'no longer sees patients'}`
             : `Updated ${next.full_name} (${changed.join(', ') || 'no fields'})`,
         metadata: {
           fields: changed,
           ...(roleMoved ? { roleFrom: prev.role, roleTo: next.role } : {}),
-          ...(payMoved ? { salaryFrom: prev.salary_amount, salaryTo: next.salary_amount } : {}),
+          ...(seesMoved ? { seesPatients: next.sees_patients } : {}),
         },
       });
       return mapStaff(rows[0], true);

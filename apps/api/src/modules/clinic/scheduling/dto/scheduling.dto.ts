@@ -69,3 +69,9 @@ export class UpdateAvailabilityDto {
   @IsOptional() @IsUUID()
   operatoryId?: string | null;
 }
+
+/** The room a practitioner's bookings start in; null clears it. */
+export class SetHomeRoomDto {
+  @IsOptional() @IsUUID()
+  operatoryId?: string | null;
+}

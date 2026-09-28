@@ -37,6 +37,8 @@ const EXPORT_SKIP_TABLES = new Set([
 const EXPORT_REDACT: Readonly<Record<string, readonly string[]>> = {
   users: ['password_hash', 'google_sub'],
   clinic_fiscal_settings: ['private_key_ciphertext', 'private_key_key_id'],
+  // The clinic's WhatsApp Cloud API token: whoever holds it sends as the clinic.
+  clinic_whatsapp_connections: ['encrypted_access_token', 'token_key_id'],
 };
 
 /**
@@ -200,13 +202,17 @@ export class TenantsService {
       // The clinic's first settings. Anything not given takes the column
       // default, which is what a clinic that never opened Settings has anyway.
       // A new clinic keeps its books in lek unless told otherwise, and a clinic
-      // in lek quotes patients from abroad in euro as well (0012).
+      // in lek quotes patients from abroad in euro as well (0012). A clinic in
+      // Albania or Kosovo writes to its patients in Albanian; anywhere else in
+      // English. Settings changes either, and nothing else follows from it.
       await client.query(
         `INSERT INTO clinic_settings (tenant_id, currency, timezone, phone_country_code,
-                                      phone, address, city, tax_number, quote_currency)
+                                      phone, address, city, tax_number, quote_currency,
+                                      reminder_locale)
          VALUES ($1, coalesce($2, 'ALL'), coalesce($3, 'Europe/Tirane'), coalesce($4, '355'),
                  $5, $6, $7, $8,
-                 CASE WHEN coalesce($2, 'ALL') = 'ALL' THEN 'EUR' END)`,
+                 CASE WHEN coalesce($2, 'ALL') = 'ALL' THEN 'EUR' END,
+                 CASE WHEN coalesce($4, '355') IN ('355', '383') THEN 'sq' ELSE 'en' END)`,
         [tenantId, dto.currency ?? null, dto.timezone ?? null, dto.phoneCountryCode ?? null,
          dto.phone?.trim() || null, dto.address?.trim() || null, dto.city?.trim() || null,
          dto.taxNumber?.trim().toUpperCase().replace(/\s+/g, '') || null],

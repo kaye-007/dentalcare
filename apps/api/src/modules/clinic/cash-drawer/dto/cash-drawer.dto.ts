@@ -89,8 +89,9 @@ export class CurrencyAmountDto {
 }
 
 export class OpenSessionDto {
-  @IsUUID()
-  drawerId!: string;
+  /** Omitted: the clinic's drawer, created on first use when there is none. */
+  @IsOptional() @IsUUID()
+  drawerId?: string;
 
   /** Omitted currencies take the policy's default float. */
   @IsOptional() @IsArray() @ArrayMaxSize(3) @ValidateNested({ each: true }) @Type(() => CurrencyAmountDto)
@@ -143,8 +144,13 @@ export class CountEntryDto {
   @IsIn([...CURRENCIES])
   currency!: CurrencyCode;
 
-  @IsObject()
-  denominations!: Record<string, number>;
+  /** Note by note. Either this or `total`. */
+  @IsOptional() @IsObject()
+  denominations?: Record<string, number>;
+
+  /** The counted amount, typed as one number. Either this or `denominations`. */
+  @IsOptional() @IsInt() @Min(0) @Max(MAX_AMOUNT)
+  total?: number;
 }
 
 export class SubmitCountDto {

@@ -80,6 +80,11 @@ export class CreateInventoryItemDto {
   @IsOptional()
   @Matches(ISO_DATE, { message: DATE_MESSAGE })
   expiresOn?: string;
+
+  /** Who it is reordered from (0020). */
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
 }
 
 /**
@@ -137,6 +142,19 @@ export class UpdateInventoryItemDto {
   @Min(0)
   @Max(730)
   expiryWarningDays?: number;
+
+  /** null clears it. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  supplierId?: string | null;
+}
+
+/** Who an item is reordered from; null for nobody. */
+export class SetSupplierDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  supplierId!: string | null;
 }
 
 /**

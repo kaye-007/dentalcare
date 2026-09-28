@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { auditActor } from '@/core/audit/clinic-audit.service';
 import {
   CreateInventoryItemDto,
   RecallLotDto,
+  SetSupplierDto,
   UpdateInventoryItemDto,
 } from './dto/inventory.dto';
 import { InventoryService } from './inventory.service';
@@ -129,5 +131,16 @@ export class InventoryController {
     @CurrentUser() user?: AccessTokenPayload,
   ) {
     return this.inventory.update(id, dto, auditActor(user));
+  }
+
+  /** Who it is reordered from. `inventory:write`: it changes no warning. */
+  @Put(':id/supplier')
+  @RequirePermissions('inventory:write')
+  setSupplier(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetSupplierDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
+    return this.inventory.setSupplier(id, dto.supplierId, auditActor(user));
   }
 }

@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
-import { CreateAvailabilityDto, UpdateAvailabilityDto } from './dto/scheduling.dto';
+import { CreateAvailabilityDto, SetHomeRoomDto, UpdateAvailabilityDto } from './dto/scheduling.dto';
 import { AV_SELECT, AvailabilityRow, EXCLUSION_VIOLATION, FK_VIOLATION, mapAvailability } from './operatories.service';
 
 @Injectable()
@@ -113,6 +113,27 @@ export class AvailabilityService {
       );
       if (!rowCount) throw new NotFoundException('Availability entry not found');
       return { deleted: true as const };
+    });
+  }
+
+  /** Set (or clear) the room this person's new bookings start in. */
+  async setHomeRoom(staffId: string, dto: SetHomeRoomDto) {
+    const operatoryId = dto.operatoryId ?? null;
+    return this.tx(async (client) => {
+      if (operatoryId) {
+        const room = await client.query<{ is_active: boolean }>(
+          'SELECT is_active FROM operatories WHERE id = $1', [operatoryId],
+        );
+        if (!room.rowCount) throw new NotFoundException('Room not found');
+        if (!room.rows[0].is_active) {
+          throw new BadRequestException('That room is no longer in service');
+        }
+      }
+      const { rowCount } = await client.query(
+        'UPDATE users SET home_operatory_id = $2 WHERE id = $1', [staffId, operatoryId],
+      );
+      if (!rowCount) throw new NotFoundException('Staff member not found');
+      return { staffId, homeOperatoryId: operatoryId };
     });
   }
 

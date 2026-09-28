@@ -9,6 +9,7 @@
  *        │  scheduled  │──────────────┐
  *        └──────┬──────┘              │
  *               │ patient arrives     │ cancel / no-show
+ *               │ (undo: back)        │
  *        ┌──────▼──────┐              │
  *        │  checked_in │──────────────┤
  *        └──────┬──────┘              │
@@ -31,6 +32,10 @@
  *    a click.
  *  - `no_show` is unreachable once treatment has started. A patient who is
  *    mid-procedure demonstrably turned up.
+ *
+ * A check-in can be taken back to `scheduled`. Nothing has happened to the
+ * patient yet, and the desk that checked in the wrong Kola from a list of
+ * namesakes needs one tap to put it right, not a cancellation.
  */
 
 export const APPOINTMENT_STATUSES = [
@@ -63,7 +68,8 @@ export function isBlocking(status: AppointmentStatus): boolean {
 const TRANSITIONS: Readonly<Record<AppointmentStatus, readonly AppointmentStatus[]>> =
   Object.freeze({
     scheduled: ['checked_in', 'in_progress', 'completed', 'cancelled', 'no_show'],
-    checked_in: ['in_progress', 'completed', 'cancelled', 'no_show'],
+    // Back to scheduled undoes a mistaken check-in; nothing was done yet.
+    checked_in: ['in_progress', 'completed', 'cancelled', 'no_show', 'scheduled'],
     // Treatment has begun: it can only finish or be abandoned.
     in_progress: ['completed', 'cancelled'],
     // Terminal. Billing depends on this being stable.

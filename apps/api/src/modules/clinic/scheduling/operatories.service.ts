@@ -47,6 +47,10 @@ const mapOperatory = (r: OperatoryRow) => ({
   createdAt: r.created_at,
 });
 
+/** A retired room is nobody's home room: their bookings start with none. */
+const releaseHomeRoom = (client: PoolClient, id: string) =>
+  client.query('UPDATE users SET home_operatory_id = NULL WHERE home_operatory_id = $1', [id]);
+
 const OP_COLS = 'id, name, description, sort_order, color, is_active, created_at';
 
 @Injectable()
@@ -121,6 +125,7 @@ export class OperatoriesService {
           params,
         );
         if (!rows[0]) throw new NotFoundException('Room not found');
+        if (dto.isActive === false) await releaseHomeRoom(client, id);
         return mapOperatory(rows[0]);
       } catch (err) {
         if ((err as { code?: string }).code === UNIQUE_VIOLATION) {
@@ -149,6 +154,7 @@ export class OperatoriesService {
           [id],
         );
         if (!rows[0]) throw new NotFoundException('Room not found');
+        await releaseHomeRoom(client, id);
         return {
           deleted: false as const,
           deactivated: true as const,

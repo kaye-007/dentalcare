@@ -78,6 +78,41 @@ export class AppointmentsController {
     };
   }
 
+  /**
+   * "When can she come in?" — bookable times for a visit of `duration`
+   * minutes, soonest first, each with a practitioner and a room already
+   * chosen. `spread=1` (the default) gives a few times a day across the next
+   * fortnight; `spread=0` with `days=1` gives every free start on one day.
+   * `nextFrom` in the answer is where to ask for more.
+   */
+  @Get('find-times')
+  @RequirePermissions('appointments:read')
+  findTimes(
+    @Query('duration') duration?: string,
+    @Query('staffId') staffId?: string,
+    @Query('patientId') patientId?: string,
+    @Query('operatoryId') operatoryId?: string,
+    @Query('preferOperatoryId') preferOperatoryId?: string,
+    @Query('ignore') ignore?: string,
+    @Query('from') from?: string,
+    @Query('days') days?: string,
+    @Query('limit') limit?: string,
+    @Query('spread') spread?: string,
+  ) {
+    return this.appts.findTimes({
+      duration: Number(duration ?? 45),
+      staffId,
+      patientId,
+      operatoryId,
+      preferOperatoryId,
+      ignore,
+      from: from || undefined,
+      days: days ? Number(days) || undefined : undefined,
+      limit: limit ? Number(limit) || undefined : undefined,
+      spread: spread !== '0' && spread !== 'false',
+    });
+  }
+
   /** Open slots for a practitioner on a day, honouring their availability. */
   @Get('free-slots')
   @RequirePermissions('appointments:read')

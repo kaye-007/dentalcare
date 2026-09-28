@@ -83,6 +83,20 @@ const envSchema = z.object({
    */
   MFA_ENCRYPTION_KEYS: z.string().optional(),
 
+  // ── WhatsApp Cloud API, each clinic's own account (0017) ──────────────
+  /**
+   * The keys that seal each clinic's WhatsApp access token: same format as
+   * MFA_ENCRYPTION_KEYS, and deliberately separate keys. Required in
+   * production; development derives one from JWT_SECRET.
+   */
+  WHATSAPP_ENCRYPTION_KEYS: z.string().optional(),
+  /** Meta's Graph API. Overridden only by the integration suite's fake. */
+  WHATSAPP_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
+  WHATSAPP_GRAPH_VERSION: z
+    .string()
+    .regex(/^v\d{2,3}\.\d$/, 'looks like v25.0')
+    .default('v25.0'),
+
   // ── Reminder delivery (optional) ──────────────────────────────────────
   /**
    * 'log' records reminders for staff to act on and sends nothing. 'twilio'
@@ -201,6 +215,15 @@ const envSchema = z.object({
   S3_FORCE_PATH_STYLE: z.enum(['0', '1']).optional(),
   /** Lifetime of a download link. Long enough to click, short enough to leak. */
   S3_SIGNED_URL_TTL: z.coerce.number().int().min(30).max(3600).default(300),
+  /**
+   * Where uploads go. Unset: the S3 bucket when one is configured, otherwise
+   * this server's own disk (STORAGE_DIR). 'off' disables uploads.
+   */
+  STORAGE_DRIVER: z.enum(['s3', 'local', 'off']).optional(),
+  /** The folder files are kept in on the local backend. Relative to the working directory. */
+  STORAGE_DIR: z.string().min(1).optional(),
+  /** Signs local download links. Derived from JWT_SECRET when unset. */
+  STORAGE_SIGNING_SECRET: z.string().min(32).optional(),
   /** Largest single upload. A panoramic X-ray is comfortably under 40MB. */
   MAX_UPLOAD_BYTES: z.coerce
     .number()
@@ -256,13 +279,15 @@ const envSchema = z.object({
     // A malformed keyring is a boot failure everywhere: the alternative is
     // discovering it on the first enrollment, or never being able to open a
     // secret sealed under a key that parsed differently.
-    if (val.MFA_ENCRYPTION_KEYS) {
+    for (const key of ['MFA_ENCRYPTION_KEYS', 'WHATSAPP_ENCRYPTION_KEYS'] as const) {
+      const spec = val[key];
+      if (!spec) continue;
       try {
-        parseKeyring(val.MFA_ENCRYPTION_KEYS);
+        parseKeyring(spec);
       } catch (err) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['MFA_ENCRYPTION_KEYS'],
+          path: [key],
           message: err instanceof Error ? err.message : 'is not a valid keyring',
         });
       }
@@ -331,6 +356,14 @@ const envSchema = z.object({
         path: ['MFA_ENCRYPTION_KEYS'],
         message:
           'required in production — TOTP secrets are sealed with these keys, and the development fallback derives them from JWT_SECRET',
+      });
+    }
+    if (!val.WHATSAPP_ENCRYPTION_KEYS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['WHATSAPP_ENCRYPTION_KEYS'],
+        message:
+          'required in production — clinics’ WhatsApp access tokens are sealed with these keys, and the development fallback derives them from JWT_SECRET',
       });
     }
     if (val.MFA_ENFORCEMENT !== 'required') {

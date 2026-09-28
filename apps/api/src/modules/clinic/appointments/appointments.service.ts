@@ -22,19 +22,45 @@ import {
 } from './status-machine';
 import { AppointmentEvents } from './appointment-events';
 import { closureOn } from '@/modules/clinic/settings/closures.service';
+import { DEFAULT_HOURS } from '@/modules/clinic/settings/settings.service';
+import { isTimeZone } from '@dentalcare/shared';
+import {
+  addDays,
+  clinicDate,
+  findTimes,
+  isDate,
+  zonedInstant,
+  type OpeningDay,
+} from './find-times';
 
 /** Postgres error codes translated into user-facing messages. */
 const EXCLUSION_VIOLATION = '23P01';
 const FK_VIOLATION = '23503';
 
-/** Constraint name → what the clinic actually needs to hear. */
-const CONFLICT_MESSAGES: Record<string, string> = {
-  appointment_no_staff_overlap:
-    'That practitioner is already booked during this time.',
-  appointment_no_operatory_overlap:
-    'That room is already in use during this time.',
-  appointment_no_patient_overlap:
-    'This patient already has another appointment during this time.',
+/**
+ * Constraint name → what the clinic needs to hear, and a code a screen can
+ * act on: `slot_taken` means someone else holds that time, so the answer is
+ * another time; `patient_busy` means the patient is booked elsewhere then.
+ */
+const CONFLICTS: Record<string, { code: string; message: string }> = {
+  appointment_no_staff_overlap: {
+    code: 'slot_taken',
+    message: 'That practitioner is already booked during this time.',
+  },
+  appointment_no_operatory_overlap: {
+    code: 'slot_taken',
+    message: 'That room is already in use during this time.',
+  },
+  appointment_no_patient_overlap: {
+    code: 'patient_busy',
+    message: 'This patient already has another appointment during this time.',
+  },
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const optionalUuid = (value: string | undefined, what: string) => {
+  if (value && !UUID.test(value)) throw new BadRequestException(`${what} is not a valid id`);
+  return value || undefined;
 };
 
 interface ApptRow {
@@ -119,7 +145,10 @@ export class AppointmentsService {
     const e = err as { code?: string; constraint?: string };
     if (e.code === EXCLUSION_VIOLATION) {
       throw new ConflictException(
-        CONFLICT_MESSAGES[e.constraint ?? ''] ?? 'That time slot is already taken.',
+        CONFLICTS[e.constraint ?? ''] ?? {
+          code: 'slot_taken',
+          message: 'That time slot is already taken.',
+        },
       );
     }
     if (e.code === FK_VIOLATION) {
@@ -381,11 +410,197 @@ export class AppointmentsService {
     });
   }
 
+  /** The clinic's zone and opening hours, with the defaults a new clinic starts on. */
+  private async clinicClock(client: PoolClient) {
+    const { rows } = await client.query<{ timezone: string | null; working_hours: unknown }>(
+      'SELECT timezone, working_hours FROM clinic_settings LIMIT 1',
+    );
+    const zone = rows[0]?.timezone && isTimeZone(rows[0].timezone) ? rows[0].timezone : 'Europe/Tirane';
+    const hours = rows[0]?.working_hours;
+    const opening =
+      Array.isArray(hours) && hours.length === 7 ? (hours as OpeningDay[]) : DEFAULT_HOURS;
+    return { zone, opening };
+  }
+
+  /**
+   * Times a visit of `duration` minutes can be booked, soonest first, each
+   * with the practitioner and room already chosen — see find-times.ts for the
+   * rules. `staffId` and `operatoryId` narrow the search to one person or
+   * room; `ignore` leaves an appointment out of the conflicts, so moving a
+   * visit can offer times that overlap where it is now.
+   */
+  async findTimes(opts: {
+    duration: number;
+    staffId?: string;
+    patientId?: string;
+    operatoryId?: string;
+    preferOperatoryId?: string;
+    ignore?: string;
+    from?: string;
+    days?: number;
+    limit?: number;
+    spread: boolean;
+  }) {
+    if (!Number.isInteger(opts.duration) || opts.duration < 5 || opts.duration > 480) {
+      throw new BadRequestException('Duration must be between 5 and 480 minutes');
+    }
+    if (opts.from !== undefined && !isDate(opts.from)) {
+      throw new BadRequestException('From must be a date, YYYY-MM-DD');
+    }
+    const staffId = optionalUuid(opts.staffId, 'Practitioner');
+    const patientId = optionalUuid(opts.patientId, 'Patient');
+    const operatoryId = optionalUuid(opts.operatoryId, 'Room');
+    const preferOperatoryId = optionalUuid(opts.preferOperatoryId, 'Room');
+    const ignore = optionalUuid(opts.ignore, 'Appointment');
+    const days = Math.min(62, Math.max(1, Math.trunc(opts.days ?? (opts.spread ? 14 : 1))));
+    const limit = Math.min(100, Math.max(1, Math.trunc(opts.limit ?? (opts.spread ? 9 : 96))));
+
+    return this.tx(async (client) => {
+      const { zone, opening } = await this.clinicClock(client);
+      const now = Date.now();
+      const from = opts.from ?? clinicDate(zone, now);
+      const until = addDays(from, days);
+
+      // Who can be booked: the person asked for, or everyone who sees
+      // patients. A clinic that has not marked anyone yet gets its
+      // administrators, dentists and hygienists, as the calendar does.
+      const { rows: people } = await client.query<{
+        id: string;
+        full_name: string;
+        home_operatory_id: string | null;
+      }>(
+        staffId
+          ? `SELECT id, full_name, home_operatory_id FROM users
+              WHERE id = $1 AND status = 'active'`
+          : `SELECT id, full_name, home_operatory_id FROM users u
+              WHERE u.status = 'active'
+                AND (u.sees_patients
+                     OR (NOT EXISTS (SELECT 1 FROM users s
+                                      WHERE s.status = 'active' AND s.sees_patients)
+                         AND u.role IN ('admin', 'dentist', 'hygienist')))
+              ORDER BY u.full_name`,
+        staffId ? [staffId] : [],
+      );
+      if (staffId && !people.length) {
+        throw new BadRequestException('That practitioner cannot be booked any more.');
+      }
+      const ids = people.map((p) => p.id);
+      const { rows: shifts } = await client.query<{
+        staff_id: string;
+        weekday: number;
+        starts_at: string;
+        ends_at: string;
+      }>(
+        `SELECT staff_id, weekday, to_char(starts_at, 'HH24:MI') AS starts_at,
+                to_char(ends_at, 'HH24:MI') AS ends_at
+           FROM staff_availability WHERE staff_id = ANY($1::uuid[])`,
+        [ids],
+      );
+
+      const { rows: rooms } = await client.query<{
+        id: string;
+        name: string;
+        color: string | null;
+      }>(
+        `SELECT id, name, color FROM operatories
+          WHERE is_active ${operatoryId ? 'AND id = $1' : ''}
+          ORDER BY sort_order, name`,
+        operatoryId ? [operatoryId] : [],
+      );
+      if (operatoryId && !rooms.length) {
+        throw new BadRequestException('That room is no longer in service');
+      }
+
+      const { rows: closures } = await client.query<{
+        staff_id: string | null;
+        starts_on: string;
+        ends_on: string;
+      }>(
+        `SELECT staff_id, starts_on::text AS starts_on, ends_on::text AS ends_on
+           FROM schedule_closures
+          WHERE ends_on >= $1::date AND starts_on <= $2::date`,
+        [from, until],
+      );
+
+      // Everything that holds a person, a room or the patient in the window,
+      // widened by a day each side so no shift is cut at midnight UTC.
+      const { rows: taken } = await client.query<{
+        staff_id: string | null;
+        operatory_id: string | null;
+        patient_id: string;
+        starts_at: Date;
+        ends_at: Date;
+      }>(
+        `SELECT staff_id, operatory_id, patient_id, starts_at, ends_at
+           FROM appointments
+          WHERE status = ANY($1)
+            AND starts_at < $3 AND ends_at > $2
+            AND ($4::uuid IS NULL OR id <> $4::uuid)`,
+        [
+          BLOCKING_STATUSES,
+          new Date(zonedInstant(zone, addDays(from, -1), '00:00')),
+          new Date(zonedInstant(zone, addDays(until, 1), '00:00')),
+          ignore ?? null,
+        ],
+      );
+
+      // The dentist who saw the patient last, when they can still be booked:
+      // their times are offered first, and the screen can say why.
+      let usualStaffId: string | null = null;
+      if (patientId) {
+        const { rows } = await client.query<{ staff_id: string }>(
+          `SELECT a.staff_id FROM appointments a
+             JOIN users u ON u.id = a.staff_id AND u.status = 'active'
+            WHERE a.patient_id = $1 AND a.status = 'completed'
+            ORDER BY a.starts_at DESC LIMIT 1`,
+          [patientId],
+        );
+        usualStaffId = rows[0]?.staff_id ?? null;
+      }
+
+      const result = findTimes({
+        zone,
+        now,
+        from,
+        days,
+        durationMinutes: opts.duration,
+        opening,
+        practitioners: people.map((p) => ({
+          id: p.id,
+          name: p.full_name,
+          homeRoomId: p.home_operatory_id,
+          shifts: shifts
+            .filter((s) => s.staff_id === p.id)
+            .map((s) => ({ weekday: s.weekday, start: s.starts_at, end: s.ends_at })),
+        })),
+        rooms,
+        closures: closures.map((c) => ({
+          staffId: c.staff_id,
+          startsOn: c.starts_on,
+          endsOn: c.ends_on,
+        })),
+        busy: taken.map((b) => ({
+          staffId: b.staff_id,
+          roomId: b.operatory_id,
+          patientId: b.patient_id,
+          start: new Date(b.starts_at).getTime(),
+          end: new Date(b.ends_at).getTime(),
+        })),
+        patientId,
+        preferStaffId: usualStaffId,
+        preferRoomId: preferOperatoryId,
+        spread: opts.spread,
+        limit,
+      });
+      return { ...result, from, usualStaffId };
+    });
+  }
+
   /**
    * Free slots for a practitioner on one day: their weekly availability minus
    * everything currently blocking. Availability is stored as clinic-local wall
-   * time, so slots are built on the requested calendar date and returned as
-   * instants.
+   * time, so slots are built on the clinic's clock for the requested calendar
+   * date and returned as instants.
    */
   async freeSlots(opts: {
     staffId: string;
@@ -429,7 +644,15 @@ export class AppointmentsService {
         return { date, weekday, slots: [], reason: 'not_working' as const };
       }
 
-      const params: unknown[] = [staffId, BLOCKING_STATUSES, date];
+      // The shifts are wall times: 09:00 is nine on the clinic's clock, not
+      // nine in UTC, and the day runs from the clinic's midnight to its next.
+      const { zone } = await this.clinicClock(client);
+      const params: unknown[] = [
+        staffId,
+        BLOCKING_STATUSES,
+        new Date(zonedInstant(zone, date, '00:00')),
+        new Date(zonedInstant(zone, addDays(date, 1), '00:00')),
+      ];
       let who = 'a.staff_id = $1';
       if (opts.operatoryId) {
         params.push(opts.operatoryId);
@@ -438,8 +661,8 @@ export class AppointmentsService {
       const { rows: busy } = await client.query<{ starts_at: string; ends_at: string }>(
         `SELECT a.starts_at, a.ends_at FROM appointments a
           WHERE ${who} AND a.status = ANY($2)
-            AND a.starts_at < ($3::date + interval '1 day')
-            AND a.ends_at > $3::date`,
+            AND a.starts_at < $4
+            AND a.ends_at > $3`,
         params,
       );
 
@@ -451,8 +674,8 @@ export class AppointmentsService {
       const slots: { startsAt: string; endsAt: string }[] = [];
 
       for (const shift of shifts) {
-        let cursor = new Date(`${date}T${shift.starts_at}Z`).getTime();
-        const shiftEnd = new Date(`${date}T${shift.ends_at}Z`).getTime();
+        let cursor = zonedInstant(zone, date, shift.starts_at.slice(0, 5));
+        const shiftEnd = zonedInstant(zone, date, shift.ends_at.slice(0, 5));
         while (cursor + stepMs <= shiftEnd) {
           const end = cursor + stepMs;
           if (!taken.some((t) => cursor < t.end && end > t.start)) {

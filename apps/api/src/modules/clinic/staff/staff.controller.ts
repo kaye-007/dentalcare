@@ -30,15 +30,15 @@ export class StaffController {
   constructor(private readonly staff: StaffService) {}
 
   /**
-   * All clinic users can read the team list. Salary columns are withheld
-   * unless the caller holds payroll:read — a data-shaping decision, so it
-   * consults the matrix directly rather than guarding the whole route.
+   * All clinic users can read the team list. How each account signs in and
+   * its fiscal operator code are for whoever manages staff — a data-shaping
+   * decision, so it consults the matrix rather than guarding the route.
    */
   @Get()
   @RequirePermissions('staff:read')
   list(@CurrentUser() user?: AccessTokenPayload) {
     const role = normalizeRole(user?.role);
-    return this.staff.list(role !== null && can(role, 'payroll:read'));
+    return this.staff.list(role !== null && can(role, 'staff:manage'));
   }
 
   @Get('salary-payments')

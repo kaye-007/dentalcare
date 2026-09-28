@@ -43,8 +43,12 @@ interface ItemRow {
   status: string;
   track_lots: boolean;
   expiry_warning_days: number;
+  /** Who the item is reordered from (0020). */
+  supplier_id: string | null;
   /** Present on reads through ITEM_READ only. */
   next_expiry?: string | null;
+  supplier_name?: string | null;
+  supplier_phone?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -96,7 +100,8 @@ interface LotUseRow {
 }
 
 const ITEM_COLS = `id, name, category, unit, quantity, minimum_quantity,
-                   notes, status, track_lots, expiry_warning_days, created_at, updated_at`;
+                   notes, status, track_lots, expiry_warning_days, supplier_id,
+                   created_at, updated_at`;
 
 /**
  * ITEM_COLS plus the earliest expiry among lots still holding stock. For
@@ -105,7 +110,9 @@ const ITEM_COLS = `id, name, category, unit, quantity, minimum_quantity,
 const ITEM_READ = `${ITEM_COLS},
   (SELECT min(l.expires_on)::text FROM inventory_lots l
     WHERE l.item_id = inventory_items.id
-      AND l.quantity > 0 AND l.expires_on IS NOT NULL) AS next_expiry`;
+      AND l.quantity > 0 AND l.expires_on IS NOT NULL) AS next_expiry,
+  (SELECT s.name FROM partners s WHERE s.id = inventory_items.supplier_id) AS supplier_name,
+  (SELECT s.phone FROM partners s WHERE s.id = inventory_items.supplier_id) AS supplier_phone`;
 
 const MOVEMENT_SELECT = `
   SELECT m.id, m.item_id, i.name AS item_name, i.unit,
@@ -150,6 +157,10 @@ function mapItem(r: ItemRow, today: string) {
     outOfStock: isOutOfStock({ quantity, status: r.status }),
     trackLots: r.track_lots,
     expiryWarningDays: r.expiry_warning_days,
+    // Who to reorder from, so a low item carries its own next step.
+    supplierId: r.supplier_id,
+    supplierName: r.supplier_name ?? null,
+    supplierPhone: r.supplier_phone ?? null,
     // The earliest expiry of stock still on the shelf, and what that means —
     // resolved here for the same reason "low" is.
     nextExpiry,
@@ -480,13 +491,14 @@ export class InventoryService {
       const today = await this.today(client);
       if (expiresOn) this.assertReceivable(expiresOn, today);
 
+      if (dto.supplierId) await this.assertSupplier(client, dto.supplierId);
       let item: ItemRow;
       try {
         const { rows } = await client.query<ItemRow>(
           `INSERT INTO inventory_items
              (tenant_id, name, category, unit, quantity, minimum_quantity, notes, created_by,
-              track_lots, expiry_warning_days)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, coalesce($10::int, 60))
+              track_lots, expiry_warning_days, supplier_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, coalesce($10::int, 60), $11)
            RETURNING ${ITEM_COLS}`,
           [
             tenantId,
@@ -499,6 +511,7 @@ export class InventoryService {
             actor.userId,
             trackLots,
             dto.expiryWarningDays ?? null,
+            dto.supplierId ?? null,
           ],
         );
         item = rows[0]!;
@@ -574,6 +587,7 @@ export class InventoryService {
       status: 'status',
       trackLots: 'track_lots',
       expiryWarningDays: 'expiry_warning_days',
+      supplierId: 'supplier_id',
     };
 
     const sets: string[] = [];
@@ -592,6 +606,7 @@ export class InventoryService {
       // disagreeing at commit.
       const before = await this.requireItem(client, id, true);
       if (sets.length === 0) return mapItem(before, today);
+      if (dto.supplierId) await this.assertSupplier(client, dto.supplierId);
 
       const enabling = dto.trackLots === true && !before.track_lots;
       const disabling = dto.trackLots === false && before.track_lots;
@@ -1091,5 +1106,45 @@ export class InventoryService {
     );
     if (!rows[0]) throw new NotFoundException('Item not found');
     return rows[0];
+  }
+
+  /** A supplier on the clinic's list, still in use. */
+  private async assertSupplier(client: PoolClient, supplierId: string) {
+    const { rows } = await client.query<{ is_active: boolean }>(
+      `SELECT is_active FROM partners WHERE id = $1 AND kind = 'supplier'`,
+      [supplierId],
+    );
+    if (!rows[0])
+      throw new NotFoundException('That supplier is not on the clinic’s list');
+    if (!rows[0].is_active)
+      throw new BadRequestException('That supplier has been retired');
+  }
+
+  /**
+   * Who an item is reordered from. Its own route, on `inventory:write`: naming
+   * the supplier changes no warning and hides nothing, so the person who
+   * reorders can set it without the owner.
+   */
+  setSupplier(id: string, supplierId: string | null, actor: ClinicAuditActor) {
+    return this.tx(async (client) => {
+      const today = await this.today(client);
+      const before = await this.requireItem(client, id, true);
+      if (supplierId) await this.assertSupplier(client, supplierId);
+      await client.query(
+        'UPDATE inventory_items SET supplier_id = $2, updated_at = now() WHERE id = $1',
+        [id, supplierId],
+      );
+      const after = await this.requireItem(client, id);
+      await this.audit.record(client, actor, {
+        action: 'inventory.item_updated',
+        entityType: 'inventory_item',
+        entityId: id,
+        summary: after.supplier_name
+          ? `"${after.name}" is reordered from ${after.supplier_name}`
+          : `"${after.name}" no longer names a supplier`,
+        metadata: { from: before.supplier_id, to: supplierId },
+      });
+      return mapItem(after, today);
+    });
   }
 }

@@ -37,8 +37,23 @@ export class InvoicesController {
 
   @Get()
   @RequirePermissions('invoices:read')
-  list(@Query('q') q?: string, @Query('status') status?: string) {
-    return this.finance.listInvoices({ q, status });
+  list(
+    @Query('q') q?: string,
+    @Query('status') status?: string,
+    @Query('patientId', new ParseUUIDPipe({ optional: true })) patientId?: string,
+  ) {
+    return this.finance.listInvoices({ q, status, patientId });
+  }
+
+  /**
+   * What the chart says was done for this patient and nobody has billed yet:
+   * the lines a new invoice starts with. Declared before `:id`, which would
+   * otherwise take "unbilled" for an invoice id.
+   */
+  @Get('unbilled')
+  @RequirePermissions('invoices:write')
+  unbilled(@Query('patientId', ParseUUIDPipe) patientId: string) {
+    return this.finance.unbilledProcedures(patientId);
   }
 
   @Get(':id')

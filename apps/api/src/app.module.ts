@@ -21,6 +21,7 @@ import { EntitlementsModule } from '@/core/entitlements/entitlements.service';
 import { IdempotencyInterceptor } from '@/core/idempotency/idempotency.interceptor';
 import { FeaturesModule } from '@/modules/clinic/features';
 import { CashDrawerModule } from '@/modules/clinic/cash-drawer';
+import { WhatsAppModule } from '@/modules/clinic/whatsapp';
 import { AuthModule } from '@/modules/clinic/auth';
 import { PatientsModule } from '@/modules/clinic/patients';
 import { PatientHistoryModule } from '@/modules/clinic/patient-history';
@@ -40,6 +41,8 @@ import { AnalyticsModule } from '@/modules/clinic/analytics';
 import { RemindersModule } from '@/modules/clinic/reminders';
 import { AuditModule } from '@/modules/clinic/audit';
 import { InventoryModule } from '@/modules/clinic/inventory';
+import { PartnersModule } from '@/modules/clinic/partners';
+import { LabModule } from '@/modules/clinic/lab';
 import { FiscalizationModule } from '@/modules/clinic/fiscalization/fiscalization.module';
 import { PlatformAuthModule } from '@/modules/platform/auth';
 import { TenantsModule } from '@/modules/platform/tenants';
@@ -142,9 +145,12 @@ function prettyTransport() {
     RemindersModule,
     AuditModule,
     InventoryModule,
+    PartnersModule,
+    LabModule,
     FiscalizationModule,
     FeaturesModule,
     CashDrawerModule,
+    WhatsAppModule,
     PlatformAuthModule,
     TenantsModule,
     PlansModule,

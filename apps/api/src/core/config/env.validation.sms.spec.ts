@@ -56,6 +56,7 @@ describe('SMS configuration', () => {
       PLATFORM_JWT_SECRET: 'p'.repeat(40),
       APP_DATABASE_URL: 'postgres://app_user@localhost/dentalcare',
       MFA_ENCRYPTION_KEYS: `k1:${Buffer.alloc(32, 7).toString('base64')}`,
+      WHATSAPP_ENCRYPTION_KEYS: `w1:${Buffer.alloc(32, 9).toString('base64')}`,
     };
     expect(() => validateEnv(production)).toThrow(/PUBLIC_API_URL/);
     expect(() =>

@@ -65,6 +65,13 @@ export const AUDIT_ACTIONS = [
   'inventory.lot_tracking_enabled',
   'inventory.lot_recalled',
 
+  // Lab work, and the labs and suppliers the clinic deals with (0020).
+  'partner.created',
+  'partner.updated',
+  'lab.order_created',
+  'lab.order_updated',
+  'lab.order_moved',
+
   // Features and the cash drawer (0013, 0014).
   'features.updated',
   'drawer.created',
@@ -106,6 +113,12 @@ export const AUDIT_ACTIONS = [
   'clinical.history_recorded',
   'clinical.history_updated',
   'clinical.history_withdrawn',
+  'whatsapp.connected',
+  'whatsapp.disconnected',
+  'whatsapp.template_saved',
+  'whatsapp.template_deleted',
+  'whatsapp.reminders_sent',
+  'patient.whatsapp_consent',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
