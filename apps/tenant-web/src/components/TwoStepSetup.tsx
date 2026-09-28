@@ -80,7 +80,11 @@ export function TotpEnrollment({
     start()
       .then(setSetup)
       .catch((err) =>
-        setError(err instanceof ApiError ? err.message : 'Could not start setting up two-step sign-in.'),
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : 'Could not start setting up two-step sign-in.',
+        ),
       );
   }, [start]);
 
@@ -93,7 +97,11 @@ export function TotpEnrollment({
     try {
       onEnrolled(await confirm(digits));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'That code did not work. Try the newest one.');
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'That code did not work. Try the newest one.',
+      );
       setBusy(false);
     }
   }

@@ -95,8 +95,12 @@ export class PatientImportService {
 
       const take: { value: ImportedPatient; id: string }[] = [];
       results.forEach((r, i) => {
-        const phoneOnly = r.duplicateOf?.kind === 'patient' && r.duplicateOf.match === 'phone';
-        if (r.status === 'valid' || (r.status === 'duplicate' && phoneOnly && !dto.skipDuplicates)) {
+        const phoneOnly =
+          r.duplicateOf?.kind === 'patient' && r.duplicateOf.match === 'phone';
+        if (
+          r.status === 'valid' ||
+          (r.status === 'duplicate' && phoneOnly && !dto.skipDuplicates)
+        ) {
           take.push({ value: values[i]!, id: randomUUID() });
         }
       });
@@ -107,13 +111,22 @@ export class PatientImportService {
            (tenant_id, file_name, source_label, rows_received, rows_imported, rows_skipped,
             balances_total, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-        [tenantId, dto.fileName.trim(), dto.sourceLabel?.trim() || null, results.length,
-         take.length, results.length - take.length, balancesTotal, actor.userId],
+        [
+          tenantId,
+          dto.fileName.trim(),
+          dto.sourceLabel?.trim() || null,
+          results.length,
+          take.length,
+          results.length - take.length,
+          balancesTotal,
+          actor.userId,
+        ],
       );
       const batchId = batch.rows[0]!.id;
 
       if (take.length > 0) {
-        const col = <K extends keyof ImportedPatient>(k: K) => take.map((t) => t.value[k] ?? null);
+        const col = <K extends keyof ImportedPatient>(k: K) =>
+          take.map((t) => t.value[k] ?? null);
         await client.query(
           `INSERT INTO patients
              (id, tenant_id, first_name, last_name, phone, email, gender, birth_date,
@@ -122,17 +135,36 @@ export class PatientImportService {
              FROM unnest($4::uuid[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[],
                          $10::text[], $11::text[], $12::text[], $13::text[])
                   AS t(id, f, l, ph, em, g, bd, nid, ad, ci)`,
-          [tenantId, actor.userId, batchId, take.map((t) => t.id), col('firstName'), col('lastName'),
-           col('phone'), col('email'), col('gender'), col('birthDate'), col('nationalId'),
-           col('address'), col('city')],
+          [
+            tenantId,
+            actor.userId,
+            batchId,
+            take.map((t) => t.id),
+            col('firstName'),
+            col('lastName'),
+            col('phone'),
+            col('email'),
+            col('gender'),
+            col('birthDate'),
+            col('nationalId'),
+            col('address'),
+            col('city'),
+          ],
         );
 
-        const conditions = take.flatMap((t) => t.value.conditions.map((name) => [t.id, name] as const));
+        const conditions = take.flatMap((t) =>
+          t.value.conditions.map((name) => [t.id, name] as const),
+        );
         if (conditions.length > 0) {
           await client.query(
             `INSERT INTO patient_conditions (tenant_id, patient_id, name, status, recorded_by)
              SELECT $1, pid, n, 'active', $2 FROM unnest($3::uuid[], $4::text[]) AS t(pid, n)`,
-            [tenantId, actor.userId, conditions.map((c) => c[0]), conditions.map((c) => c[1])],
+            [
+              tenantId,
+              actor.userId,
+              conditions.map((c) => c[0]),
+              conditions.map((c) => c[1]),
+            ],
           );
         }
 
@@ -143,8 +175,14 @@ export class PatientImportService {
                (tenant_id, patient_id, entry_type, amount, currency, description, created_by)
              SELECT $1, pid, 'adjustment', amt, $2, $3, $4
                FROM unnest($5::uuid[], $6::int[]) AS t(pid, amt)`,
-            [tenantId, await clinicCurrency(client), `Opening balance imported from ${dto.fileName.trim()}`.slice(0, 200),
-             actor.userId, balances.map((b) => b.id), balances.map((b) => b.value.balance)],
+            [
+              tenantId,
+              await clinicCurrency(client),
+              `Opening balance imported from ${dto.fileName.trim()}`.slice(0, 200),
+              actor.userId,
+              balances.map((b) => b.id),
+              balances.map((b) => b.value.balance),
+            ],
           );
         }
       }
@@ -156,7 +194,9 @@ export class PatientImportService {
         entityId: batchId,
         summary:
           `Imported ${take.length} of ${results.length} patient(s) from ${dto.fileName.trim()}` +
-          (balancesTotal !== 0 ? `, with ${formatMoney(balancesTotal, currency)} in opening balances` : ''),
+          (balancesTotal !== 0
+            ? `, with ${formatMoney(balancesTotal, currency)} in opening balances`
+            : ''),
         metadata: {
           fileName: dto.fileName.trim(),
           received: results.length,
@@ -208,24 +248,38 @@ export class PatientImportService {
     );
     const countryCode = cs[0]?.phone_country_code ?? '355';
 
-    const normalized = dto.rows.map((r) => normalizeImportRow(rawRow(r), { dateFormat: dto.dateFormat, countryCode }));
+    const normalized = dto.rows.map((r) =>
+      normalizeImportRow(rawRow(r), { dateFormat: dto.dateFormat, countryCode }),
+    );
     const values = normalized.map((n) => n.value);
     const inFile = duplicatesWithinFile(values);
 
     // Candidates by the last eight digits of a phone, then compared exactly as
     // E.164 in code — the stored numbers were typed by people, in every form.
-    const tails = [...new Set(values.map((v) => v.phoneE164?.slice(-8)).filter((t): t is string => Boolean(t)))];
-    const ids = [...new Set(values.map((v) => v.nationalId).filter((v): v is string => Boolean(v)))];
-    const { rows: existing } = tails.length || ids.length
-      ? await client.query<{ id: string; name: string; phone: string | null; nid: string | null }>(
-          `SELECT id, first_name || ' ' || last_name AS name, phone,
+    const tails = [
+      ...new Set(
+        values.map((v) => v.phoneE164?.slice(-8)).filter((t): t is string => Boolean(t)),
+      ),
+    ];
+    const ids = [
+      ...new Set(values.map((v) => v.nationalId).filter((v): v is string => Boolean(v))),
+    ];
+    const { rows: existing } =
+      tails.length || ids.length
+        ? await client.query<{
+            id: string;
+            name: string;
+            phone: string | null;
+            nid: string | null;
+          }>(
+            `SELECT id, first_name || ' ' || last_name AS name, phone,
                   upper(regexp_replace(national_id, '\\s', '', 'g')) AS nid
              FROM patients
             WHERE right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 8) = ANY($1::text[])
                OR upper(regexp_replace(coalesce(national_id, ''), '\\s', '', 'g')) = ANY($2::text[])`,
-          [tails, ids],
-        )
-      : { rows: [] };
+            [tails, ids],
+          )
+        : { rows: [] };
     const byId = new Map(existing.filter((e) => e.nid).map((e) => [e.nid!, e]));
     const byPhone = new Map<string, (typeof existing)[number]>();
     for (const e of existing) {
@@ -236,20 +290,47 @@ export class PatientImportService {
     const results = normalized.map(({ value, errors }, i): ImportRowResult => {
       const row = dto.rowOffset + i + 1;
       const name = `${value.firstName} ${value.lastName}`.trim();
-      if (errors.length > 0) return { row, status: 'invalid', name, errors, duplicateOf: null };
+      if (errors.length > 0)
+        return { row, status: 'invalid', name, errors, duplicateOf: null };
       const fileDupe = inFile.get(i);
       if (fileDupe !== undefined) {
-        return { row, status: 'duplicate', name, errors, duplicateOf: { kind: 'file', row: dto.rowOffset + fileDupe + 1 } };
+        return {
+          row,
+          status: 'duplicate',
+          name,
+          errors,
+          duplicateOf: { kind: 'file', row: dto.rowOffset + fileDupe + 1 },
+        };
       }
       const idMatch = value.nationalId ? byId.get(value.nationalId) : undefined;
       if (idMatch) {
-        return { row, status: 'duplicate', name, errors,
-          duplicateOf: { kind: 'patient', patientId: idMatch.id, name: idMatch.name, match: 'nationalId' } };
+        return {
+          row,
+          status: 'duplicate',
+          name,
+          errors,
+          duplicateOf: {
+            kind: 'patient',
+            patientId: idMatch.id,
+            name: idMatch.name,
+            match: 'nationalId',
+          },
+        };
       }
       const phoneMatch = value.phoneE164 ? byPhone.get(value.phoneE164) : undefined;
       if (phoneMatch) {
-        return { row, status: 'duplicate', name, errors,
-          duplicateOf: { kind: 'patient', patientId: phoneMatch.id, name: phoneMatch.name, match: 'phone' } };
+        return {
+          row,
+          status: 'duplicate',
+          name,
+          errors,
+          duplicateOf: {
+            kind: 'patient',
+            patientId: phoneMatch.id,
+            name: phoneMatch.name,
+            match: 'phone',
+          },
+        };
       }
       return { row, status: 'valid', name, errors, duplicateOf: null };
     });

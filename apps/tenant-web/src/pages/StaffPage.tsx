@@ -13,7 +13,15 @@ import {
   humanError,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Avatar, EmptyState, Modal, PageHeader, SidePanel, StatusPill, LoadingRows } from '../components/ui';
+import {
+  Avatar,
+  EmptyState,
+  Modal,
+  PageHeader,
+  SidePanel,
+  StatusPill,
+  LoadingRows,
+} from '../components/ui';
 import { plural, toDate } from '../lib/format';
 import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS, type Role } from '../lib/permissions';
 import { dateLocale } from '../lib/strings';
@@ -23,7 +31,11 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const TREATING: Role[] = ['dentist', 'hygienist'];
 
 function fmtDate(s: string) {
-  return toDate(s).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
+  return toDate(s).toLocaleDateString(dateLocale(), {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 /**
@@ -60,8 +72,14 @@ export default function StaffPage() {
     if (canManage) void load();
   }, [canManage]);
 
-  const active = useMemo(() => (items ?? []).filter((s) => s.status === 'active'), [items]);
-  const disabled = useMemo(() => (items ?? []).filter((s) => s.status !== 'active'), [items]);
+  const active = useMemo(
+    () => (items ?? []).filter((s) => s.status === 'active'),
+    [items],
+  );
+  const disabled = useMemo(
+    () => (items ?? []).filter((s) => s.status !== 'active'),
+    [items],
+  );
 
   if (!canManage) {
     return (
@@ -83,7 +101,11 @@ export default function StaffPage() {
     <div className="page">
       <PageHeader
         title="Staff"
-        meta={items ? `${plural(active.length, 'active member')} · ${treating} see patients` : '…'}
+        meta={
+          items
+            ? `${plural(active.length, 'active member')} · ${treating} see patients`
+            : '…'
+        }
         actions={
           <button className="btn btn--primary" onClick={() => setAdding(true)}>
             <Plus size={16} /> Add staff
@@ -96,7 +118,11 @@ export default function StaffPage() {
         {items === null ? (
           <LoadingRows rows={3} label="Loading" />
         ) : active.length === 0 ? (
-          <EmptyState icon={<UserCog size={22} />} title="No staff yet" body="Add your first team member." />
+          <EmptyState
+            icon={<UserCog size={22} />}
+            title="No staff yet"
+            body="Add your first team member."
+          />
         ) : (
           <StaffTable rows={active} selfId={user?.id} onOpen={setOpenId} />
         )}
@@ -113,9 +139,15 @@ export default function StaffPage() {
             <span>
               Disabled accounts <span className="muted">({disabled.length})</span>
             </span>
-            <ChevronRight size={16} className={showDisabled ? 'is-open' : ''} aria-hidden />
+            <ChevronRight
+              size={16}
+              className={showDisabled ? 'is-open' : ''}
+              aria-hidden
+            />
           </button>
-          {showDisabled && <StaffTable rows={disabled} selfId={user?.id} onOpen={setOpenId} />}
+          {showDisabled && (
+            <StaffTable rows={disabled} selfId={user?.id} onOpen={setOpenId} />
+          )}
         </section>
       )}
 
@@ -193,10 +225,17 @@ function StaffTable({
                 </div>
               </td>
               <td className="hide-sm">
-                <StatusPill status={s.role === 'admin' ? 'info' : 'neutral'} label={ROLE_LABELS[s.role]} />
+                <StatusPill
+                  status={s.role === 'admin' ? 'info' : 'neutral'}
+                  label={ROLE_LABELS[s.role]}
+                />
               </td>
               <td className="hide-sm hide-md">
-                {s.seesPatients ? <span className="staff-yes">Yes</span> : <span className="muted">—</span>}
+                {s.seesPatients ? (
+                  <span className="staff-yes">Yes</span>
+                ) : (
+                  <span className="muted">—</span>
+                )}
               </td>
               <td className="hide-sm hide-md">
                 {s.twoStepEnabled ? (
@@ -255,7 +294,10 @@ function StaffProfile({
 
   useEffect(() => {
     if (!member.seesPatients) return;
-    availabilityApi.list(member.id).then(setHours).catch(() => setHours([]));
+    availabilityApi
+      .list(member.id)
+      .then(setHours)
+      .catch(() => setHours([]));
     const today = new Date().toISOString().slice(0, 10);
     const inAYear = new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10);
     closuresApi
@@ -307,7 +349,12 @@ function StaffProfile({
   const disabled = member.status !== 'active';
 
   return (
-    <SidePanel title={member.fullName} subtitle={`${ROLE_LABELS[member.role]} · ${member.email}`} onClose={onClose} wide>
+    <SidePanel
+      title={member.fullName}
+      subtitle={`${ROLE_LABELS[member.role]} · ${member.email}`}
+      onClose={onClose}
+      wide
+    >
       <div className="panel__body staff-profile">
         {notice && (
           <p className="channel-note" role="status" style={{ marginTop: 0 }}>
@@ -326,7 +373,12 @@ function StaffProfile({
             <div className="grid2">
               <label className="field">
                 <span>Full name</span>
-                <input value={fullName} onChange={(e) => setFullName(e.target.value)} required minLength={2} />
+                <input
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  minLength={2}
+                />
               </label>
               <label className="field">
                 <span>Job title</span>
@@ -340,24 +392,37 @@ function StaffProfile({
             </div>
             <label className="field">
               <span>Access</span>
-              <select value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={isSelf}>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as Role)}
+                disabled={isSelf}
+              >
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
                     {ROLE_LABELS[r]}
                   </option>
                 ))}
               </select>
-              <small className="muted">{isSelf ? 'You cannot change your own access.' : ROLE_DESCRIPTIONS[role]}</small>
+              <small className="muted">
+                {isSelf ? 'You cannot change your own access.' : ROLE_DESCRIPTIONS[role]}
+              </small>
             </label>
             <label className="checkrow">
-              <input type="checkbox" checked={seesPatients} onChange={(e) => setSeesPatients(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={seesPatients}
+                onChange={(e) => setSeesPatients(e.target.checked)}
+              />
               <span>
-                <strong>Sees patients.</strong> Has a column on the calendar, working hours, and appointments in their
-                name.
+                <strong>Sees patients.</strong> Has a column on the calendar, working
+                hours, and appointments in their name.
               </span>
             </label>
             <div className="staff-form__foot">
-              <button className="btn btn--primary btn--sm" disabled={!dirty || busy !== null}>
+              <button
+                className="btn btn--primary btn--sm"
+                disabled={!dirty || busy !== null}
+              >
                 {busy === 'details' ? 'Saving…' : 'Save changes'}
               </button>
             </div>
@@ -372,15 +437,22 @@ function StaffProfile({
                 {hours === null ? (
                   <p className="muted small">Loading…</p>
                 ) : hours.length === 0 ? (
-                  <p className="muted small">None set — they can be booked at any time the clinic is open.</p>
+                  <p className="muted small">
+                    None set — they can be booked at any time the clinic is open.
+                  </p>
                 ) : (
                   <ul className="staff-hours">
                     {hours
                       .slice()
-                      .sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7) || a.startsAt.localeCompare(b.startsAt))
+                      .sort(
+                        (a, b) =>
+                          ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7) ||
+                          a.startsAt.localeCompare(b.startsAt),
+                      )
                       .map((h) => (
                         <li key={h.id}>
-                          <span>{WEEKDAYS[h.weekday]}</span> {h.startsAt.slice(0, 5)}–{h.endsAt.slice(0, 5)}
+                          <span>{WEEKDAYS[h.weekday]}</span> {h.startsAt.slice(0, 5)}–
+                          {h.endsAt.slice(0, 5)}
                         </li>
                       ))}
                   </ul>
@@ -420,11 +492,17 @@ function StaffProfile({
               <span>
                 <strong>Two-step sign-in</strong>
                 <span className="muted small">
-                  {member.twoStepEnabled ? ' On — a code from their phone at every sign-in.' : ' Not set up yet.'}
+                  {member.twoStepEnabled
+                    ? ' On — a code from their phone at every sign-in.'
+                    : ' Not set up yet.'}
                 </span>
               </span>
               {!isSelf && member.twoStepEnabled && confirm !== 'mfa' && (
-                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setConfirm('mfa')}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setConfirm('mfa')}
+                >
                   <KeyRound size={14} aria-hidden /> Reset
                 </button>
               )}
@@ -432,11 +510,15 @@ function StaffProfile({
             {confirm === 'mfa' && (
               <li className="staff-confirm">
                 <span className="small">
-                  For a lost phone. {member.fullName} is signed out everywhere and sets two-step sign-in up again next
-                  time.
+                  For a lost phone. {member.fullName} is signed out everywhere and sets
+                  two-step sign-in up again next time.
                 </span>
                 <span className="inline-row" style={{ gap: 6 }}>
-                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setConfirm(null)}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setConfirm(null)}
+                  >
                     Cancel
                   </button>
                   <button
@@ -444,7 +526,14 @@ function StaffProfile({
                     className="btn btn--danger-ghost btn--sm"
                     disabled={busy !== null}
                     onClick={async () => {
-                      if (await run('mfa', () => staffApi.resetMfa(member.id), 'Two-step sign-in reset.')) setConfirm(null);
+                      if (
+                        await run(
+                          'mfa',
+                          () => staffApi.resetMfa(member.id),
+                          'Two-step sign-in reset.',
+                        )
+                      )
+                        setConfirm(null);
                     }}
                   >
                     Reset two-step sign-in
@@ -457,10 +546,17 @@ function StaffProfile({
               <li>
                 <span>
                   <strong>Password</strong>
-                  <span className="muted small"> Set a temporary password when they cannot sign in.</span>
+                  <span className="muted small">
+                    {' '}
+                    Set a temporary password when they cannot sign in.
+                  </span>
                 </span>
                 {newPassword === null && (
-                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setNewPassword('')}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setNewPassword('')}
+                  >
                     Set new password
                   </button>
                 )}
@@ -493,7 +589,11 @@ function StaffProfile({
                     required
                     aria-label="New temporary password"
                   />
-                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setNewPassword(null)}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setNewPassword(null)}
+                  >
                     Cancel
                   </button>
                   <button className="btn btn--primary btn--sm" disabled={busy !== null}>
@@ -518,13 +618,23 @@ function StaffProfile({
                     type="button"
                     className="btn btn--ghost btn--sm"
                     disabled={busy !== null}
-                    onClick={() => void run('status', () => staffApi.update(member.id, { status: 'active' }), 'Account enabled.')}
+                    onClick={() =>
+                      void run(
+                        'status',
+                        () => staffApi.update(member.id, { status: 'active' }),
+                        'Account enabled.',
+                      )
+                    }
                   >
                     Enable
                   </button>
                 ) : (
                   confirm !== 'disable' && (
-                    <button type="button" className="btn btn--danger-ghost btn--sm" onClick={() => setConfirm('disable')}>
+                    <button
+                      type="button"
+                      className="btn btn--danger-ghost btn--sm"
+                      onClick={() => setConfirm('disable')}
+                    >
                       Disable
                     </button>
                   )
@@ -533,9 +643,16 @@ function StaffProfile({
             )}
             {confirm === 'disable' && (
               <li className="staff-confirm">
-                <span className="small">Disable {member.fullName}? They are signed out now and cannot sign in again.</span>
+                <span className="small">
+                  Disable {member.fullName}? They are signed out now and cannot sign in
+                  again.
+                </span>
                 <span className="inline-row" style={{ gap: 6 }}>
-                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setConfirm(null)}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setConfirm(null)}
+                  >
                     Cancel
                   </button>
                   <button
@@ -543,7 +660,13 @@ function StaffProfile({
                     className="btn btn--danger-ghost btn--sm"
                     disabled={busy !== null}
                     onClick={async () => {
-                      if (await run('status', () => staffApi.update(member.id, { status: 'disabled' }), 'Account disabled.')) {
+                      if (
+                        await run(
+                          'status',
+                          () => staffApi.update(member.id, { status: 'disabled' }),
+                          'Account disabled.',
+                        )
+                      ) {
                         setConfirm(null);
                       }
                     }}
@@ -563,10 +686,16 @@ function StaffProfile({
               e.preventDefault();
               const code = operatorCode.trim().toLowerCase();
               if (code && !/^[a-z]{2}\d{3}[a-z]{2}\d{3}$/.test(code)) {
-                setError('Operator codes look like ab123ab123: two letters, three digits, two letters, three digits.');
+                setError(
+                  'Operator codes look like ab123ab123: two letters, three digits, two letters, three digits.',
+                );
                 return;
               }
-              void run('fiscal', () => fiscalApi.setOperatorCode(member.id, code || null), 'Operator code saved.');
+              void run(
+                'fiscal',
+                () => fiscalApi.setOperatorCode(member.id, code || null),
+                'Operator code saved.',
+              );
             }}
           >
             <label className="field" style={{ flex: 1 }}>
@@ -578,11 +707,16 @@ function StaffProfile({
                 placeholder="ab123ab123"
                 maxLength={10}
               />
-              <small className="muted">From the tax authority, for anyone who issues fiscal receipts.</small>
+              <small className="muted">
+                From the tax authority, for anyone who issues fiscal receipts.
+              </small>
             </label>
             <button
               className="btn btn--ghost btn--sm"
-              disabled={busy !== null || operatorCode.trim().toLowerCase() === (member.fiscalOperatorCode ?? '')}
+              disabled={
+                busy !== null ||
+                operatorCode.trim().toLowerCase() === (member.fiscalOperatorCode ?? '')
+              }
             >
               {busy === 'fiscal' ? 'Saving…' : 'Save'}
             </button>
@@ -595,7 +729,13 @@ function StaffProfile({
 
 /* ── add someone ────────────────────────────────────────── */
 
-function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: (s: StaffFull) => void }) {
+function AddStaffModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (s: StaffFull) => void;
+}) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -634,12 +774,23 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: (s:
   }
 
   return (
-    <Modal wide title="Add staff member" subtitle="They sign in with the temporary password you set here." onClose={onClose}>
+    <Modal
+      wide
+      title="Add staff member"
+      subtitle="They sign in with the temporary password you set here."
+      onClose={onClose}
+    >
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           <label className="field">
             <span>Full name</span>
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} required minLength={2} autoFocus />
+            <input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              minLength={2}
+              autoFocus
+            />
           </label>
           <label className="field">
             <span>Job title</span>
@@ -654,7 +805,13 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: (s:
         <div className="grid2">
           <label className="field">
             <span>Email</span>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@clinic.com" required />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@clinic.com"
+              required
+            />
           </label>
           <label className="field">
             <span>Temporary password</span>
@@ -689,7 +846,8 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: (s:
             }}
           />
           <span>
-            <strong>Sees patients.</strong> Gets a column on the calendar and can have appointments.
+            <strong>Sees patients.</strong> Gets a column on the calendar and can have
+            appointments.
           </span>
         </label>
         {error && <p className="formerror">{error}</p>}
@@ -707,4 +865,3 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: (s:
     </Modal>
   );
 }
-

@@ -19,7 +19,9 @@ function makeMiddleware(opts: {
   tenant?: { id: string; status: string; trial_ends_at?: Date | null } | null;
 }) {
   const rows = opts.tenant ? [opts.tenant] : [];
-  const db = { query: jest.fn().mockResolvedValue({ rows }) } as unknown as DatabaseService;
+  const db = {
+    query: jest.fn().mockResolvedValue({ rows }),
+  } as unknown as DatabaseService;
   const config = {
     get: (key: string) => opts.env?.[key],
   } as unknown as ConfigService;
@@ -213,7 +215,9 @@ describe('TenantMiddleware — trial resolution', () => {
       tenant: { id: 'tid-1', status: 'active', trial_ends_at },
     });
     let seen: ReturnType<TenantContextService['get']>;
-    await middleware.use(req(), res, () => { seen = ctx.get(); });
+    await middleware.use(req(), res, () => {
+      seen = ctx.get();
+    });
     return seen!;
   }
 
@@ -241,7 +245,11 @@ describe('TenantMiddleware — trial resolution', () => {
     // show the prospect the data that would sell them the subscription.
     const { middleware } = makeMiddleware({
       env,
-      tenant: { id: 'tid-1', status: 'active', trial_ends_at: new Date(Date.now() - DAY) },
+      tenant: {
+        id: 'tid-1',
+        status: 'active',
+        trial_ends_at: new Date(Date.now() - DAY),
+      },
     });
     const next = jest.fn();
     await middleware.use(req(), res, next);

@@ -352,8 +352,8 @@ function StorageBackend({ backend }: { backend: NonNullable<FleetUsage['backend'
   if (backend.driver === 'off') {
     return (
       <p className="banner storagebar storagebar--off">
-        Uploads are switched off on this server. Clinics cannot add documents, photos or logos until
-        STORAGE_DRIVER is unset or a bucket is configured.
+        Uploads are switched off on this server. Clinics cannot add documents, photos or
+        logos until STORAGE_DRIVER is unset or a bucket is configured.
       </p>
     );
   }
@@ -362,7 +362,8 @@ function StorageBackend({ backend }: { backend: NonNullable<FleetUsage['backend'
   }
   const free = backend.diskFreeBytes;
   const total = backend.diskTotalBytes;
-  const usedPct = free !== null && total ? Math.round(((total - free) / total) * 100) : null;
+  const usedPct =
+    free !== null && total ? Math.round(((total - free) / total) * 100) : null;
   const low = free !== null && total ? free / total < 0.1 : false;
   return (
     <div className={`storagebar${low ? ' storagebar--low' : ''}`}>

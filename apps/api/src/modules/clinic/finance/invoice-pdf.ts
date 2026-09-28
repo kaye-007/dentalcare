@@ -1,5 +1,17 @@
-import { formatMoney, formatRate, vatSummary, type CurrencyCode } from '@dentalcare/shared';
-import { A4, PdfDocument, PdfPage, textWidth, wrapText, type Rgb } from '@/core/pdf/pdf-writer';
+import {
+  formatMoney,
+  formatRate,
+  vatSummary,
+  type CurrencyCode,
+} from '@dentalcare/shared';
+import {
+  A4,
+  PdfDocument,
+  PdfPage,
+  textWidth,
+  wrapText,
+  type Rgb,
+} from '@/core/pdf/pdf-writer';
 
 /**
  * The printable invoice, as data in and bytes out.
@@ -43,7 +55,12 @@ export interface InvoicePdfData {
     paid: number;
     notes: string | null;
   };
-  patient: { name: string; address: string | null; city: string | null; phone: string | null };
+  patient: {
+    name: string;
+    address: string | null;
+    city: string | null;
+    phone: string | null;
+  };
   items: {
     description: string;
     quantity: number;
@@ -81,7 +98,11 @@ const WARN: Rgb = [0.53, 0.35, 0.05];
 function hexColor(hex: string | null): Rgb {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? '');
   if (!m) return [0.29, 0.34, 0.89];
-  return [parseInt(m[1]!, 16) / 255, parseInt(m[2]!, 16) / 255, parseInt(m[3]!, 16) / 255];
+  return [
+    parseInt(m[1]!, 16) / 255,
+    parseInt(m[2]!, 16) / 255,
+    parseInt(m[3]!, 16) / 255,
+  ];
 }
 
 function date(iso: string): string {
@@ -117,7 +138,11 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
     }
     const title = d.fiscal ? 'FATURË TATIMORE' : 'FATURË';
     p.text(right, top + 14, title, { size: 18, bold: true, align: 'right' });
-    p.text(right, top + 28, d.fiscal ? 'Fiscal invoice' : 'Invoice', { size: 9, color: MUTED, align: 'right' });
+    p.text(right, top + 28, d.fiscal ? 'Fiscal invoice' : 'Invoice', {
+      size: 9,
+      color: MUTED,
+      align: 'right',
+    });
     p.text(right, top + 44, d.invoice.number, { size: 11, bold: true, align: 'right' });
     top += 72;
     return top;
@@ -133,7 +158,9 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
 
   // ── seller and patient ──
   const sellerLines = [
-    d.clinic.legalName && d.clinic.legalName !== d.clinic.name ? d.clinic.legalName : null,
+    d.clinic.legalName && d.clinic.legalName !== d.clinic.name
+      ? d.clinic.legalName
+      : null,
     d.clinic.address,
     d.clinic.city,
     d.clinic.phone ? `Tel. ${d.clinic.phone}` : null,
@@ -145,19 +172,23 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
 
   page.text(MARGIN, y, 'SHITËSI / FROM', { size: 7.5, bold: true, color: MUTED });
   page.text(MARGIN, y + 14, d.clinic.name, { size: 10.5, bold: true });
-  sellerLines.forEach((l, i) => page.text(MARGIN, y + 27 + i * 12, l, { size: 9, color: MUTED }));
+  sellerLines.forEach((l, i) =>
+    page.text(MARGIN, y + 27 + i * 12, l, { size: 9, color: MUTED }),
+  );
 
   const col2 = 320;
   page.text(col2, y, 'KLIENTI / BILL TO', { size: 7.5, bold: true, color: MUTED });
   page.text(col2, y + 14, d.patient.name, { size: 10.5, bold: true });
-  [d.patient.address, d.patient.city, d.patient.phone].filter(Boolean).forEach((l, i) =>
-    page.text(col2, y + 27 + i * 12, l!, { size: 9, color: MUTED }),
-  );
+  [d.patient.address, d.patient.city, d.patient.phone]
+    .filter(Boolean)
+    .forEach((l, i) => page.text(col2, y + 27 + i * 12, l!, { size: 9, color: MUTED }));
 
   const metaTop = y + 27 + 3 * 12 + 8;
   const meta: [string, string][] = [
     ['Data e lëshimit / Issued', date(d.invoice.issuedAt)],
-    ...(d.invoice.dueOn ? [['Afati / Due', date(d.invoice.dueOn)] as [string, string]] : []),
+    ...(d.invoice.dueOn
+      ? [['Afati / Due', date(d.invoice.dueOn)] as [string, string]]
+      : []),
     ['Statusi / Status', STATUS[d.invoice.status]],
   ];
   meta.forEach(([k, v], i) => {
@@ -174,12 +205,41 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
   function tableHead() {
     page.rect(MARGIN, y, right - MARGIN, 20, TINT);
     const hy = y + 13;
-    page.text(MARGIN + 6, hy, 'Përshkrimi / Description', { size: 8, bold: true, color: MUTED });
-    page.text(cols.qty, hy, 'Sasia', { size: 8, bold: true, color: MUTED, align: 'right' });
-    page.text(cols.unit, hy, 'Çmimi', { size: 8, bold: true, color: MUTED, align: 'right' });
-    page.text(cols.discount, hy, 'Zbritje', { size: 8, bold: true, color: MUTED, align: 'right' });
-    page.text(cols.vat, hy, 'TVSH', { size: 8, bold: true, color: MUTED, align: 'right' });
-    page.text(cols.amount - 6, hy, 'Vlera', { size: 8, bold: true, color: MUTED, align: 'right' });
+    page.text(MARGIN + 6, hy, 'Përshkrimi / Description', {
+      size: 8,
+      bold: true,
+      color: MUTED,
+    });
+    page.text(cols.qty, hy, 'Sasia', {
+      size: 8,
+      bold: true,
+      color: MUTED,
+      align: 'right',
+    });
+    page.text(cols.unit, hy, 'Çmimi', {
+      size: 8,
+      bold: true,
+      color: MUTED,
+      align: 'right',
+    });
+    page.text(cols.discount, hy, 'Zbritje', {
+      size: 8,
+      bold: true,
+      color: MUTED,
+      align: 'right',
+    });
+    page.text(cols.vat, hy, 'TVSH', {
+      size: 8,
+      bold: true,
+      color: MUTED,
+      align: 'right',
+    });
+    page.text(cols.amount - 6, hy, 'Vlera', {
+      size: 8,
+      bold: true,
+      color: MUTED,
+      align: 'right',
+    });
     y += 20;
   }
 
@@ -193,9 +253,21 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
     const ry = y + 14;
     page.text(cols.qty, ry, String(item.quantity), { size: 9.5, align: 'right' });
     page.text(cols.unit, ry, money(item.unitPrice), { size: 9.5, align: 'right' });
-    page.text(cols.discount, ry, item.discount ? money(item.discount) : '—', { size: 9.5, align: 'right', color: MUTED });
-    page.text(cols.vat, ry, item.taxRateBp ? `${item.taxRateBp / 100}%` : '—', { size: 9.5, align: 'right', color: MUTED });
-    page.text(cols.amount - 6, ry, money(item.amount), { size: 9.5, bold: true, align: 'right' });
+    page.text(cols.discount, ry, item.discount ? money(item.discount) : '—', {
+      size: 9.5,
+      align: 'right',
+      color: MUTED,
+    });
+    page.text(cols.vat, ry, item.taxRateBp ? `${item.taxRateBp / 100}%` : '—', {
+      size: 9.5,
+      align: 'right',
+      color: MUTED,
+    });
+    page.text(cols.amount - 6, ry, money(item.amount), {
+      size: 9.5,
+      bold: true,
+      align: 'right',
+    });
     y += rowHeight;
     page.line(MARGIN, y, right, y, 0.5, RULE);
   }
@@ -213,10 +285,25 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
   y += 14;
   const totals: [string, string, boolean][] = [
     ['Nëntotali / Subtotal', money(d.invoice.subtotal), false],
-    ...(d.invoice.discount ? [['Zbritje / Discount', `−${money(d.invoice.discount)}`, false] as [string, string, boolean]] : []),
+    ...(d.invoice.discount
+      ? [
+          ['Zbritje / Discount', `−${money(d.invoice.discount)}`, false] as [
+            string,
+            string,
+            boolean,
+          ],
+        ]
+      : []),
     ...(d.invoice.tax
       ? vatGroups.length > 0
-        ? vatGroups.map((g) => [`TVSH ${formatRate(g.taxRateBp)} / VAT (${money(g.net)})`, money(g.taxAmount), false] as [string, string, boolean])
+        ? vatGroups.map(
+            (g) =>
+              [
+                `TVSH ${formatRate(g.taxRateBp)} / VAT (${money(g.net)})`,
+                money(g.taxAmount),
+                false,
+              ] as [string, string, boolean],
+          )
         : [['TVSH / VAT', money(d.invoice.tax), false] as [string, string, boolean]]
       : []),
     ['Totali / Total', money(d.invoice.total), true],
@@ -225,16 +312,31 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
   ];
   const labelX = 360;
   for (const [label, value, strong] of totals) {
-    page.text(labelX, y, label, { size: strong ? 10 : 9, bold: strong, color: strong ? INK : MUTED });
-    page.text(right - 6, y, value, { size: strong ? 10.5 : 9.5, bold: strong, align: 'right' });
+    page.text(labelX, y, label, {
+      size: strong ? 10 : 9,
+      bold: strong,
+      color: strong ? INK : MUTED,
+    });
+    page.text(right - 6, y, value, {
+      size: strong ? 10.5 : 9.5,
+      bold: strong,
+      align: 'right',
+    });
     y += strong ? 17 : 14;
   }
 
   if (d.payments.length) {
     let py = y - totals.length * 15 + 6;
-    page.text(MARGIN, py - 10, 'PAGESAT / PAYMENTS', { size: 7.5, bold: true, color: MUTED });
+    page.text(MARGIN, py - 10, 'PAGESAT / PAYMENTS', {
+      size: 7.5,
+      bold: true,
+      color: MUTED,
+    });
     for (const p of d.payments.slice(0, 6)) {
-      page.text(MARGIN, py + 4, `${date(p.paidAt)}  ·  ${p.method}`, { size: 9, color: MUTED });
+      page.text(MARGIN, py + 4, `${date(p.paidAt)}  ·  ${p.method}`, {
+        size: 9,
+        color: MUTED,
+      });
       page.text(290, py + 4, money(p.amount), { size: 9, align: 'right' });
       py += 13;
     }
@@ -242,10 +344,12 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
 
   if (d.invoice.notes) {
     y += 8;
-    wrapText(d.invoice.notes, 8.5, right - MARGIN).slice(0, 4).forEach((l) => {
-      page.text(MARGIN, y, l, { size: 8.5, color: MUTED });
-      y += 11;
-    });
+    wrapText(d.invoice.notes, 8.5, right - MARGIN)
+      .slice(0, 4)
+      .forEach((l) => {
+        page.text(MARGIN, y, l, { size: 8.5, color: MUTED });
+        y += 11;
+      });
   }
 
   // ── fiscal block, or the notice that this is not one ──
@@ -262,35 +366,74 @@ export function renderInvoicePdf(d: InvoicePdfData): Uint8Array {
       ['Data dhe ora', f.issueDateTime.replace('T', ' ')],
       ['Njësia e biznesit', f.businessUnitCode],
       ['Arka (TCR)', f.tcrCode],
-      ['Operatori', f.cashierName ? `${f.operatorCode} (${f.cashierName})` : f.operatorCode],
+      [
+        'Operatori',
+        f.cashierName ? `${f.operatorCode} (${f.cashierName})` : f.operatorCode,
+      ],
       ['Kodi i softuerit', f.softwareCode],
-      ['Mënyra e pagesës', f.typeOfInvoice === 'CASH' ? 'Me para në dorë / Cash' : 'Pa para në dorë / Non-cash'],
+      [
+        'Mënyra e pagesës',
+        f.typeOfInvoice === 'CASH'
+          ? 'Me para në dorë / Cash'
+          : 'Pa para në dorë / Non-cash',
+      ],
     ];
     rows.forEach(([k, v], i) => {
       page.text(MARGIN, top + 10 + i * 13, k, { size: 8, color: MUTED });
-      page.text(MARGIN + 105, top + 10 + i * 13, v, { size: 8, bold: k === 'NIVF' || k === 'NSLF' });
+      page.text(MARGIN + 105, top + 10 + i * 13, v, {
+        size: 8,
+        bold: k === 'NIVF' || k === 'NSLF',
+      });
     });
     if (f.environment === 'test') {
-      page.text(MARGIN, top + 10 + rows.length * 13 + 6, 'MJEDIS TESTIMI — nuk është faturë tatimore e vlefshme / TEST ENVIRONMENT — not a valid fiscal invoice', {
-        size: 8, bold: true, color: WARN,
-      });
+      page.text(
+        MARGIN,
+        top + 10 + rows.length * 13 + 6,
+        'MJEDIS TESTIMI — nuk është faturë tatimore e vlefshme / TEST ENVIRONMENT — not a valid fiscal invoice',
+        {
+          size: 8,
+          bold: true,
+          color: WARN,
+        },
+      );
     } else if (f.status !== 'fiscalized') {
-      page.text(MARGIN, top + 10 + rows.length * 13 + 6, 'NIVF në pritje: fatura po dërgohet te administrata tatimore / NIVF pending: being delivered to the tax authority', {
-        size: 8, bold: true, color: WARN,
-      });
+      page.text(
+        MARGIN,
+        top + 10 + rows.length * 13 + 6,
+        'NIVF në pritje: fatura po dërgohet te administrata tatimore / NIVF pending: being delivered to the tax authority',
+        {
+          size: 8,
+          bold: true,
+          color: WARN,
+        },
+      );
     }
   } else if (d.clinic.fiscalizationEnabled) {
-    page.text(MARGIN, A4.height - 96, 'Dokument i brendshëm — NUK është faturë tatimore / Internal document — NOT a fiscal invoice', {
-      size: 8.5, bold: true, color: WARN,
-    });
+    page.text(
+      MARGIN,
+      A4.height - 96,
+      'Dokument i brendshëm — NUK është faturë tatimore / Internal document — NOT a fiscal invoice',
+      {
+        size: 8.5,
+        bold: true,
+        color: WARN,
+      },
+    );
   }
 
   // ── page numbers, now that the count is known ──
   const pages = doc.pageList;
   pages.forEach((p, i) => {
     p.line(MARGIN, A4.height - 44, right, A4.height - 44, 0.5, RULE);
-    p.text(MARGIN, A4.height - 30, `${d.clinic.name} · ${d.invoice.number}`, { size: 7.5, color: MUTED });
-    p.text(right, A4.height - 30, `Faqe ${i + 1} / ${pages.length}`, { size: 7.5, color: MUTED, align: 'right' });
+    p.text(MARGIN, A4.height - 30, `${d.clinic.name} · ${d.invoice.number}`, {
+      size: 7.5,
+      color: MUTED,
+    });
+    p.text(right, A4.height - 30, `Faqe ${i + 1} / ${pages.length}`, {
+      size: 7.5,
+      color: MUTED,
+      align: 'right',
+    });
   });
 
   return doc.toBytes();

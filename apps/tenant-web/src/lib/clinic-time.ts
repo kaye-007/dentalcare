@@ -77,7 +77,14 @@ export function wallNow(): Date {
  * guessing it as UTC and correcting by the zone's offset at the guess —
  * twice, so a guess that lands across a daylight-saving change still settles.
  */
-export function clinicInstant(y: number, m: number, d: number, h = 0, mi = 0, s = 0): Date {
+export function clinicInstant(
+  y: number,
+  m: number,
+  d: number,
+  h = 0,
+  mi = 0,
+  s = 0,
+): Date {
   const wanted = Date.UTC(y, m - 1, d, h, mi, s);
   let t = wanted;
   for (let i = 0; i < 2; i++) {
@@ -107,7 +114,9 @@ export function clinicISO(date: string, time: string): string {
 }
 
 /** Formatting options that show an instant on the clinic's clock. */
-export function inClinicZone(opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions {
+export function inClinicZone(
+  opts: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormatOptions {
   return { ...opts, timeZone: zone };
 }
 

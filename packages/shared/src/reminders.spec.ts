@@ -21,8 +21,13 @@ const values = {
 
 describe('what a clinic may add to its wording', () => {
   it('can name the dentist and the address, which say where and with whom but not why', () => {
-    const text = renderReminder('{first_name}: {date} {time} with {dentist} at {clinic_address}', values);
-    expect(text).toBe('Ana: Tuesday 15 September 10:30 with Dr. Elira Kola at Rruga e Kavajës 12, Tiranë');
+    const text = renderReminder(
+      '{first_name}: {date} {time} with {dentist} at {clinic_address}',
+      values,
+    );
+    expect(text).toBe(
+      'Ana: Tuesday 15 September 10:30 with Dr. Elira Kola at Rruga e Kavajës 12, Tiranë',
+    );
     expect(unknownPlaceholders('{dentist} {clinic_address}')).toEqual([]);
   });
 });
@@ -46,10 +51,9 @@ describe('the built-in reminder', () => {
 
   it('offers nothing a template could use to reach the treatment', () => {
     expect(REMINDER_PLACEHOLDERS).not.toContain('reason' as never);
-    expect(unknownPlaceholders('See you for {reason} with {doctor}, {first_name}')).toEqual([
-      '{reason}',
-      '{doctor}',
-    ]);
+    expect(
+      unknownPlaceholders('See you for {reason} with {doctor}, {first_name}'),
+    ).toEqual(['{reason}', '{doctor}']);
   });
 });
 
@@ -74,7 +78,9 @@ describe('formatAppointmentTime', () => {
   });
 
   it('names the day in the clinic’s language', () => {
-    expect(formatAppointmentTime(at, 'Europe/Tirane', 'en').date).toMatch(/Tuesday.*15.*September/);
+    expect(formatAppointmentTime(at, 'Europe/Tirane', 'en').date).toMatch(
+      /Tuesday.*15.*September/,
+    );
     expect(formatAppointmentTime(at, 'Europe/Tirane', 'sq').date).toMatch(/15/);
   });
 
@@ -112,18 +118,30 @@ describe('toE164', () => {
 
 describe('smsSegments', () => {
   it('fits 160 plain characters in one part, and splits at 153 after that', () => {
-    expect(smsSegments('a'.repeat(160))).toEqual({ encoding: 'gsm7', characters: 160, segments: 1 });
+    expect(smsSegments('a'.repeat(160))).toEqual({
+      encoding: 'gsm7',
+      characters: 160,
+      segments: 1,
+    });
     expect(smsSegments('a'.repeat(161)).segments).toBe(2);
     expect(smsSegments('a'.repeat(306)).segments).toBe(2);
     expect(smsSegments('a'.repeat(307)).segments).toBe(3);
   });
 
   it('counts the euro sign as two', () => {
-    expect(smsSegments('€'.repeat(80))).toEqual({ encoding: 'gsm7', characters: 160, segments: 1 });
+    expect(smsSegments('€'.repeat(80))).toEqual({
+      encoding: 'gsm7',
+      characters: 160,
+      segments: 1,
+    });
   });
 
   it('drops to 70 per part once one character is outside the GSM alphabet', () => {
-    expect(smsSegments(`ë${'a'.repeat(69)}`)).toEqual({ encoding: 'ucs2', characters: 70, segments: 1 });
+    expect(smsSegments(`ë${'a'.repeat(69)}`)).toEqual({
+      encoding: 'ucs2',
+      characters: 70,
+      segments: 1,
+    });
     expect(smsSegments(`ë${'a'.repeat(70)}`).segments).toBe(2);
   });
 });

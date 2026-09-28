@@ -1,6 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { CURRENCIES, DEFAULT_VARIANCE_THRESHOLDS, type CurrencyCode } from '@dentalcare/shared';
-import { ApiError, drawerApi, type CashDrawer, type DrawerPolicy, humanError } from '../../lib/api';
+import {
+  CURRENCIES,
+  DEFAULT_VARIANCE_THRESHOLDS,
+  type CurrencyCode,
+} from '@dentalcare/shared';
+import {
+  ApiError,
+  drawerApi,
+  type CashDrawer,
+  type DrawerPolicy,
+  humanError,
+} from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { currentCurrency } from '../../lib/format';
 import MoneyInput from '../MoneyInput';
@@ -44,21 +54,36 @@ function PolicyCard() {
   if (!policy) return <LoadingRows rows={3} label="Loading" />;
 
   const others: CurrencyCode[] = clinic === 'EUR' ? [] : ['EUR'];
-  const threshold = (c: CurrencyCode) => policy.thresholds[c] ?? DEFAULT_VARIANCE_THRESHOLDS[c];
+  const threshold = (c: CurrencyCode) =>
+    policy.thresholds[c] ?? DEFAULT_VARIANCE_THRESHOLDS[c];
   const limits = (c: CurrencyCode) => (
     <div className="grid2">
       <label className="field">
         <span>Close without a note up to</span>
         <MoneyInput
           value={threshold(c).tolerance}
-          onChange={(v) => edit({ thresholds: { ...policy.thresholds, [c]: { ...threshold(c), tolerance: v ?? 0 } } })}
+          onChange={(v) =>
+            edit({
+              thresholds: {
+                ...policy.thresholds,
+                [c]: { ...threshold(c), tolerance: v ?? 0 },
+              },
+            })
+          }
         />
       </label>
       <label className="field">
         <span>A manager approves above</span>
         <MoneyInput
           value={threshold(c).approval}
-          onChange={(v) => edit({ thresholds: { ...policy.thresholds, [c]: { ...threshold(c), approval: v ?? 0 } } })}
+          onChange={(v) =>
+            edit({
+              thresholds: {
+                ...policy.thresholds,
+                [c]: { ...threshold(c), approval: v ?? 0 },
+              },
+            })
+          }
         />
       </label>
     </div>
@@ -81,7 +106,8 @@ function PolicyCard() {
         <div>
           <h2>Cash differences</h2>
           <p className="card__sub">
-            When the count at the end of the day does not match. Applies from the next day started.
+            When the count at the end of the day does not match. Applies from the next day
+            started.
           </p>
         </div>
       </div>
@@ -90,14 +116,22 @@ function PolicyCard() {
         <details className="advanced__inline">
           <summary>More options</summary>
           <label className="checkrow">
-            <input type="checkbox" checked={policy.blindCount} onChange={(e) => edit({ blindCount: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={policy.blindCount}
+              onChange={(e) => edit({ blindCount: e.target.checked })}
+            />
             <span>
-              <strong>Hide the expected amount</strong> until the cash has been counted, so the count is honest.
+              <strong>Hide the expected amount</strong> until the cash has been counted,
+              so the count is honest.
             </span>
           </label>
           <label className="field" style={{ maxWidth: 260 }}>
             <span>Recounts allowed</span>
-            <select value={policy.maxRecounts} onChange={(e) => edit({ maxRecounts: Number(e.target.value) })}>
+            <select
+              value={policy.maxRecounts}
+              onChange={(e) => edit({ maxRecounts: Number(e.target.value) })}
+            >
               {[0, 1, 2, 3].map((n) => (
                 <option key={n} value={n}>
                   {n === 0 ? 'None' : n}
@@ -109,7 +143,9 @@ function PolicyCard() {
             <span>Starting cash for the very first day</span>
             <MoneyInput
               value={policy.defaultFloat[clinic] ?? 0}
-              onChange={(v) => edit({ defaultFloat: { ...policy.defaultFloat, [clinic]: v ?? 0 } })}
+              onChange={(v) =>
+                edit({ defaultFloat: { ...policy.defaultFloat, [clinic]: v ?? 0 } })
+              }
             />
           </label>
           {others.map((c) => (
@@ -152,7 +188,11 @@ function DrawersCard() {
     setBusy(true);
     setError(null);
     try {
-      await drawerApi.createDrawer({ name: name.trim(), currencies, tcrCode: tcr.trim() || null });
+      await drawerApi.createDrawer({
+        name: name.trim(),
+        currencies,
+        tcrCode: tcr.trim() || null,
+      });
       setName('');
       setTcr('');
       await load();
@@ -176,8 +216,8 @@ function DrawersCard() {
   return (
     <section>
       <p className="card__sub pad-x">
-        Most clinics need one drawer, and it is created by itself. Add more only for separate tills that are counted
-        apart. A retired drawer keeps its history.
+        Most clinics need one drawer, and it is created by itself. Add more only for
+        separate tills that are counted apart. A retired drawer keeps its history.
       </p>
       {drawers && drawers.length > 0 && (
         <ul className="feature-list">
@@ -187,7 +227,12 @@ function DrawersCard() {
                 <span className="inline-row" style={{ gap: 8 }}>
                   <strong>{d.name}</strong>
                   {!d.isActive && <StatusPill status="neutral" label="Retired" />}
-                  {d.openSession && <StatusPill status="info" label={`Open · ${d.openSession.heldBy.name}`} />}
+                  {d.openSession && (
+                    <StatusPill
+                      status="info"
+                      label={`Open · ${d.openSession.heldBy.name}`}
+                    />
+                  )}
                 </span>
                 <span className="small muted">
                   {d.currencies.join(', ')}
@@ -210,11 +255,21 @@ function DrawersCard() {
         <div className="grid2">
           <label className="field">
             <span>New drawer</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Front desk" maxLength={60} required />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Front desk"
+              maxLength={60}
+              required
+            />
           </label>
           <label className="field">
             <span>Cash register code (optional)</span>
-            <input value={tcr} onChange={(e) => setTcr(e.target.value.toLowerCase())} placeholder="Uses the clinic's register" />
+            <input
+              value={tcr}
+              onChange={(e) => setTcr(e.target.value.toLowerCase())}
+              placeholder="Uses the clinic's register"
+            />
           </label>
         </div>
         <fieldset className="fieldset">
@@ -227,7 +282,9 @@ function DrawersCard() {
                   checked={currencies.includes(c)}
                   disabled={c === clinic}
                   onChange={(e) =>
-                    setCurrencies((all) => (e.target.checked ? [...all, c] : all.filter((x) => x !== c)))
+                    setCurrencies((all) =>
+                      e.target.checked ? [...all, c] : all.filter((x) => x !== c),
+                    )
                   }
                 />
                 <span>{c}</span>
@@ -269,15 +326,21 @@ function PinCard() {
         <div>
           <h2>Your approval PIN</h2>
           <p className="card__sub">
-            Approve a cash difference at the front desk without signing in there. The PIN is yours alone; five
-            wrong tries lock it for 15 minutes.
+            Approve a cash difference at the front desk without signing in there. The PIN
+            is yours alone; five wrong tries lock it for 15 minutes.
           </p>
         </div>
       </div>
       <div className="form" style={{ paddingTop: 16 }}>
         <label className="field">
           <span>Your current password</span>
-          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
         </label>
         <div className="grid2">
           <label className="field">

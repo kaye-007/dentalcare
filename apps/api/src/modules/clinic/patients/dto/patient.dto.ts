@@ -18,13 +18,17 @@ import {
 } from 'class-validator';
 
 export class CreatePatientDto {
-  @IsString() @MinLength(1, { message: 'First name is required' })
+  @IsString()
+  @MinLength(1, { message: 'First name is required' })
   firstName!: string;
 
-  @IsString() @MinLength(1, { message: 'Last name is required' })
+  @IsString()
+  @MinLength(1, { message: 'Last name is required' })
   lastName!: string;
 
-  @IsOptional() @IsString() @MaxLength(40)
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
   phone?: string;
 
   @IsOptional()
@@ -42,22 +46,31 @@ export class CreatePatientDto {
   @IsISO8601({}, { message: 'Birth date must be a valid date' })
   birthDate?: string;
 
-  @IsOptional() @IsString() @MaxLength(200)
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
   address?: string;
 
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
   city?: string;
 
-  @IsOptional() @IsString() @MaxLength(20)
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
   postalCode?: string;
 
-  @IsOptional() @IsIn(['active', 'inactive'])
+  @IsOptional()
+  @IsIn(['active', 'inactive'])
   status?: 'active' | 'inactive' | 'archived';
 
   /** Personal number or other national identifier. Unique per clinic. */
   @IsOptional()
   @ValidateIf((_, v) => v !== '' && v !== null)
-  @Matches(/^[A-Za-z0-9 -]{4,24}$/, { message: 'Enter the national ID as printed, e.g. J12345678A' })
+  @Matches(/^[A-Za-z0-9 -]{4,24}$/, {
+    message: 'Enter the national ID as printed, e.g. J12345678A',
+  })
   nationalId?: string | null;
 
   /** How this patient wants reminders; empty follows the clinic's default. */
@@ -71,49 +84,67 @@ export class CreatePatientDto {
      way the desk types it; stored as E.164. */
   @IsOptional()
   @ValidateIf((_, v) => v !== '' && v !== null)
-  @IsString() @MaxLength(40)
+  @IsString()
+  @MaxLength(40)
   whatsappPhone?: string | null;
 
   /** The patient agreed to appointment reminders on WhatsApp. */
-  @IsOptional() @IsBoolean()
+  @IsOptional()
+  @IsBoolean()
   whatsappOptIn?: boolean;
 
   /** How the agreement was given. Defaults to in person. */
-  @IsOptional() @IsIn([...WHATSAPP_OPT_IN_SOURCES])
+  @IsOptional()
+  @IsIn([...WHATSAPP_OPT_IN_SOURCES])
   whatsappOptInSource?: WhatsAppOptInSource;
 
   /* ── emergency contact ──
      A name without a phone number is unusable in an emergency, and the
      database enforces the same rule via patients_emergency_contact_usable. */
-  @IsOptional() @IsString() @MaxLength(120)
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
   emergencyContactName?: string;
 
-  @IsOptional() @IsString() @MaxLength(60)
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
   emergencyContactRelationship?: string;
 
-  @IsOptional() @IsString() @MaxLength(40)
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
   emergencyContactPhone?: string;
 }
 
 export class UpdatePatientDto extends CreatePatientDto {
-  @IsOptional() @IsString() @MinLength(1)
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
   declare firstName: string;
 
-  @IsOptional() @IsString() @MinLength(1)
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
   declare lastName: string;
 
   /** The patient does not want appointment reminders. */
-  @IsOptional() @IsBoolean()
+  @IsOptional()
+  @IsBoolean()
   remindersOptOut?: boolean;
 }
 
 export class ArchivePatientDto {
   /** Why the record was archived. Recorded for audit; optional but urged. */
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   reason?: string;
 }
 
 export class CreateNoteDto {
-  @IsString() @MinLength(1, { message: 'Note cannot be empty' }) @MaxLength(2000)
+  @IsString()
+  @MinLength(1, { message: 'Note cannot be empty' })
+  @MaxLength(2000)
   body!: string;
 }

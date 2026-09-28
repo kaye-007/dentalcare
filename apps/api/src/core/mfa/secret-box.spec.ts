@@ -1,11 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import {
-  developmentKeyring,
-  keyedHash,
-  open,
-  parseKeyring,
-  seal,
-} from './secret-box';
+import { developmentKeyring, keyedHash, open, parseKeyring, seal } from './secret-box';
 import {
   generateRecoveryCodes,
   normalizeRecoveryCode,
@@ -58,7 +52,9 @@ describe('seal / open', () => {
     const sealed = seal(ring, 'secret', 'aad');
     const raw = Buffer.from(sealed.ciphertext, 'base64');
     raw[raw.length - 1]! ^= 1;
-    expect(() => open(ring, { ...sealed, ciphertext: raw.toString('base64') }, 'aad')).toThrow();
+    expect(() =>
+      open(ring, { ...sealed, ciphertext: raw.toString('base64') }, 'aad'),
+    ).toThrow();
   });
 
   it('opens secrets sealed under a key that has since been rotated out of first place', () => {
@@ -102,6 +98,8 @@ describe('recovery codes', () => {
   it('hashes under a key, so the same code under another key does not match', () => {
     const ring = parseKeyring(`k2:${key()},k1:${key()}`);
     expect(keyedHash(ring, 'k1', 'ABCDEFGHJK')).toBe(keyedHash(ring, 'k1', 'ABCDEFGHJK'));
-    expect(keyedHash(ring, 'k1', 'ABCDEFGHJK')).not.toBe(keyedHash(ring, 'k2', 'ABCDEFGHJK'));
+    expect(keyedHash(ring, 'k1', 'ABCDEFGHJK')).not.toBe(
+      keyedHash(ring, 'k2', 'ABCDEFGHJK'),
+    );
   });
 });

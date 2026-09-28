@@ -183,5 +183,8 @@ export class PatientAccessGuard implements CanActivate {
  * resource.
  */
 export function LogPatientAccess(resource: PatientResource) {
-  return applyDecorators(SetMetadata(RESOURCE_KEY, resource), UseGuards(PatientAccessGuard));
+  return applyDecorators(
+    SetMetadata(RESOURCE_KEY, resource),
+    UseGuards(PatientAccessGuard),
+  );
 }

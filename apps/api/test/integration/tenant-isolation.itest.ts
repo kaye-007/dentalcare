@@ -288,11 +288,14 @@ describe('writing across clinics', () => {
     const roomB = await createOperatory(s.b);
     const deleted = await asTenant(
       s.a.id,
-      async (c) => (await c.query('DELETE FROM operatories WHERE id = $1', [roomB])).rowCount,
+      async (c) =>
+        (await c.query('DELETE FROM operatories WHERE id = $1', [roomB])).rowCount,
     );
     expect(deleted).toBe(0);
 
-    const { rows } = await owner().query('SELECT id FROM operatories WHERE id = $1', [roomB]);
+    const { rows } = await owner().query('SELECT id FROM operatories WHERE id = $1', [
+      roomB,
+    ]);
     expect(rows).toHaveLength(1);
   });
 
@@ -302,7 +305,9 @@ describe('writing across clinics', () => {
       [s.a.id, s.a.patientId],
     ]) {
       const code = await errorCodeOf(
-        asTenant(tenant, (c) => c.query('DELETE FROM patients WHERE id = $1', [patientId])),
+        asTenant(tenant, (c) =>
+          c.query('DELETE FROM patients WHERE id = $1', [patientId]),
+        ),
       );
       expect(code).toBe('42501');
     }

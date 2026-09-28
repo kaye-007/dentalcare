@@ -19,7 +19,11 @@ import {
 } from '@dentalcare/shared';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
-import { DeliveryError, type ReminderChannel, type TemplateValues } from './channels/channels';
+import {
+  DeliveryError,
+  type ReminderChannel,
+  type TemplateValues,
+} from './channels/channels';
 import { ChannelRegistry } from './channels/registry';
 import {
   applyReceipt,
@@ -141,7 +145,11 @@ export type AttemptOutcome = 'sent' | 'retrying' | 'failed' | 'skipped';
 const SCAN_LIMIT = 100;
 
 function valuesFor(ctx: ClinicContext, who: Recipient): ReminderValues {
-  const { date, time } = formatAppointmentTime(new Date(who.starts_at), ctx.timezone, ctx.locale);
+  const { date, time } = formatAppointmentTime(
+    new Date(who.starts_at),
+    ctx.timezone,
+    ctx.locale,
+  );
   return {
     first_name: who.first_name,
     clinic: ctx.name,
@@ -166,7 +174,11 @@ function compose(ctx: ClinicContext, who: Recipient, channel: ReminderChannel): 
   return renderReminder(template, valuesFor(ctx, who));
 }
 
-function templateValuesFor(ctx: ClinicContext, who: Recipient, channel: ReminderChannel): TemplateValues | null {
+function templateValuesFor(
+  ctx: ClinicContext,
+  who: Recipient,
+  channel: ReminderChannel,
+): TemplateValues | null {
   if (channel.kind !== 'whatsapp') return null;
   const v = valuesFor(ctx, who);
   return {
@@ -180,7 +192,11 @@ function templateValuesFor(ctx: ClinicContext, who: Recipient, channel: Reminder
   };
 }
 
-async function optOut(client: PoolClient, patientId: string, source: 'patient' | 'provider') {
+async function optOut(
+  client: PoolClient,
+  patientId: string,
+  source: 'patient' | 'provider',
+) {
   await client.query(
     `UPDATE patients
         SET reminders_opt_out = true,
@@ -266,7 +282,11 @@ export class RemindersService {
    *                       records a HAND-OFF, not a delivery
    *   'log' (default)     recorded on the internal log
    */
-  async sendManual(appointmentId: string, userId: string, channel: ManualChannel = 'log') {
+  async sendManual(
+    appointmentId: string,
+    userId: string,
+    channel: ManualChannel = 'log',
+  ) {
     const tenantId = this.tenant.getRequiredTenantId();
 
     const { who, ctx } = await this.db.withTenant(tenantId, async (client) => {
@@ -280,7 +300,9 @@ export class RemindersService {
       const row = res.rows[0];
       if (!row) throw new NotFoundException('Appointment not found');
       if (row.status !== 'scheduled') {
-        throw new BadRequestException('Reminders can only be sent for scheduled appointments');
+        throw new BadRequestException(
+          'Reminders can only be sent for scheduled appointments',
+        );
       }
       return { who: row, ctx: await this.clinicContext(client, tenantId) };
     });
@@ -290,32 +312,54 @@ export class RemindersService {
 
     if (channel === 'sms') {
       const sms = this.registry.sms();
-      if (!sms) throw new BadRequestException('No SMS provider is configured for this deployment');
+      if (!sms)
+        throw new BadRequestException(
+          'No SMS provider is configured for this deployment',
+        );
       if (who.reminders_opt_out) {
         throw new ConflictException('This patient has opted out of reminders');
       }
-      if (!to) throw new BadRequestException('The patient has no usable mobile number on file');
+      if (!to)
+        throw new BadRequestException('The patient has no usable mobile number on file');
       id = await this.claim(tenantId, {
-        appointmentId, patientId: who.patient_id, purpose: 'appointment_reminder',
-        type: 'manual', channel: sms.id, status: 'pending',
-        message: compose(ctx, who, sms), to, createdBy: userId,
+        appointmentId,
+        patientId: who.patient_id,
+        purpose: 'appointment_reminder',
+        type: 'manual',
+        channel: sms.id,
+        status: 'pending',
+        message: compose(ctx, who, sms),
+        to,
+        createdBy: userId,
       });
       await this.attempt(tenantId, id);
     } else if (channel === 'log') {
       const log = this.registry.byId('log')!;
       id = await this.claim(tenantId, {
-        appointmentId, patientId: who.patient_id, purpose: 'appointment_reminder',
-        type: 'manual', channel: 'log', status: 'pending',
-        message: compose(ctx, who, log), to, createdBy: userId,
+        appointmentId,
+        patientId: who.patient_id,
+        purpose: 'appointment_reminder',
+        type: 'manual',
+        channel: 'log',
+        status: 'pending',
+        message: compose(ctx, who, log),
+        to,
+        createdBy: userId,
       });
       await this.attempt(tenantId, id);
     } else {
       // Handed to the staff member's own app. There is no receipt to wait for
       // and nothing this server can retry.
       id = await this.claim(tenantId, {
-        appointmentId, patientId: who.patient_id, purpose: 'appointment_reminder',
-        type: 'manual', channel, status: 'sent',
-        message: compose(ctx, who, this.registry.byId('log')!), to, createdBy: userId,
+        appointmentId,
+        patientId: who.patient_id,
+        purpose: 'appointment_reminder',
+        type: 'manual',
+        channel,
+        status: 'sent',
+        message: compose(ctx, who, this.registry.byId('log')!),
+        to,
+        createdBy: userId,
       });
     }
 
@@ -356,7 +400,11 @@ export class RemindersService {
       const to = toE164(a.phone, ctx.countryCode);
       // The patient's own choice, then the clinic's, then whatever this
       // deployment can actually send.
-      const channel = this.registry.resolve('appointment_reminder', a.preferred_channel, ctx.channel);
+      const channel = this.registry.resolve(
+        'appointment_reminder',
+        a.preferred_channel,
+        ctx.channel,
+      );
       // Skipped rows are claimed too. "Why did nobody remind her?" deserves an
       // answer in the log, and the claim stops the next scan asking again.
       const skip = a.reminders_opt_out
@@ -604,7 +652,9 @@ export class RemindersService {
       const failure =
         err instanceof DeliveryError
           ? err
-          : new DeliveryError('Delivery failed for an unexpected reason', { ambiguous: true });
+          : new DeliveryError('Delivery failed for an unexpected reason', {
+              ambiguous: true,
+            });
       // The reminder id and our own reason — never the number or the message.
       this.logger.warn(`reminder ${id}, attempt ${leased.attempts}: ${failure.message}`);
 

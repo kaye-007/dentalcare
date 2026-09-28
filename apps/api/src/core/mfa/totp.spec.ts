@@ -69,8 +69,12 @@ describe('verifyTotp', () => {
   });
 
   it('accepts one step of drift either side, and no more', () => {
-    expect(verifyTotp(secret, totpAt(secret, now - 30_000), { nowMs: now })).not.toBeNull();
-    expect(verifyTotp(secret, totpAt(secret, now + 30_000), { nowMs: now })).not.toBeNull();
+    expect(
+      verifyTotp(secret, totpAt(secret, now - 30_000), { nowMs: now }),
+    ).not.toBeNull();
+    expect(
+      verifyTotp(secret, totpAt(secret, now + 30_000), { nowMs: now }),
+    ).not.toBeNull();
     expect(verifyTotp(secret, totpAt(secret, now - 60_000), { nowMs: now })).toBeNull();
   });
 
@@ -79,13 +83,18 @@ describe('verifyTotp', () => {
     const code = totpAt(secret, now);
     expect(verifyTotp(secret, code, { nowMs: now, lastUsedStep: step })).toBeNull();
     expect(
-      verifyTotp(secret, totpAt(secret, now - 30_000), { nowMs: now, lastUsedStep: step }),
+      verifyTotp(secret, totpAt(secret, now - 30_000), {
+        nowMs: now,
+        lastUsedStep: step,
+      }),
     ).toBeNull();
   });
 
   it('accepts spaces the way an app displays the code', () => {
     const code = totpAt(secret, now);
-    expect(verifyTotp(secret, `${code.slice(0, 3)} ${code.slice(3)}`, { nowMs: now })).not.toBeNull();
+    expect(
+      verifyTotp(secret, `${code.slice(0, 3)} ${code.slice(3)}`, { nowMs: now }),
+    ).not.toBeNull();
   });
 
   it.each(['', '12345', '1234567', 'abcdef', '12 34 5'])('refuses %p', (code) => {
@@ -95,8 +104,14 @@ describe('verifyTotp', () => {
 
 describe('otpauthUri', () => {
   it('carries everything an authenticator needs, escaped', () => {
-    const uri = otpauthUri({ secret: 'ABC', account: 'dr.x@clinic.al', issuer: 'DentalCare (Vita)' });
-    expect(uri.startsWith('otpauth://totp/DentalCare%20(Vita):dr.x%40clinic.al?')).toBe(true);
+    const uri = otpauthUri({
+      secret: 'ABC',
+      account: 'dr.x@clinic.al',
+      issuer: 'DentalCare (Vita)',
+    });
+    expect(uri.startsWith('otpauth://totp/DentalCare%20(Vita):dr.x%40clinic.al?')).toBe(
+      true,
+    );
     const params = new URL(uri.replace('otpauth://', 'https://')).searchParams;
     expect(params.get('secret')).toBe('ABC');
     expect(params.get('issuer')).toBe('DentalCare (Vita)');

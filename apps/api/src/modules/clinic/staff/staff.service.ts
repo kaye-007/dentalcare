@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
@@ -99,8 +104,15 @@ export class StaffService {
           `INSERT INTO users (tenant_id, email, password_hash, full_name, role, status,
                               position, sees_patients)
            VALUES ($1,$2,$3,$4,$5,'active',$6,$7) RETURNING ${FULL}`,
-          [tenantId, dto.email, hash, dto.fullName, dto.role,
-           dto.position?.trim() || null, dto.seesPatients ?? seesPatientsByDefault(dto.role)],
+          [
+            tenantId,
+            dto.email,
+            hash,
+            dto.fullName,
+            dto.role,
+            dto.position?.trim() || null,
+            dto.seesPatients ?? seesPatientsByDefault(dto.role),
+          ],
         );
         await this.audit.record(client, actor, {
           action: 'staff.created',
@@ -143,14 +155,18 @@ export class StaffService {
     }
     return this.tx(async (client) => {
       if (!sets.length) {
-        const r = await client.query<StaffRow>(`SELECT ${FULL} FROM users WHERE id = $1`, [id]);
+        const r = await client.query<StaffRow>(
+          `SELECT ${FULL} FROM users WHERE id = $1`,
+          [id],
+        );
         if (!r.rows[0]) throw new NotFoundException('Staff member not found');
         return mapStaff(r.rows[0], true);
       }
       // Read the row BEFORE the write: "changed the role to admin" is worth
       // little without what it was.
       const before = await client.query<StaffRow>(
-        `SELECT ${FULL} FROM users WHERE id = $1`, [id],
+        `SELECT ${FULL} FROM users WHERE id = $1`,
+        [id],
       );
       if (!before.rows[0]) throw new NotFoundException('Staff member not found');
       params.push(id);
@@ -162,7 +178,9 @@ export class StaffService {
       if (!rows[0]) throw new NotFoundException('Staff member not found');
       const prev = before.rows[0];
       const next = rows[0];
-      const changed = Object.keys(cols).filter((k) => (dto as unknown as Record<string, unknown>)[k] !== undefined);
+      const changed = Object.keys(cols).filter(
+        (k) => (dto as unknown as Record<string, unknown>)[k] !== undefined,
+      );
       const roleMoved = prev.role !== next.role;
       const seesMoved = prev.sees_patients !== next.sees_patients;
 
@@ -255,7 +273,11 @@ export class StaffService {
   }
 
   /* ── salary payment log (owner-only) ── */
-  recordSalaryPayment(staffId: string, dto: RecordSalaryPaymentDto, actor: ClinicAuditActor) {
+  recordSalaryPayment(
+    staffId: string,
+    dto: RecordSalaryPaymentDto,
+    actor: ClinicAuditActor,
+  ) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       const staff = await client.query<{ position: string | null; full_name: string }>(
@@ -267,8 +289,15 @@ export class StaffService {
         `INSERT INTO salary_payments (tenant_id, staff_id, position, amount, paid_on, note, created_by)
          VALUES ($1,$2,$3,$4, coalesce($5::date, CURRENT_DATE), $6, $7)
          RETURNING id, amount, paid_on::text AS paid_on, note, position`,
-        [tenantId, staffId, staff.rows[0]!.position, dto.amount,
-         dto.paidOn ?? null, dto.note?.trim() || null, actor.userId],
+        [
+          tenantId,
+          staffId,
+          staff.rows[0]!.position,
+          dto.amount,
+          dto.paidOn ?? null,
+          dto.note?.trim() || null,
+          actor.userId,
+        ],
       );
       const r = rows[0]!;
       await this.audit.record(client, actor, {
@@ -278,7 +307,14 @@ export class StaffService {
         summary: `Paid ${await moneyText(client, r.amount)} salary to ${staff.rows[0]!.full_name}`,
         metadata: { staffId, amount: r.amount, paidOn: r.paid_on },
       });
-      return { id: r.id, staffId, amount: r.amount, paidOn: r.paid_on, note: r.note, position: r.position };
+      return {
+        id: r.id,
+        staffId,
+        amount: r.amount,
+        paidOn: r.paid_on,
+        note: r.note,
+        position: r.position,
+      };
     });
   }
 

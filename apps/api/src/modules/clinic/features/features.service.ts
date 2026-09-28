@@ -1,6 +1,16 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoolClient } from 'pg';
-import { FEATURES, FEATURE_KEYS, isFeatureKey, type FeatureKey } from '@dentalcare/shared';
+import {
+  FEATURES,
+  FEATURE_KEYS,
+  isFeatureKey,
+  type FeatureKey,
+} from '@dentalcare/shared';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
@@ -23,7 +33,9 @@ export class FeaturesService {
   ) {}
 
   list() {
-    return this.db.withTenant(this.tenant.getRequiredTenantId(), (client) => this.listWithin(client));
+    return this.db.withTenant(this.tenant.getRequiredTenantId(), (client) =>
+      this.listWithin(client),
+    );
   }
 
   private async listWithin(client: PoolClient) {

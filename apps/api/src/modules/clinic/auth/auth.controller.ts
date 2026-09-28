@@ -56,7 +56,11 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @AllowWhenReadOnly()
   @Post('refresh')
-  refresh(@Body() dto: RefreshDto, @Headers('user-agent') ua?: string, @Ip() ip?: string) {
+  refresh(
+    @Body() dto: RefreshDto,
+    @Headers('user-agent') ua?: string,
+    @Ip() ip?: string,
+  ) {
     return this.auth.refresh(dto.refreshToken, meta(ua, ip));
   }
 
@@ -73,7 +77,11 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @AllowWhenReadOnly()
   @Post('mfa/verify')
-  verifyMfa(@Body() dto: VerifyMfaDto, @Headers('user-agent') ua?: string, @Ip() ip?: string) {
+  verifyMfa(
+    @Body() dto: VerifyMfaDto,
+    @Headers('user-agent') ua?: string,
+    @Ip() ip?: string,
+  ) {
     return this.auth.verifyMfa(
       dto.challengeToken,
       { code: dto.code, recoveryCode: dto.recoveryCode },
@@ -104,8 +112,15 @@ export class AuthController {
   @AllowWhenReadOnly()
   @UseGuards(JwtAuthGuard)
   @Patch('password')
-  changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() current?: AccessTokenPayload) {
-    return this.auth.changePassword(signedIn(current), dto.currentPassword, dto.newPassword);
+  changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() current?: AccessTokenPayload,
+  ) {
+    return this.auth.changePassword(
+      signedIn(current),
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -140,7 +155,10 @@ export class AuthController {
   @AllowWhenReadOnly()
   @UseGuards(JwtAuthGuard)
   @Post('mfa/recovery-codes')
-  regenerateRecoveryCodes(@Body() dto: MfaCodeDto, @CurrentUser() current?: AccessTokenPayload) {
+  regenerateRecoveryCodes(
+    @Body() dto: MfaCodeDto,
+    @CurrentUser() current?: AccessTokenPayload,
+  ) {
     return this.auth.regenerateRecoveryCodes(signedIn(current), dto.code);
   }
 

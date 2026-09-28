@@ -50,10 +50,10 @@ beforeAll(async () => {
     [`billing-test-${Math.random().toString(36).slice(2, 7)}`],
   );
   planId = plan.rows[0]!.id;
-  await ownerQuery(`UPDATE tenants SET plan_id = $2, trial_ends_at = NULL WHERE id = $1`, [
-    s.a.id,
-    planId,
-  ]);
+  await ownerQuery(
+    `UPDATE tenants SET plan_id = $2, trial_ends_at = NULL WHERE id = $1`,
+    [s.a.id, planId],
+  );
 });
 
 afterAll(async () => {
@@ -69,13 +69,21 @@ afterAll(async () => {
 describe('running the month', () => {
   it('issues one invoice per clinic, and a second run issues nothing', async () => {
     const first = await call<{ considered: number; issued: number; numbers: string[] }>(
-      api, 'POST', '/api/platform/billing/run', P({}),
+      api,
+      'POST',
+      '/api/platform/billing/run',
+      P({}),
     );
     expect(first.status).toBe(201);
     expect(first.body.issued).toBeGreaterThanOrEqual(1);
 
     // The button is idempotent by constraint: pressing it twice is harmless.
-    const second = await call<{ issued: number }>(api, 'POST', '/api/platform/billing/run', P({}));
+    const second = await call<{ issued: number }>(
+      api,
+      'POST',
+      '/api/platform/billing/run',
+      P({}),
+    );
     expect(second.status).toBe(201);
     expect(second.body.issued).toBe(0);
 
@@ -87,7 +95,11 @@ describe('running the month', () => {
   });
 
   it('snapshots the plan and its price onto the invoice', async () => {
-    const { rows } = await ownerQuery<{ amount: number; plan_name: string; status: string }>(
+    const { rows } = await ownerQuery<{
+      amount: number;
+      plan_name: string;
+      status: string;
+    }>(
       'SELECT amount, plan_name, status FROM subscription_invoices WHERE tenant_id = $1',
       [s.a.id],
     );
@@ -109,28 +121,37 @@ describe('lateness', () => {
       `UPDATE subscription_invoices SET due_date = current_date - 5 WHERE tenant_id = $1`,
       [s.a.id],
     );
-    const res = await call<{ id: string; dueDate: string; overdue: boolean; daysLate: number }[]>(
-      api, 'GET', `/api/platform/billing/tenants/${s.a.id}/invoices`, P(),
-    );
+    const res = await call<
+      { id: string; dueDate: string; overdue: boolean; daysLate: number }[]
+    >(api, 'GET', `/api/platform/billing/tenants/${s.a.id}/invoices`, P());
     const invoice = res.body[0]!;
     expect(invoice.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(invoice.overdue).toBe(true);
     expect(invoice.daysLate).toBe(5);
 
     const overdueOnly = await call<{ id: string }[]>(
-      api, 'GET', '/api/platform/billing/invoices?overdue=true', P(),
+      api,
+      'GET',
+      '/api/platform/billing/invoices?overdue=true',
+      P(),
     );
     expect(overdueOnly.body.some((i) => i.id === invoice.id)).toBe(true);
 
     const summary = await call<{ overdueCount: number }>(
-      api, 'GET', '/api/platform/billing/summary', P(),
+      api,
+      'GET',
+      '/api/platform/billing/summary',
+      P(),
     );
     expect(summary.body.overdueCount).toBeGreaterThanOrEqual(1);
   });
 
   it('carries no time or zone on a period either', async () => {
     const res = await call<{ periodStart: string; periodEnd: string }[]>(
-      api, 'GET', `/api/platform/billing/tenants/${s.a.id}/invoices`, P(),
+      api,
+      'GET',
+      `/api/platform/billing/tenants/${s.a.id}/invoices`,
+      P(),
     );
     expect(res.body[0]!.periodStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(res.body[0]!.periodEnd).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -140,7 +161,10 @@ describe('lateness', () => {
 describe('settling an invoice', () => {
   async function mine() {
     const res = await call<{ id: string; status: string; amount: number }[]>(
-      api, 'GET', `/api/platform/billing/tenants/${s.a.id}/invoices`, P(),
+      api,
+      'GET',
+      `/api/platform/billing/tenants/${s.a.id}/invoices`,
+      P(),
     );
     return res.body[0]!;
   }
@@ -148,14 +172,19 @@ describe('settling an invoice', () => {
   it('records the payment, and refuses to record it twice', async () => {
     const invoice = await mine();
     const paid = await call<{ status: string; paidAmount: number }>(
-      api, 'POST', `/api/platform/billing/invoices/${invoice.id}/pay`,
+      api,
+      'POST',
+      `/api/platform/billing/invoices/${invoice.id}/pay`,
       P({ method: 'bank_transfer', reference: 'TXN-55512' }),
     );
     expect(paid.status).toBe(201);
     expect(paid.body).toMatchObject({ status: 'paid', paidAmount: 4900 });
 
     const again = await call<{ code: string }>(
-      api, 'POST', `/api/platform/billing/invoices/${invoice.id}/pay`, P({ method: 'cash' }),
+      api,
+      'POST',
+      `/api/platform/billing/invoices/${invoice.id}/pay`,
+      P({ method: 'cash' }),
     );
     expect(again.status).toBe(400);
     expect(again.body.code).toBe('already_paid');
@@ -164,7 +193,9 @@ describe('settling an invoice', () => {
   it('will not void money it has already taken', async () => {
     const invoice = await mine();
     const refused = await call<{ code: string }>(
-      api, 'POST', `/api/platform/billing/invoices/${invoice.id}/void`,
+      api,
+      'POST',
+      `/api/platform/billing/invoices/${invoice.id}/void`,
       P({ reason: 'issued in error' }),
     );
     expect(refused.status).toBe(400);
@@ -183,7 +214,10 @@ describe('settling an invoice', () => {
 describe('what the console reports', () => {
   it('summarises the fleet in money', async () => {
     const res = await call<{
-      mrr: number; paidThisMonth: number; openCount: number; overdueCount: number;
+      mrr: number;
+      paidThisMonth: number;
+      openCount: number;
+      overdueCount: number;
       unbilledClinics: number;
     }>(api, 'GET', '/api/platform/billing/summary', P());
     expect(res.status).toBe(200);
@@ -224,13 +258,18 @@ describe('what the console reports', () => {
 describe('the boundary around the vendor’s books', () => {
   it('refuses a clinic token everywhere in the platform console', async () => {
     for (const path of ['/api/platform/billing/summary', '/api/platform/usage']) {
-      const res = await call(api, 'GET', path, { token: clinicToken, subdomain: s.a.subdomain });
+      const res = await call(api, 'GET', path, {
+        token: clinicToken,
+        subdomain: s.a.subdomain,
+      });
       expect(res.status).toBe(401);
     }
   });
 
   it('refuses an anonymous caller', async () => {
-    expect((await call(api, 'GET', '/api/platform/billing/summary', {})).status).toBe(401);
+    expect((await call(api, 'GET', '/api/platform/billing/summary', {})).status).toBe(
+      401,
+    );
   });
 
   /**

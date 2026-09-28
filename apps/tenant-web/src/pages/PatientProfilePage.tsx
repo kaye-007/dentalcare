@@ -7,7 +7,13 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { useParams, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  useParams,
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
 import PhotoCropModal from '../components/PhotoCropModal';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import { WHATSAPP_OPT_IN_SOURCE_LABELS } from '@dentalcare/shared';
@@ -85,33 +91,46 @@ function fmtDate(s: string | null) {
   // A date alone ("1998-01-25") is a calendar date; a timestamp is an
   // instant, read on the clinic's clock like every appointment time.
   const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(s);
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+  const opts: Intl.DateTimeFormatOptions = {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  };
   return toDate(s).toLocaleDateString(dateLocale(), dateOnly ? opts : inClinicZone(opts));
 }
 function fmtDateTime(s: string) {
-  return new Date(s).toLocaleString(dateLocale(), inClinicZone({
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }));
+  return new Date(s).toLocaleString(
+    dateLocale(),
+    inClinicZone({
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  );
 }
 /** "Tue 24 Oct, 14:00" — for a visit that is coming up. */
 function fmtWhen(s: string) {
-  return new Date(s).toLocaleString(dateLocale(), inClinicZone({
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  }));
+  return new Date(s).toLocaleString(
+    dateLocale(),
+    inClinicZone({
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  );
 }
 function fmtTime(s: string) {
-  return new Date(s).toLocaleTimeString(dateLocale(), inClinicZone({
-    hour: '2-digit',
-    minute: '2-digit',
-  }));
+  return new Date(s).toLocaleTimeString(
+    dateLocale(),
+    inClinicZone({
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  );
 }
 function genderLabel(g: string | null) {
   return g ? g[0]!.toUpperCase() + g.slice(1) : '—';
@@ -373,7 +392,10 @@ export default function PatientProfilePage() {
       toast('Note added.');
       await load();
     } catch (err) {
-      toast(humanError(err, 'The note could not be saved. It is still in the box.'), 'error');
+      toast(
+        humanError(err, 'The note could not be saved. It is still in the box.'),
+        'error',
+      );
     } finally {
       setBusy(false);
     }
@@ -456,10 +478,17 @@ export default function PatientProfilePage() {
     openInvoices.length === 1 ? `/invoices/${openInvoices[0]!.id}?pay=1` : `?tab=billing`;
   const writeNote = () => {
     if (tab !== 'overview') selectTab('overview');
-    navigate({ search: location.search.replace(/([?&])tab=[^&]*&?/, '$1').replace(/[?&]$/, ''), hash: 'note' }, { replace: true });
+    navigate(
+      {
+        search: location.search.replace(/([?&])tab=[^&]*&?/, '$1').replace(/[?&]$/, ''),
+        hash: 'note',
+      },
+      { replace: true },
+    );
     window.setTimeout(() => noteRef.current?.focus(), 80);
   };
-  const detailsHint = [p.phone, p.email, p.city].filter(Boolean).join(' · ') || 'Nothing recorded yet';
+  const detailsHint =
+    [p.phone, p.email, p.city].filter(Boolean).join(' · ') || 'Nothing recorded yet';
 
   return (
     <div className="page">
@@ -490,7 +519,9 @@ export default function PatientProfilePage() {
                 severe allergy before touching anything. */}
             <div className="profile__flags">
               {allergies && allergies.count > 0 ? (
-                <span className={`pill ${allergies.hasSevere ? 'pill--danger' : 'pill--warn'}`}>
+                <span
+                  className={`pill ${allergies.hasSevere ? 'pill--danger' : 'pill--warn'}`}
+                >
                   <AlertTriangle size={13} aria-hidden />
                   {allergies.hasSevere ? 'Severe allergy' : 'Allergies'}:{' '}
                   {allergies.substances.join(', ')}
@@ -524,7 +555,8 @@ export default function PatientProfilePage() {
                       {
                         label: 'Send a message',
                         icon: <MessageCircle size={15} aria-hidden />,
-                        onSelect: () => openMessage({ patientId: p.id, patientName: fullName }),
+                        onSelect: () =>
+                          openMessage({ patientId: p.id, patientName: fullName }),
                       },
                     ]
                   : []),
@@ -565,7 +597,11 @@ export default function PatientProfilePage() {
                 <ClipboardList size={16} aria-hidden /> Note
               </button>
             )}
-            <button type="button" className="btn btn--ghost" onClick={() => selectTab('plans')}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => selectTab('plans')}
+            >
               <Stethoscope size={16} aria-hidden /> Treatment
             </button>
             {canSeeBilling && canTakePayment && (
@@ -589,7 +625,9 @@ export default function PatientProfilePage() {
                       <button
                         type="button"
                         className="linkbtn profile__move"
-                        onClick={() => openMessage({ patientId: p.id, patientName: fullName })}
+                        onClick={() =>
+                          openMessage({ patientId: p.id, patientName: fullName })
+                        }
                         aria-label={`Send ${p.firstName} a message`}
                       >
                         Message
@@ -605,14 +643,20 @@ export default function PatientProfilePage() {
           <div>
             <dt>Next appointment</dt>
             <dd className={nextVisit ? undefined : 'muted'}>
-              {history === null ? '…' : nextVisit ? fmtWhen(nextVisit.startsAt) : 'None booked'}
+              {history === null
+                ? '…'
+                : nextVisit
+                  ? fmtWhen(nextVisit.startsAt)
+                  : 'None booked'}
               {nextVisit && canBook && !archived && (
                 <>
                   {' '}
                   <button
                     type="button"
                     className="linkbtn profile__move"
-                    onClick={() => openBooking({ move: nextVisit, onSaved: () => void load() })}
+                    onClick={() =>
+                      openBooking({ move: nextVisit, onSaved: () => void load() })
+                    }
                     aria-label={`Move the appointment on ${fmtWhen(nextVisit.startsAt)}`}
                   >
                     Move
@@ -634,7 +678,11 @@ export default function PatientProfilePage() {
           {canSeeBilling && (
             <div>
               <dt>Balance</dt>
-              <dd className={balance ? (balance > 0 ? 'profile__owes' : undefined) : 'muted'}>
+              <dd
+                className={
+                  balance ? (balance > 0 ? 'profile__owes' : undefined) : 'muted'
+                }
+              >
                 {balance === null
                   ? '…'
                   : balance > 0
@@ -710,8 +758,8 @@ export default function PatientProfilePage() {
           <div className="modal__body">
             <p className="muted" style={{ margin: 0 }}>
               The record is kept in full — appointments, invoices and clinical history are
-              untouched. It is hidden from the patient list and can be restored at any time.
-              Dental records are never deleted outright.
+              untouched. It is hidden from the patient list and can be restored at any
+              time. Dental records are never deleted outright.
             </p>
             <label className="field">
               <span>Reason (optional, recorded for audit)</span>
@@ -761,7 +809,11 @@ export default function PatientProfilePage() {
                     canBook,
                     canEdit: canEditPatient,
                     book: (treatmentId) =>
-                      openBooking({ patientId: p.id, treatmentId, onSaved: () => void load() }),
+                      openBooking({
+                        patientId: p.id,
+                        treatmentId,
+                        onSaved: () => void load(),
+                      }),
                     edit: () => navigate(`/patients/${p.id}/edit`),
                     showLab: () =>
                       document
@@ -835,7 +887,11 @@ export default function PatientProfilePage() {
                   <div className="card__head">
                     <h2 id="pp-lab">Lab work</h2>
                     {canWriteLab && !archived && (
-                      <button type="button" className="link" onClick={() => setLabSheet({})}>
+                      <button
+                        type="button"
+                        className="link"
+                        onClick={() => setLabSheet({})}
+                      >
                         Order
                       </button>
                     )}
@@ -861,89 +917,91 @@ export default function PatientProfilePage() {
 
               <section className="card profile__details" aria-label="Contact and details">
                 <div className="pad">
-                <Disclosure summary="Contact & details" hint={detailsHint}>
-                <dl className="info info--stack">
-                  <div>
-                    <dt>Email</dt>
-                    <dd>
-                      {p.email ? (
-                        <a href={`mailto:${p.email}`}>{p.email}</a>
-                      ) : (
-                        '—'
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Date of birth</dt>
-                    <dd>
-                      {fmtDate(p.birthDate)}
-                      {age !== null ? ` (${age})` : ''}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Gender</dt>
-                    <dd>{genderLabel(p.gender)}</dd>
-                  </div>
-                  <div>
-                    <dt>Registered</dt>
-                    <dd>{fmtDate(p.createdAt)}</dd>
-                  </div>
-                  <div>
-                    <dt>Address</dt>
-                    <dd>{p.address ?? '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>City</dt>
-                    <dd>{p.city ?? '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>Postal code</dt>
-                    <dd>{p.postalCode ?? '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>WhatsApp reminders</dt>
-                    <dd>
-                      {p.remindersOptOut
-                        ? 'Asked to stop'
-                        : p.whatsappOptIn
-                          ? `Agreed ${p.whatsappOptedInAt ? fmtDate(p.whatsappOptedInAt.slice(0, 10)) : ''}${
-                              p.whatsappOptInSource ? ` · ${WHATSAPP_OPT_IN_SOURCE_LABELS[p.whatsappOptInSource].toLowerCase()}` : ''
-                            }`
-                          : 'No consent recorded'}
-                      {p.whatsappOptIn && p.whatsappPhone && p.whatsappPhone !== p.phone ? ` · ${p.whatsappPhone}` : ''}
-                    </dd>
-                  </div>
-                </dl>
+                  <Disclosure summary="Contact & details" hint={detailsHint}>
+                    <dl className="info info--stack">
+                      <div>
+                        <dt>Email</dt>
+                        <dd>
+                          {p.email ? <a href={`mailto:${p.email}`}>{p.email}</a> : '—'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Date of birth</dt>
+                        <dd>
+                          {fmtDate(p.birthDate)}
+                          {age !== null ? ` (${age})` : ''}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Gender</dt>
+                        <dd>{genderLabel(p.gender)}</dd>
+                      </div>
+                      <div>
+                        <dt>Registered</dt>
+                        <dd>{fmtDate(p.createdAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Address</dt>
+                        <dd>{p.address ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>City</dt>
+                        <dd>{p.city ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Postal code</dt>
+                        <dd>{p.postalCode ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>WhatsApp reminders</dt>
+                        <dd>
+                          {p.remindersOptOut
+                            ? 'Asked to stop'
+                            : p.whatsappOptIn
+                              ? `Agreed ${p.whatsappOptedInAt ? fmtDate(p.whatsappOptedInAt.slice(0, 10)) : ''}${
+                                  p.whatsappOptInSource
+                                    ? ` · ${WHATSAPP_OPT_IN_SOURCE_LABELS[p.whatsappOptInSource].toLowerCase()}`
+                                    : ''
+                                }`
+                              : 'No consent recorded'}
+                          {p.whatsappOptIn &&
+                          p.whatsappPhone &&
+                          p.whatsappPhone !== p.phone
+                            ? ` · ${p.whatsappPhone}`
+                            : ''}
+                        </dd>
+                      </div>
+                    </dl>
 
-                <h3 className="info__heading">
-                  <Phone size={14} aria-hidden /> Emergency contact
-                </h3>
-                {p.emergencyContact ? (
-                  <dl className="info info--stack">
-                    <div>
-                      <dt>Name</dt>
-                      <dd>{p.emergencyContact.name}</dd>
-                    </div>
-                    <div>
-                      <dt>Relationship</dt>
-                      <dd>{p.emergencyContact.relationship ?? '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>Phone</dt>
-                      <dd>{p.emergencyContact.phone ?? '—'}</dd>
-                    </div>
-                  </dl>
-                ) : (
-                  <p className="info__empty">
-                    None recorded.{' '}
-                    {canEditPatient && (
-                      <Link to={`/patients/${p.id}/edit`} className="link">
-                        Add one
-                      </Link>
+                    <h3 className="info__heading">
+                      <Phone size={14} aria-hidden /> Emergency contact
+                    </h3>
+                    {p.emergencyContact ? (
+                      <dl className="info info--stack">
+                        <div>
+                          <dt>Name</dt>
+                          <dd>{p.emergencyContact.name}</dd>
+                        </div>
+                        <div>
+                          <dt>Relationship</dt>
+                          <dd>{p.emergencyContact.relationship ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt>Phone</dt>
+                          <dd>{p.emergencyContact.phone ?? '—'}</dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <p className="info__empty">
+                        None recorded.{' '}
+                        {canEditPatient && (
+                          <Link to={`/patients/${p.id}/edit`} className="link">
+                            Add one
+                          </Link>
+                        )}
+                      </p>
                     )}
-                  </p>
-                )}
-                </Disclosure>
+                  </Disclosure>
                 </div>
               </section>
 
@@ -982,7 +1040,11 @@ export default function PatientProfilePage() {
                 body="Their first visit will show here."
                 action={
                   !archived && canBook ? (
-                    <button type="button" className="btn btn--ghost btn--sm" onClick={book}>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={book}
+                    >
                       <CalendarPlus size={15} aria-hidden /> Book appointment
                     </button>
                   ) : undefined
@@ -1107,7 +1169,9 @@ function attentionItems(k: {
         : undefined,
     });
   } else if (k.upcomingCount === 0 && k.lastVisitAt) {
-    const months = Math.floor((Date.now() - Date.parse(k.lastVisitAt)) / (30.44 * 86_400_000));
+    const months = Math.floor(
+      (Date.now() - Date.parse(k.lastVisitAt)) / (30.44 * 86_400_000),
+    );
     if (months >= 6) {
       out.push({
         key: 'recall',
@@ -1148,7 +1212,11 @@ function PatientAttention({ items }: { items: AttentionItem[] }) {
                 <Icon size={16} aria-hidden />
                 <span className="attention__text">{it.text}</span>
                 {it.action && (
-                  <button type="button" className="linkbtn attention__go" onClick={it.action.run}>
+                  <button
+                    type="button"
+                    className="linkbtn attention__go"
+                    onClick={it.action.run}
+                  >
                     {it.action.label} <ChevronRight size={15} aria-hidden />
                   </button>
                 )}
@@ -1188,7 +1256,11 @@ function ProfilePhoto({
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const picture = url ? <img src={url} alt={name} width={64} height={64} /> : <Avatar name={name} size={64} />;
+  const picture = url ? (
+    <img src={url} alt={name} width={64} height={64} />
+  ) : (
+    <Avatar name={name} size={64} />
+  );
 
   if (!canChange) return picture;
 
@@ -1235,7 +1307,11 @@ function ProfilePhoto({
         </span>
       </button>
       {choosing && (
-        <Modal title="Profile photo" subtitle="JPEG, PNG or WEBP. You can crop it before saving." onClose={() => setChoosing(false)}>
+        <Modal
+          title="Profile photo"
+          subtitle="JPEG, PNG or WEBP. You can crop it before saving."
+          onClose={() => setChoosing(false)}
+        >
           <div className="modal__body">
             <div className="photo-menu">
               <button
@@ -1248,11 +1324,20 @@ function ProfilePhoto({
               >
                 <Camera size={15} aria-hidden /> Take a photo
               </button>
-              <button type="button" className="btn btn--ghost" onClick={() => input.current?.click()}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => input.current?.click()}
+              >
                 Choose a file
               </button>
               {url && (
-                <button type="button" className="btn btn--ghost" onClick={remove} disabled={removing}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={remove}
+                  disabled={removing}
+                >
                   {removing ? 'Removing…' : 'Remove photo'}
                 </button>
               )}
@@ -1471,7 +1556,11 @@ function Story({
       )}
       {items.length > 8 && (
         <div className="story__more">
-          <button type="button" className="btn btn--quiet btn--sm" onClick={() => setShowAll((s) => !s)}>
+          <button
+            type="button"
+            className="btn btn--quiet btn--sm"
+            onClick={() => setShowAll((s) => !s)}
+          >
             {showAll ? 'Show less' : `Show ${items.length - 8} more`}
           </button>
         </div>
@@ -1488,7 +1577,10 @@ function TimelineDate({ iso }: { iso: string }) {
         {d.toLocaleDateString(dateLocale(), inClinicZone({ day: '2-digit' }))}
       </span>
       <span className="timeline__month">
-        {d.toLocaleDateString(dateLocale(), inClinicZone({ month: 'short', year: 'numeric' }))}
+        {d.toLocaleDateString(
+          dateLocale(),
+          inClinicZone({ month: 'short', year: 'numeric' }),
+        )}
       </span>
     </span>
   );
@@ -1506,7 +1598,9 @@ function TimelineVisit({ a }: { a: Appointment }) {
           {a.staffName ? ` · ${a.staffName}` : ''}
           {a.operatoryName ? ` · ${a.operatoryName}` : ''}
         </p>
-        {a.cancelReason && <p className="timeline__note">Cancellation reason: {a.cancelReason}</p>}
+        {a.cancelReason && (
+          <p className="timeline__note">Cancellation reason: {a.cancelReason}</p>
+        )}
       </div>
       <StatusPill status={a.status} />
     </li>
@@ -1524,7 +1618,9 @@ function TimelineMoney({ e }: { e: LedgerEntry }) {
         : `${e.description} · ${formatMoney(Math.abs(e.amount))}`;
   const method = /\(([^)]+)\)/.exec(e.description)?.[1];
   return (
-    <li className={`timeline__item timeline__item--money${paid ? ' timeline__item--paid' : ''}`}>
+    <li
+      className={`timeline__item timeline__item--money${paid ? ' timeline__item--paid' : ''}`}
+    >
       <span className="timeline__dot" aria-hidden />
       <TimelineDate iso={e.createdAt} />
       <div className="timeline__body">
@@ -1539,8 +1635,12 @@ function TimelineMoney({ e }: { e: LedgerEntry }) {
         </p>
         <p className="timeline__meta">
           {[
-            e.entryType === 'payment' && method ? method[0]!.toUpperCase() + method.slice(1) : null,
-            e.balanceAfter > 0 ? `Balance ${formatMoney(e.balanceAfter)}` : 'Account settled',
+            e.entryType === 'payment' && method
+              ? method[0]!.toUpperCase() + method.slice(1)
+              : null,
+            e.balanceAfter > 0
+              ? `Balance ${formatMoney(e.balanceAfter)}`
+              : 'Account settled',
           ]
             .filter(Boolean)
             .join(' · ')}

@@ -56,12 +56,15 @@ describe('permission matrix', () => {
     for (const p of ADMIN_ONLY) expect(can(role, p)).toBe(false);
   });
 
-  it.each(NON_ADMIN)('keeps paying wages, pricing and configuration away from %s', (role) => {
-    expect(can(role, 'payroll:manage')).toBe(false);
-    expect(can(role, 'treatments:manage')).toBe(false);
-    expect(can(role, 'staff:manage')).toBe(false);
-    expect(can(role, 'settings:manage')).toBe(false);
-  });
+  it.each(NON_ADMIN)(
+    'keeps paying wages, pricing and configuration away from %s',
+    (role) => {
+      expect(can(role, 'payroll:manage')).toBe(false);
+      expect(can(role, 'treatments:manage')).toBe(false);
+      expect(can(role, 'staff:manage')).toBe(false);
+      expect(can(role, 'settings:manage')).toBe(false);
+    },
+  );
 
   /**
    * Reading wages and the aggregate finances used to be admin-only. The
@@ -70,29 +73,51 @@ describe('permission matrix', () => {
    * still sees neither.
    */
   it('shows wages and the aggregate finances to the administrator and the accountant only', () => {
-    expect(ROLES.filter((r) => can(r, 'payroll:read')).sort()).toEqual(['accountant', 'admin']);
-    expect(ROLES.filter((r) => can(r, 'reports:read')).sort()).toEqual(['accountant', 'admin']);
+    expect(ROLES.filter((r) => can(r, 'payroll:read')).sort()).toEqual([
+      'accountant',
+      'admin',
+    ]);
+    expect(ROLES.filter((r) => can(r, 'reports:read')).sort()).toEqual([
+      'accountant',
+      'admin',
+    ]);
   });
 
   it('lets the accountant read the money and change nothing', () => {
     const held = [...ROLE_PERMISSIONS.accountant];
     const writes = held.filter((p) => !p.endsWith(':read'));
     expect(writes).toEqual([]);
-    for (const p of ['invoices:read', 'payments:read', 'expenses:read', 'drawer:read'] as const) {
+    for (const p of [
+      'invoices:read',
+      'payments:read',
+      'expenses:read',
+      'drawer:read',
+    ] as const) {
       expect(can('accountant', p)).toBe(true);
     }
   });
 
   it('keeps the clinical record and patient files away from the accountant', () => {
-    for (const p of ['patients:read', 'clinical:read', 'documents:read', 'audit:read'] as const) {
+    for (const p of [
+      'patients:read',
+      'clinical:read',
+      'documents:read',
+      'audit:read',
+    ] as const) {
       expect(can('accountant', p)).toBe(false);
     }
   });
 
   it('lets the cash handlers run a drawer and only the administrator approve one', () => {
-    expect(ROLES.filter((r) => can(r, 'drawer:operate')).sort()).toEqual(['admin', 'receptionist']);
+    expect(ROLES.filter((r) => can(r, 'drawer:operate')).sort()).toEqual([
+      'admin',
+      'receptionist',
+    ]);
     expect(ROLES.filter((r) => can(r, 'drawer:approve'))).toEqual(['admin']);
-    expect(ROLES.filter((r) => can(r, 'drawer:read')).sort()).toEqual(['accountant', 'admin']);
+    expect(ROLES.filter((r) => can(r, 'drawer:read')).sort()).toEqual([
+      'accountant',
+      'admin',
+    ]);
   });
 
   it('lets reception run the whole clinic day', () => {
@@ -205,7 +230,10 @@ describe('permission matrix', () => {
   it('keeps assistants and hygienists away from money entirely', () => {
     for (const role of ['assistant', 'hygienist'] as const) {
       for (const p of PERMISSIONS.filter(
-        (x) => x.startsWith('invoices:') || x.startsWith('payments:') || x.startsWith('expenses:'),
+        (x) =>
+          x.startsWith('invoices:') ||
+          x.startsWith('payments:') ||
+          x.startsWith('expenses:'),
       )) {
         expect(can(role, p)).toBe(false);
       }
@@ -237,7 +265,14 @@ describe('permission matrix', () => {
 
 describe('role resolution', () => {
   it('recognises exactly the six current roles', () => {
-    expect(ROLES).toEqual(['admin', 'dentist', 'hygienist', 'assistant', 'receptionist', 'accountant']);
+    expect(ROLES).toEqual([
+      'admin',
+      'dentist',
+      'hygienist',
+      'assistant',
+      'receptionist',
+      'accountant',
+    ]);
     for (const r of ROLES) expect(isRole(r)).toBe(true);
     for (const bad of ['owner', 'frontdesk', 'Admin', '', null, undefined, 7, {}]) {
       expect(isRole(bad)).toBe(false);
@@ -273,7 +308,18 @@ describe('role resolution', () => {
   });
 
   it('returns null for anything unrecognised so callers fail closed', () => {
-    for (const bad of ['superuser', 'OWNER', '', null, undefined, 42, {}, [], 'toString', 'constructor']) {
+    for (const bad of [
+      'superuser',
+      'OWNER',
+      '',
+      null,
+      undefined,
+      42,
+      {},
+      [],
+      'toString',
+      'constructor',
+    ]) {
       expect(normalizeRole(bad)).toBeNull();
     }
   });

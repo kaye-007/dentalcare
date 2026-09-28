@@ -4,28 +4,28 @@
 2026-09-26 so that the Sept 9–18 DentalCare work cannot be lost. No application
 code was changed to produce it.
 
-| | |
-|---|---|
-| **Repository** | `https://github.com/kaye-007/dentalcare` |
-| **Branch** | `preserve/pre-production-sept-9-18` (pushed, tracking `origin`) |
-| **Commit** | `a6eb2885333480e2412207e674695933a49d0454`: `chore: preserve pre-production DentalCare implementation` |
-| **Parent** | `2fb91f5` (`production-hardening`, left unchanged locally) |
-| **Tag** | `pre-production-baseline-2026-09` (annotated, on `a6eb288`, pushed) |
-| **Remote** | `origin`. `main` untouched at `0e88c3d`; nothing force-pushed, no history rewritten |
-| **Working tree status** | clean after the commit |
-| **Modified files** | 166 modified + 4 deleted (+28,453 / −7,182 lines) |
-| **Untracked files** | 214 (≈43,000 lines of text + 4 binary test fixtures), all now committed |
-| **Commit size** | 385 files, +72,024 / −7,182 |
-| **Migrations** | 16: `0001_baseline` … `0016_platform_billing` |
-| **Integration suites** | 27 present (14 were previously untracked) |
-| **Unit tests** | PASS: 43 suites, 695 tests |
-| **Typecheck** | PASS |
-| **Build** | PASS (shared, api, tenant-web, admin-web) |
-| **Lint** | PASS |
-| **Cloudflare dry-run** | PASS (all three Workers) |
-| **Format** | FAIL: 80 files |
-| **Doctor** | ENVIRONMENT BLOCKED: PostgreSQL unavailable |
-| **Integration tests** | ENVIRONMENT BLOCKED: not run, PostgreSQL unavailable |
+|                         |                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Repository**          | `https://github.com/kaye-007/dentalcare`                                                               |
+| **Branch**              | `preserve/pre-production-sept-9-18` (pushed, tracking `origin`)                                        |
+| **Commit**              | `a6eb2885333480e2412207e674695933a49d0454`: `chore: preserve pre-production DentalCare implementation` |
+| **Parent**              | `2fb91f5` (`production-hardening`, left unchanged locally)                                             |
+| **Tag**                 | `pre-production-baseline-2026-09` (annotated, on `a6eb288`, pushed)                                    |
+| **Remote**              | `origin`. `main` untouched at `0e88c3d`; nothing force-pushed, no history rewritten                    |
+| **Working tree status** | clean after the commit                                                                                 |
+| **Modified files**      | 166 modified + 4 deleted (+28,453 / −7,182 lines)                                                      |
+| **Untracked files**     | 214 (≈43,000 lines of text + 4 binary test fixtures), all now committed                                |
+| **Commit size**         | 385 files, +72,024 / −7,182                                                                            |
+| **Migrations**          | 16: `0001_baseline` … `0016_platform_billing`                                                          |
+| **Integration suites**  | 27 present (14 were previously untracked)                                                              |
+| **Unit tests**          | PASS: 43 suites, 695 tests                                                                             |
+| **Typecheck**           | PASS                                                                                                   |
+| **Build**               | PASS (shared, api, tenant-web, admin-web)                                                              |
+| **Lint**                | PASS                                                                                                   |
+| **Cloudflare dry-run**  | PASS (all three Workers)                                                                               |
+| **Format**              | FAIL: 80 files                                                                                         |
+| **Doctor**              | ENVIRONMENT BLOCKED: PostgreSQL unavailable                                                            |
+| **Integration tests**   | ENVIRONMENT BLOCKED: not run, PostgreSQL unavailable                                                   |
 
 The test and build results are from the audit run on 2026-09-26 against this
 exact working tree (see [`CLAUDE_AUDIT.md`](CLAUDE_AUDIT.md)). Nothing changed
@@ -34,6 +34,7 @@ in the code between that run and the commit.
 ## Verified results
 
 **PASS**
+
 - typecheck
 - unit tests: 43 test suites, 695 unit tests
 - builds
@@ -41,9 +42,11 @@ in the code between that run and the commit.
 - Cloudflare dry-run
 
 **FAIL**
+
 - format check: 80 files
 
 **ENVIRONMENT BLOCKED**
+
 - doctor: PostgreSQL unavailable
 - integration tests: PostgreSQL unavailable
 

@@ -1,10 +1,30 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { type Surface, isValidSurface, surfacesFor } from '@/modules/clinic/charting';
-import { PLAN_TIMESTAMP_COLUMN, type PlanLineInput, type PlanStatus, calculateLine, calculatePlan, canTransitionPlan, explainPlanRefusal, allowedPlanTransitions } from './cost-engine';
-import { CreatePlanDto, CreatePlanItemDto, TransitionPlanDto, UpdatePlanDto, UpdatePlanItemDto } from './dto/treatment-plans.dto';
+import {
+  PLAN_TIMESTAMP_COLUMN,
+  type PlanLineInput,
+  type PlanStatus,
+  calculateLine,
+  calculatePlan,
+  canTransitionPlan,
+  explainPlanRefusal,
+  allowedPlanTransitions,
+} from './cost-engine';
+import {
+  CreatePlanDto,
+  CreatePlanItemDto,
+  TransitionPlanDto,
+  UpdatePlanDto,
+  UpdatePlanItemDto,
+} from './dto/treatment-plans.dto';
 
 /* ═════════════════════════ service ═════════════════════════ */
 
@@ -143,9 +163,9 @@ export class TreatmentPlansService {
 
   async listForPatient(patientId: string, status?: PlanStatus) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'SELECT 1 FROM patients WHERE id = $1', [patientId],
-      );
+      const { rowCount } = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+        patientId,
+      ]);
       if (!rowCount) throw new NotFoundException('Patient not found');
 
       const params: unknown[] = [patientId];
@@ -168,7 +188,9 @@ export class TreatmentPlansService {
 
   async getById(id: string) {
     return this.tx(async (client) => {
-      const { rows } = await client.query<PlanRow>(`${PLAN_SELECT} WHERE p.id = $1`, [id]);
+      const { rows } = await client.query<PlanRow>(`${PLAN_SELECT} WHERE p.id = $1`, [
+        id,
+      ]);
       if (!rows[0]) throw new NotFoundException('Treatment plan not found');
       return this.shape(rows[0], await this.itemsOf(client, id));
     });
@@ -178,7 +200,8 @@ export class TreatmentPlansService {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       const { rows: patient } = await client.query<{ status: string }>(
-        'SELECT status FROM patients WHERE id = $1', [patientId],
+        'SELECT status FROM patients WHERE id = $1',
+        [patientId],
       );
       if (!patient[0]) throw new NotFoundException('Patient not found');
       if (patient[0].status === 'archived') {
@@ -192,12 +215,18 @@ export class TreatmentPlansService {
            (tenant_id, patient_id, title, note, dentist_id, discount_amount, created_by)
          VALUES ($1,$2,btrim($3),$4,$5,$6,$7) RETURNING id`,
         [
-          tenantId, patientId, dto.title, dto.note ?? null,
-          dto.dentistId ?? null, dto.discountAmount ?? 0, userId,
+          tenantId,
+          patientId,
+          dto.title,
+          dto.note ?? null,
+          dto.dentistId ?? null,
+          dto.discountAmount ?? 0,
+          userId,
         ],
       );
       const { rows: full } = await client.query<PlanRow>(
-        `${PLAN_SELECT} WHERE p.id = $1`, [rows[0].id],
+        `${PLAN_SELECT} WHERE p.id = $1`,
+        [rows[0].id],
       );
       return this.shape(full[0], []);
     });
@@ -213,12 +242,14 @@ export class TreatmentPlansService {
     if (dto.title !== undefined) push('title = btrim($$)', dto.title);
     if (dto.note !== undefined) push('note = $$', dto.note || null);
     if (dto.dentistId !== undefined) push('dentist_id = $$', dto.dentistId ?? null);
-    if (dto.discountAmount !== undefined) push('discount_amount = $$', dto.discountAmount);
+    if (dto.discountAmount !== undefined)
+      push('discount_amount = $$', dto.discountAmount);
     if (!sets.length) throw new BadRequestException('Nothing to update');
 
     return this.tx(async (client) => {
       const { rows: cur } = await client.query<{ status: PlanStatus }>(
-        'SELECT status FROM treatment_plans WHERE id = $1 FOR UPDATE', [id],
+        'SELECT status FROM treatment_plans WHERE id = $1 FOR UPDATE',
+        [id],
       );
       if (!cur[0]) throw new NotFoundException('Treatment plan not found');
       if (cur[0].status === 'completed') {
@@ -230,7 +261,8 @@ export class TreatmentPlansService {
         params,
       );
       const { rows: full } = await client.query<PlanRow>(
-        `${PLAN_SELECT} WHERE p.id = $1`, [id],
+        `${PLAN_SELECT} WHERE p.id = $1`,
+        [id],
       );
       return this.shape(full[0], await this.itemsOf(client, id));
     });
@@ -239,7 +271,8 @@ export class TreatmentPlansService {
   async transition(id: string, dto: TransitionPlanDto) {
     return this.tx(async (client) => {
       const { rows: cur } = await client.query<{ status: PlanStatus }>(
-        'SELECT status FROM treatment_plans WHERE id = $1 FOR UPDATE', [id],
+        'SELECT status FROM treatment_plans WHERE id = $1 FOR UPDATE',
+        [id],
       );
       if (!cur[0]) throw new NotFoundException('Treatment plan not found');
       const from = cur[0].status;
@@ -278,10 +311,12 @@ export class TreatmentPlansService {
       }
 
       await client.query(
-        `UPDATE treatment_plans SET ${sets.join(', ')} WHERE id = $1`, params,
+        `UPDATE treatment_plans SET ${sets.join(', ')} WHERE id = $1`,
+        params,
       );
       const { rows: full } = await client.query<PlanRow>(
-        `${PLAN_SELECT} WHERE p.id = $1`, [id],
+        `${PLAN_SELECT} WHERE p.id = $1`,
+        [id],
       );
       return this.shape(full[0], await this.itemsOf(client, id));
     });
@@ -290,7 +325,8 @@ export class TreatmentPlansService {
   async remove(id: string) {
     return this.tx(async (client) => {
       const { rows } = await client.query<{ status: PlanStatus }>(
-        'SELECT status FROM treatment_plans WHERE id = $1', [id],
+        'SELECT status FROM treatment_plans WHERE id = $1',
+        [id],
       );
       if (!rows[0]) throw new NotFoundException('Treatment plan not found');
       // An accepted plan is an agreement with the patient and part of the
@@ -333,7 +369,8 @@ export class TreatmentPlansService {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       const { rows: plan } = await client.query<{ status: PlanStatus }>(
-        'SELECT status FROM treatment_plans WHERE id = $1 FOR UPDATE', [planId],
+        'SELECT status FROM treatment_plans WHERE id = $1 FOR UPDATE',
+        [planId],
       );
       if (!plan[0]) throw new NotFoundException('Treatment plan not found');
       if (plan[0].status === 'completed') {
@@ -345,13 +382,15 @@ export class TreatmentPlansService {
       let unitFee = dto.unitFee;
       if (unitFee === undefined && dto.procedureCodeId) {
         const { rows } = await client.query<{ default_fee: number }>(
-          'SELECT default_fee FROM procedure_codes WHERE id = $1', [dto.procedureCodeId],
+          'SELECT default_fee FROM procedure_codes WHERE id = $1',
+          [dto.procedureCodeId],
         );
         unitFee = rows[0]?.default_fee;
       }
       if (unitFee === undefined && dto.treatmentId) {
         const { rows } = await client.query<{ price: number }>(
-          'SELECT price FROM treatments WHERE id = $1', [dto.treatmentId],
+          'SELECT price FROM treatments WHERE id = $1',
+          [dto.treatmentId],
         );
         unitFee = rows[0]?.price;
       }
@@ -366,17 +405,26 @@ export class TreatmentPlansService {
                  $12)
          RETURNING id`,
         [
-          tenantId, planId, dto.tooth ?? null, dto.surfaces ?? [],
-          dto.procedureCodeId ?? null, dto.treatmentId ?? null,
-          dto.description, dto.quantity ?? 1, unitFee ?? 0,
-          dto.discountAmount ?? 0, dto.sortOrder ?? null, dto.note ?? null,
+          tenantId,
+          planId,
+          dto.tooth ?? null,
+          dto.surfaces ?? [],
+          dto.procedureCodeId ?? null,
+          dto.treatmentId ?? null,
+          dto.description,
+          dto.quantity ?? 1,
+          unitFee ?? 0,
+          dto.discountAmount ?? 0,
+          dto.sortOrder ?? null,
+          dto.note ?? null,
         ],
       );
-      await client.query(
-        'UPDATE treatment_plans SET updated_at = now() WHERE id = $1', [planId],
-      );
+      await client.query('UPDATE treatment_plans SET updated_at = now() WHERE id = $1', [
+        planId,
+      ]);
       const { rows: item } = await client.query<ItemRow>(
-        `${ITEM_SELECT} WHERE i.id = $1`, [rows[0].id],
+        `${ITEM_SELECT} WHERE i.id = $1`,
+        [rows[0].id],
       );
       return mapItem(item[0]);
     });
@@ -392,12 +440,14 @@ export class TreatmentPlansService {
     };
     if (dto.tooth !== undefined) push('tooth = $$', dto.tooth ?? null);
     if (dto.surfaces !== undefined) push('surfaces = $$', dto.surfaces);
-    if (dto.procedureCodeId !== undefined) push('procedure_code_id = $$', dto.procedureCodeId ?? null);
+    if (dto.procedureCodeId !== undefined)
+      push('procedure_code_id = $$', dto.procedureCodeId ?? null);
     if (dto.treatmentId !== undefined) push('treatment_id = $$', dto.treatmentId ?? null);
     if (dto.description !== undefined) push('description = btrim($$)', dto.description);
     if (dto.quantity !== undefined) push('quantity = $$', dto.quantity);
     if (dto.unitFee !== undefined) push('unit_fee = $$', dto.unitFee);
-    if (dto.discountAmount !== undefined) push('discount_amount = $$', dto.discountAmount);
+    if (dto.discountAmount !== undefined)
+      push('discount_amount = $$', dto.discountAmount);
     if (dto.sortOrder !== undefined) push('sort_order = $$', dto.sortOrder);
     if (dto.status !== undefined) push('status = $$', dto.status);
     if (dto.note !== undefined) push('note = $$', dto.note || null);
@@ -412,10 +462,12 @@ export class TreatmentPlansService {
         );
         if (!rows[0]) throw new NotFoundException('Plan item not found');
         await client.query(
-          'UPDATE treatment_plans SET updated_at = now() WHERE id = $1', [rows[0].plan_id],
+          'UPDATE treatment_plans SET updated_at = now() WHERE id = $1',
+          [rows[0].plan_id],
         );
         const { rows: item } = await client.query<ItemRow>(
-          `${ITEM_SELECT} WHERE i.id = $1`, [itemId],
+          `${ITEM_SELECT} WHERE i.id = $1`,
+          [itemId],
         );
         return mapItem(item[0]);
       } catch (err) {
@@ -432,12 +484,13 @@ export class TreatmentPlansService {
   async removeItem(itemId: string) {
     return this.tx(async (client) => {
       const { rows } = await client.query<{ plan_id: string }>(
-        'DELETE FROM treatment_plan_items WHERE id = $1 RETURNING plan_id', [itemId],
+        'DELETE FROM treatment_plan_items WHERE id = $1 RETURNING plan_id',
+        [itemId],
       );
       if (!rows[0]) throw new NotFoundException('Plan item not found');
-      await client.query(
-        'UPDATE treatment_plans SET updated_at = now() WHERE id = $1', [rows[0].plan_id],
-      );
+      await client.query('UPDATE treatment_plans SET updated_at = now() WHERE id = $1', [
+        rows[0].plan_id,
+      ]);
       return { deleted: true as const };
     });
   }

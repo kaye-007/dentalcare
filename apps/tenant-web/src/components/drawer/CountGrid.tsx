@@ -38,7 +38,11 @@ export default function CountGrid({
   };
 
   return (
-    <div className="countgrid" role="group" aria-label={`Count of ${currency} in the drawer`}>
+    <div
+      className="countgrid"
+      role="group"
+      aria-label={`Count of ${currency} in the drawer`}
+    >
       {denominations.map((d) => {
         const qty = value[String(d)] ?? 0;
         const label = formatMoney(d, currency);
@@ -76,7 +80,9 @@ export default function CountGrid({
                 <Plus size={16} aria-hidden />
               </button>
             </div>
-            <span className="countgrid__sub">{qty ? formatMoney(d * qty, currency) : '—'}</span>
+            <span className="countgrid__sub">
+              {qty ? formatMoney(d * qty, currency) : '—'}
+            </span>
           </div>
         );
       })}

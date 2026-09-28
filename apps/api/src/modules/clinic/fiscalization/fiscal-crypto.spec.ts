@@ -13,7 +13,8 @@ import {
  * Fixtures are throwaway self-signed certificates generated for these tests
  * (openssl req -x509 -newkey rsa:2048 -nodes …). They sign nothing real.
  */
-const fixture = (name: string) => readFileSync(join(__dirname, '__fixtures__', name), 'utf8');
+const fixture = (name: string) =>
+  readFileSync(join(__dirname, '__fixtures__', name), 'utf8');
 const key = fixture('test-key.pem');
 const keyPkcs1 = fixture('test-key-pkcs1.pem');
 const cert = fixture('test-cert.pem');
@@ -39,21 +40,25 @@ describe('parseSigningMaterial', () => {
   });
 
   it('refuses a key that belongs to a different certificate', async () => {
-    await expect(parseSigningMaterial(`${key}\n${fixture('other-cert.pem')}`)).rejects.toThrow(
-      /does not belong/,
-    );
+    await expect(
+      parseSigningMaterial(`${key}\n${fixture('other-cert.pem')}`),
+    ).rejects.toThrow(/does not belong/);
   });
 
   it('refuses an expired certificate', async () => {
-    await expect(parseSigningMaterial(`${key}\n${cert}`, new Date('2100-01-01'))).rejects.toThrow(
-      /expired/,
-    );
+    await expect(
+      parseSigningMaterial(`${key}\n${cert}`, new Date('2100-01-01')),
+    ).rejects.toThrow(/expired/);
   });
 
   it('explains a missing key and a passphrase-protected one', async () => {
-    await expect(parseSigningMaterial(cert)).rejects.toBeInstanceOf(FiscalCertificateError);
+    await expect(parseSigningMaterial(cert)).rejects.toBeInstanceOf(
+      FiscalCertificateError,
+    );
     await expect(
-      parseSigningMaterial(`-----BEGIN ENCRYPTED PRIVATE KEY-----\nAAAA\n-----END ENCRYPTED PRIVATE KEY-----\n${cert}`),
+      parseSigningMaterial(
+        `-----BEGIN ENCRYPTED PRIVATE KEY-----\nAAAA\n-----END ENCRYPTED PRIVATE KEY-----\n${cert}`,
+      ),
     ).rejects.toThrow(/passphrase/);
   });
 });
@@ -61,8 +66,13 @@ describe('parseSigningMaterial', () => {
 describe('signRsaSha256', () => {
   it('produces a signature an independent RSA-SHA256 verifier accepts', async () => {
     const m = await parseSigningMaterial(`${key}\n${cert}`);
-    const signature = await signRsaSha256(await importSigningKey(m.pkcs8), 'L12345678A|2026-09-15T10:30:00+02:00|1');
-    const ok = createVerify('RSA-SHA256').update('L12345678A|2026-09-15T10:30:00+02:00|1').verify(cert, signature);
+    const signature = await signRsaSha256(
+      await importSigningKey(m.pkcs8),
+      'L12345678A|2026-09-15T10:30:00+02:00|1',
+    );
+    const ok = createVerify('RSA-SHA256')
+      .update('L12345678A|2026-09-15T10:30:00+02:00|1')
+      .verify(cert, signature);
     expect(ok).toBe(true);
   });
 });

@@ -25,7 +25,13 @@ import {
 import MoneyInput from '../components/MoneyInput';
 import EndDayModal from '../components/drawer/EndDayModal';
 import SessionDetailPanel from '../components/drawer/SessionDetailPanel';
-import { BAND_PILL, SESSION_STATUS, dateOf, timeOf, varianceLabel } from '../components/drawer/drawer-text';
+import {
+  BAND_PILL,
+  SESSION_STATUS,
+  dateOf,
+  timeOf,
+  varianceLabel,
+} from '../components/drawer/drawer-text';
 
 /**
  * The cash drawer: one for the desk. Start the day with the cash in it, take
@@ -119,7 +125,10 @@ function TodayDrawer() {
   const session = current.session;
 
   return (
-    <section className={`card till${session ? ` till--${session.status}` : ' till--closed'}`} aria-labelledby="today-drawer">
+    <section
+      className={`card till${session ? ` till--${session.status}` : ' till--closed'}`}
+      aria-labelledby="today-drawer"
+    >
       <h2 id="today-drawer" className="sr-only">
         Today’s drawer
       </h2>
@@ -134,10 +143,15 @@ function TodayDrawer() {
       {session && (
         <div className="till__open">
           <div className="till__state">
-            <StatusPill status={SESSION_STATUS[session.status].kind} label={SESSION_STATUS[session.status].label} />
+            <StatusPill
+              status={SESSION_STATUS[session.status].kind}
+              label={SESSION_STATUS[session.status].label}
+            />
             <span className="till__since">
               Started by {session.openedBy.name} at {timeOf(session.openedAt)} ·{' '}
-              {session.cashPayments === 1 ? '1 cash payment' : `${session.cashPayments} cash payments`}
+              {session.cashPayments === 1
+                ? '1 cash payment'
+                : `${session.cashPayments} cash payments`}
             </span>
           </div>
 
@@ -151,9 +165,13 @@ function TodayDrawer() {
                   {session.currencies.length > 1 ? `Expected ${c}` : 'Expected cash'}
                 </span>
                 {session.expected ? (
-                  <span className="till__amount">{formatMoney(session.expected[c] ?? 0, c)}</span>
+                  <span className="till__amount">
+                    {formatMoney(session.expected[c] ?? 0, c)}
+                  </span>
                 ) : (
-                  <span className="till__amount till__amount--blind">Revealed after you count</span>
+                  <span className="till__amount till__amount--blind">
+                    Revealed after you count
+                  </span>
                 )}
               </div>
             ))}
@@ -161,17 +179,29 @@ function TodayDrawer() {
 
           {session.status === 'open' && (
             <div className="drawer-actions">
-              <button type="button" className="btn btn--primary" onClick={() => setDialog('end')}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setDialog('end')}
+              >
                 <Lock size={15} aria-hidden /> Close drawer
               </button>
-              <button type="button" className="btn btn--ghost" onClick={() => setDialog('cash_out')}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setDialog('cash_out')}
+              >
                 <ArrowUpFromLine size={15} aria-hidden /> Take cash out
               </button>
             </div>
           )}
           {session.status === 'counting' && (
             <div className="drawer-actions">
-              <button type="button" className="btn btn--primary" onClick={() => setDialog('end')}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setDialog('end')}
+              >
                 Continue closing
               </button>
             </div>
@@ -179,11 +209,15 @@ function TodayDrawer() {
           {session.status === 'pending_approval' && (
             <>
               <p className="formwarn">
-                The count differs by more than the clinic accepts without a manager. A manager approves it
-                before the next day can start.
+                The count differs by more than the clinic accepts without a manager. A
+                manager approves it before the next day can start.
               </p>
               <div className="drawer-actions">
-                <button type="button" className="btn btn--primary" onClick={() => setDialog('end')}>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => setDialog('end')}
+                >
                   Approve with a manager’s PIN
                 </button>
               </div>
@@ -202,7 +236,11 @@ function TodayDrawer() {
         />
       )}
       {session && dialog === 'cash_out' && (
-        <CashOutModal session={session} onClose={() => setDialog(null)} onDone={afterChange} />
+        <CashOutModal
+          session={session}
+          onClose={() => setDialog(null)}
+          onDone={afterChange}
+        />
       )}
     </section>
   );
@@ -251,7 +289,10 @@ export function StartDay({
     setError(null);
     try {
       const s = await drawerApi.open(
-        { ...(drawerId ? { drawerId } : {}), floats: [{ currency, amount: amount ?? 0 }] },
+        {
+          ...(drawerId ? { drawerId } : {}),
+          floats: [{ currency, amount: amount ?? 0 }],
+        },
         key,
       );
       onStarted(s);
@@ -266,11 +307,17 @@ export function StartDay({
     <div className="startday">
       <div className="startday__body">
         <p className="startday__title">Drawer closed</p>
-        <p className="muted small">Count the cash in it now. Cash payments go in once it is started.</p>
+        <p className="muted small">
+          Count the cash in it now. Cash payments go in once it is started.
+        </p>
         {current.drawers.length > 1 && (
           <label className="field">
             <span>Drawer</span>
-            <select value={drawerId} onChange={(e) => setDrawerId(e.target.value)} required>
+            <select
+              value={drawerId}
+              onChange={(e) => setDrawerId(e.target.value)}
+              required
+            >
               {current.drawers.map((d) => (
                 <option key={d.id} value={d.id} disabled={Boolean(d.heldBy)}>
                   {d.name}
@@ -282,11 +329,23 @@ export function StartDay({
         )}
         <label className="startday__amount">
           <span className="till__label">Opening cash · {currency}</span>
-          <MoneyInput value={amount} onChange={setAmount} placeholder="0" aria-label="Opening cash" />
+          <MoneyInput
+            value={amount}
+            onChange={setAmount}
+            placeholder="0"
+            aria-label="Opening cash"
+          />
         </label>
         {error && <p className="formerror">{error}</p>}
-        <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>
-          {busy ? 'Starting…' : `${submitLabel} with ${formatMoney(amount ?? 0, currency)}`}
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={busy}
+          onClick={() => void submit()}
+        >
+          {busy
+            ? 'Starting…'
+            : `${submitLabel} with ${formatMoney(amount ?? 0, currency)}`}
         </button>
       </div>
     </div>
@@ -316,7 +375,13 @@ function CashOutModal({
     setBusy(true);
     setError(null);
     try {
-      onDone(await drawerApi.drop(session.id, { currency, amount, reason: reason.trim() }, key));
+      onDone(
+        await drawerApi.drop(
+          session.id,
+          { currency, amount, reason: reason.trim() },
+          key,
+        ),
+      );
     } catch (err) {
       setError(humanError(err, 'That could not be recorded.'));
     } finally {
@@ -325,13 +390,20 @@ function CashOutModal({
   }
 
   return (
-    <Modal title="Take cash out" subtitle="Recorded against today’s drawer" onClose={onClose}>
+    <Modal
+      title="Take cash out"
+      subtitle="Recorded against today’s drawer"
+      onClose={onClose}
+    >
       <form className="modal__body" onSubmit={submit}>
         <div className="grid2">
           {session.currencies.length > 1 && (
             <label className="field">
               <span>Currency</span>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyCode)}>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
+              >
                 {session.currencies.map((c) => (
                   <option key={c}>{c}</option>
                 ))}
@@ -361,7 +433,11 @@ function CashOutModal({
               Cancel
             </button>
             <button className="btn btn--primary" disabled={busy}>
-              {busy ? 'Saving…' : amount ? `Take out ${formatMoney(amount, currency)}` : 'Take cash out'}
+              {busy
+                ? 'Saving…'
+                : amount
+                  ? `Take out ${formatMoney(amount, currency)}`
+                  : 'Take cash out'}
             </button>
           </div>
         </div>
@@ -409,7 +485,9 @@ function Oversight() {
 
   const today = isoDaysAgo(0);
   const attention = (rows ?? []).filter(
-    (r) => r.status === 'pending_approval' || (['open', 'counting'].includes(r.status) && r.businessDate < today),
+    (r) =>
+      r.status === 'pending_approval' ||
+      (['open', 'counting'].includes(r.status) && r.businessDate < today),
   );
 
   return (
@@ -423,13 +501,22 @@ function Oversight() {
             {attention.map((r) => (
               <li key={r.id} className="drawer-choice">
                 <span>
-                  <strong>{r.drawer.name}</strong> · {r.openedBy.name} · {dateOf(r.businessDate)}{' '}
+                  <strong>{r.drawer.name}</strong> · {r.openedBy.name} ·{' '}
+                  {dateOf(r.businessDate)}{' '}
                   <StatusPill
                     status={SESSION_STATUS[r.status].kind}
-                    label={r.status === 'pending_approval' ? 'Difference to approve' : 'Left open'}
+                    label={
+                      r.status === 'pending_approval'
+                        ? 'Difference to approve'
+                        : 'Left open'
+                    }
                   />
                 </span>
-                <button type="button" className="btn btn--primary btn--sm" onClick={() => setOpenId(r.id)}>
+                <button
+                  type="button"
+                  className="btn btn--primary btn--sm"
+                  onClick={() => setOpenId(r.id)}
+                >
                   Review
                 </button>
               </li>
@@ -445,14 +532,28 @@ function Oversight() {
         <div className="toolbar toolbar--filters pad drawerrange">
           <label className="field">
             <span>From</span>
-            <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+            <input
+              type="date"
+              value={from}
+              max={to}
+              onChange={(e) => setFrom(e.target.value)}
+            />
           </label>
           <label className="field">
             <span>To</span>
-            <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+            <input
+              type="date"
+              value={to}
+              min={from}
+              onChange={(e) => setTo(e.target.value)}
+            />
           </label>
           <label className="checkrow">
-            <input type="checkbox" checked={varianceOnly} onChange={(e) => setVarianceOnly(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={varianceOnly}
+              onChange={(e) => setVarianceOnly(e.target.checked)}
+            />
             <span>Differences only</span>
           </label>
         </div>
@@ -461,7 +562,10 @@ function Oversight() {
           <LoadingRows rows={3} label="Loading past days" />
         ) : rows.length === 0 ? (
           <div className="pad">
-            <EmptyState icon={<Banknote size={22} />} title="No drawer sessions in these dates" />
+            <EmptyState
+              icon={<Banknote size={22} />}
+              title="No drawer sessions in these dates"
+            />
           </div>
         ) : (
           <div className="table-scroll">
@@ -481,7 +585,11 @@ function Oversight() {
                 {rows.map((r) => (
                   <tr key={r.id} className="row--click" onClick={() => setOpenId(r.id)}>
                     <td>
-                      <button type="button" className="table__link linkbtn" onClick={() => setOpenId(r.id)}>
+                      <button
+                        type="button"
+                        className="table__link linkbtn"
+                        onClick={() => setOpenId(r.id)}
+                      >
                         {dateOf(r.businessDate)}
                       </button>
                       {/* On a phone: who ran the drawer, under the day. */}
@@ -490,7 +598,10 @@ function Oversight() {
                     <td className="hide-sm hide-md">{r.drawer.name}</td>
                     <td className="hide-sm">{r.openedBy.name}</td>
                     <td className="hide-sm">
-                      <StatusPill status={SESSION_STATUS[r.status].kind} label={SESSION_STATUS[r.status].label} />
+                      <StatusPill
+                        status={SESSION_STATUS[r.status].kind}
+                        label={SESSION_STATUS[r.status].label}
+                      />
                     </td>
                     <td>
                       {r.reviews.length === 0 ? (
@@ -507,7 +618,10 @@ function Oversight() {
                       ) : (
                         r.reviews.map((v) => (
                           <span key={v.currency} className="result-chip">
-                            <StatusPill status={BAND_PILL[v.band].kind} label={varianceLabel(v.variance, v.currency)} />
+                            <StatusPill
+                              status={BAND_PILL[v.band].kind}
+                              label={varianceLabel(v.variance, v.currency)}
+                            />
                           </span>
                         ))
                       )}

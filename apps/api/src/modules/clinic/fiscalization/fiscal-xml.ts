@@ -68,7 +68,9 @@ export function renderXml(node: XmlNode): string {
     (e): e is [string, string] => e[1] !== undefined,
   );
   const ns = entries.filter(([k]) => k === 'xmlns');
-  const plain = entries.filter(([k]) => k !== 'xmlns').sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const plain = entries
+    .filter(([k]) => k !== 'xmlns')
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const attrs = [...ns, ...plain].map(([k, v]) => ` ${k}="${escapeAttr(v)}"`).join('');
   const inner = (node.children ?? [])
     .map((c) => (typeof c === 'string' ? escapeText(c) : renderXml(c)))
@@ -80,7 +82,8 @@ export function renderXml(node: XmlNode): string {
 
 /** Minor units -> "1234.50". Exact: integer arithmetic, never a float. */
 export function money(minor: number): string {
-  if (!Number.isSafeInteger(minor)) throw new RangeError(`not an amount in minor units: ${minor}`);
+  if (!Number.isSafeInteger(minor))
+    throw new RangeError(`not an amount in minor units: ${minor}`);
   const sign = minor < 0 ? '-' : '';
   const abs = Math.abs(minor);
   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
@@ -155,7 +158,9 @@ export interface FiscalInvoiceInput {
   totalPrice: number;
 }
 
-export function invNum(i: Pick<FiscalInvoiceInput, 'invOrdNum' | 'year' | 'tcrCode'>): string {
+export function invNum(
+  i: Pick<FiscalInvoiceInput, 'invOrdNum' | 'year' | 'tcrCode'>,
+): string {
   return `${i.invOrdNum}/${i.year}/${i.tcrCode}`;
 }
 
@@ -169,7 +174,8 @@ export function fiscalTotals(i: FiscalInvoiceInput) {
   let vat = 0;
   let price = 0;
   for (const item of i.items) {
-    if (item.total - item.taxAmount < 0) throw new FiscalValidationError(`"${item.name}" costs less than its VAT`);
+    if (item.total - item.taxAmount < 0)
+      throw new FiscalValidationError(`"${item.name}" costs less than its VAT`);
     priceWoVat += item.total - item.taxAmount;
     vat += item.taxAmount;
     price += item.total;
@@ -224,7 +230,11 @@ export async function computeIic(
 }
 
 /** The address the QR code opens: the authority's own check of this invoice. */
-export function verificationUrl(base: string, i: FiscalInvoiceInput, iic: string): string {
+export function verificationUrl(
+  base: string,
+  i: FiscalInvoiceInput,
+  iic: string,
+): string {
   const q = new URLSearchParams({
     iic,
     tin: i.nipt,
@@ -298,8 +308,15 @@ export interface RequestHeader {
   subsequentDelivery?: 'NOINTERNET' | 'BOUNDBOOK' | 'SERVICE' | 'TECHNICALERROR';
 }
 
-export function newHeader(timeZone: string, subsequent?: RequestHeader['subsequentDelivery']): RequestHeader {
-  return { uuid: randomUUID(), sendDateTime: issueDateTime(new Date(), timeZone), subsequentDelivery: subsequent };
+export function newHeader(
+  timeZone: string,
+  subsequent?: RequestHeader['subsequentDelivery'],
+): RequestHeader {
+  return {
+    uuid: randomUUID(),
+    sendDateTime: issueDateTime(new Date(), timeZone),
+    subsequentDelivery: subsequent,
+  };
 }
 
 /** The unsigned RegisterInvoiceRequest, canonical. */
@@ -367,7 +384,10 @@ export interface CashDepositInput {
   changeDateTime: string;
 }
 
-export function registerCashDepositXml(c: CashDepositInput, header: RequestHeader): string {
+export function registerCashDepositXml(
+  c: CashDepositInput,
+  header: RequestHeader,
+): string {
   return renderXml({
     name: 'RegisterCashDepositRequest',
     attrs: { xmlns: FISCAL_NS, Id: 'Request', Version: '3' },
@@ -390,7 +410,11 @@ export function registerCashDepositXml(c: CashDepositInput, header: RequestHeade
 function headerNode(h: RequestHeader): XmlNode {
   return {
     name: 'Header',
-    attrs: { SendDateTime: h.sendDateTime, SubseqDelivType: h.subsequentDelivery, UUID: h.uuid },
+    attrs: {
+      SendDateTime: h.sendDateTime,
+      SubseqDelivType: h.subsequentDelivery,
+      UUID: h.uuid,
+    },
   };
 }
 
@@ -419,7 +443,10 @@ export async function signRequest(
     attrs: withNs ? { xmlns: DSIG_NS } : {},
     children: [
       { name: 'CanonicalizationMethod', attrs: { Algorithm: EXC_C14N } },
-      { name: 'SignatureMethod', attrs: { Algorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256' } },
+      {
+        name: 'SignatureMethod',
+        attrs: { Algorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256' },
+      },
       {
         name: 'Reference',
         attrs: { URI: '#Request' },
@@ -427,18 +454,28 @@ export async function signRequest(
           {
             name: 'Transforms',
             children: [
-              { name: 'Transform', attrs: { Algorithm: 'http://www.w3.org/2000/09/xmldsig#enveloped-signature' } },
+              {
+                name: 'Transform',
+                attrs: {
+                  Algorithm: 'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
+                },
+              },
               { name: 'Transform', attrs: { Algorithm: EXC_C14N } },
             ],
           },
-          { name: 'DigestMethod', attrs: { Algorithm: 'http://www.w3.org/2001/04/xmlenc#sha256' } },
+          {
+            name: 'DigestMethod',
+            attrs: { Algorithm: 'http://www.w3.org/2001/04/xmlenc#sha256' },
+          },
           { name: 'DigestValue', children: [digest] },
         ],
       },
     ],
   });
 
-  const signatureValue = (await signRsaSha256(key, renderXml(signedInfo(true)))).toString('base64');
+  const signatureValue = (await signRsaSha256(key, renderXml(signedInfo(true)))).toString(
+    'base64',
+  );
   const signature = renderXml({
     name: 'Signature',
     attrs: { xmlns: DSIG_NS },
@@ -448,7 +485,12 @@ export async function signRequest(
       {
         name: 'KeyInfo',
         children: [
-          { name: 'X509Data', children: [{ name: 'X509Certificate', children: [certificateDer.toString('base64')] }] },
+          {
+            name: 'X509Data',
+            children: [
+              { name: 'X509Certificate', children: [certificateDer.toString('base64')] },
+            ],
+          },
         ],
       },
     ],
@@ -472,7 +514,9 @@ export type CisAnswer =
   | { ok: false; faultCode: string | null; faultString: string };
 
 function tag(xml: string, name: string): string | null {
-  const m = new RegExp(`<(?:[A-Za-z0-9]+:)?${name}(?:\\s[^>]*)?>([^<]*)</(?:[A-Za-z0-9]+:)?${name}>`).exec(xml);
+  const m = new RegExp(
+    `<(?:[A-Za-z0-9]+:)?${name}(?:\\s[^>]*)?>([^<]*)</(?:[A-Za-z0-9]+:)?${name}>`,
+  ).exec(xml);
   return m ? decode(m[1]!.trim()) : null;
 }
 
@@ -492,8 +536,13 @@ function decode(s: string): string {
  */
 export function parseCisResponse(xml: string, codeElement: 'FIC' | 'FCDC'): CisAnswer {
   const fault = tag(xml, 'faultstring');
-  if (fault !== null) return { ok: false, faultCode: tag(xml, 'code'), faultString: fault };
+  if (fault !== null)
+    return { ok: false, faultCode: tag(xml, 'code'), faultString: fault };
   const code = tag(xml, codeElement);
   if (code) return { ok: true, code };
-  return { ok: false, faultCode: null, faultString: 'The tax authority returned an answer this system does not recognise' };
+  return {
+    ok: false,
+    faultCode: null,
+    faultString: 'The tax authority returned an answer this system does not recognise',
+  };
 }

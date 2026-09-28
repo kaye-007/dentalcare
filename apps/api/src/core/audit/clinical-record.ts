@@ -102,7 +102,9 @@ export async function withdrawEntry<Row extends ClinicalRow>(
   const spec = CLINICAL_TABLES[req.table];
   const reason = req.reason.trim();
   if (reason.length < 3) {
-    throw new BadRequestException('Say why this entry is wrong — the record keeps your reason');
+    throw new BadRequestException(
+      'Say why this entry is wrong — the record keeps your reason',
+    );
   }
 
   const { rows } = await client.query<Row & { signed_at?: unknown }>(
@@ -171,7 +173,8 @@ export async function signEntry<Row extends ClinicalRow & { signed_at: unknown }
     [req.id],
   );
   const row = rows[0];
-  if (!row || row.entered_in_error_at) throw new NotFoundException('That entry was not found');
+  if (!row || row.entered_in_error_at)
+    throw new NotFoundException('That entry was not found');
   if (row.signed_at) throw new ConflictException('That entry is already signed');
   req.assert?.(row);
 

@@ -72,12 +72,15 @@ export class IdempotencyInterceptor implements NestInterceptor {
     private readonly request: RequestContextService,
   ) {}
 
-  async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<unknown>> {
+  async intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<Observable<unknown>> {
     const handled = () => next.handle();
-    const marked = this.reflector.getAllAndOverride<boolean | undefined>(IDEMPOTENT_METADATA_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const marked = this.reflector.getAllAndOverride<boolean | undefined>(
+      IDEMPOTENT_METADATA_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     const key = this.request.get()?.idempotencyKey ?? null;
     const tenantId = this.tenant.getTenantId();
     if (!marked || !key || !tenantId) return handled();
@@ -89,7 +92,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
       .update(JSON.stringify([req.method, path, req.user?.sub ?? null, req.body ?? null]))
       .digest('hex');
 
-    const claim = await this.claim(tenantId, key, req.method, path, hash, req.user?.sub ?? null);
+    const claim = await this.claim(
+      tenantId,
+      key,
+      req.method,
+      path,
+      hash,
+      req.user?.sub ?? null,
+    );
 
     switch (claim.kind) {
       case 'mismatch':
@@ -111,8 +121,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
 
     return handled().pipe(
-      mergeMap((body) => from(this.complete(tenantId, key, res.statusCode, body).then(() => body))),
-      catchError((err: unknown) => from(this.release(tenantId, key)).pipe(mergeMap(() => throwError(() => err)))),
+      mergeMap((body) =>
+        from(this.complete(tenantId, key, res.statusCode, body).then(() => body)),
+      ),
+      catchError((err: unknown) =>
+        from(this.release(tenantId, key)).pipe(mergeMap(() => throwError(() => err))),
+      ),
     );
   }
 
@@ -160,7 +174,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
       const ageMs = Date.now() - new Date(row.created_at).getTime();
       if (row.status === 'completed') {
         if (ageMs <= REPLAY_WINDOW_HOURS * 3_600_000) {
-          return { kind: 'replay', status: row.response_status ?? 200, body: row.response_body };
+          return {
+            kind: 'replay',
+            status: row.response_status ?? 200,
+            body: row.response_body,
+          };
         }
       } else if (ageMs < STALE_CLAIM_MS) {
         return { kind: 'in_progress' };
@@ -178,7 +196,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
     });
   }
 
-  private async complete(tenantId: string, key: string, status: number, body: unknown): Promise<void> {
+  private async complete(
+    tenantId: string,
+    key: string,
+    status: number,
+    body: unknown,
+  ): Promise<void> {
     await this.db.withTenant(tenantId, (client) =>
       client.query(
         `UPDATE idempotency_keys
@@ -192,7 +215,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
   private async release(tenantId: string, key: string): Promise<void> {
     await this.db
       .withTenant(tenantId, (client) =>
-        client.query(`DELETE FROM idempotency_keys WHERE key = $1 AND status = 'in_progress'`, [key]),
+        client.query(
+          `DELETE FROM idempotency_keys WHERE key = $1 AND status = 'in_progress'`,
+          [key],
+        ),
       )
       .catch(() => undefined);
   }

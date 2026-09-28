@@ -49,13 +49,18 @@ export class FiscalSchedulerService implements OnModuleInit, OnModuleDestroy {
         if (Date.now() - started > 40_000) break;
         try {
           const sent = await this.fiscal.deliverDue(tenant_id);
-          if (sent) this.logger.log(`tenant ${tenant_id}: ${sent} fiscal invoice(s) re-sent`);
+          if (sent)
+            this.logger.log(`tenant ${tenant_id}: ${sent} fiscal invoice(s) re-sent`);
         } catch (err) {
-          this.logger.error(`tenant ${tenant_id}: fiscal delivery failed: ${err instanceof Error ? err.message : err}`);
+          this.logger.error(
+            `tenant ${tenant_id}: fiscal delivery failed: ${err instanceof Error ? err.message : err}`,
+          );
         }
       }
     } catch (err) {
-      this.logger.error(`fiscal pass failed: ${err instanceof Error ? err.message : err}`);
+      this.logger.error(
+        `fiscal pass failed: ${err instanceof Error ? err.message : err}`,
+      );
     } finally {
       this.running = false;
     }

@@ -59,7 +59,8 @@ const CONFLICTS: Record<string, { code: string; message: string }> = {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const optionalUuid = (value: string | undefined, what: string) => {
-  if (value && !UUID.test(value)) throw new BadRequestException(`${what} is not a valid id`);
+  if (value && !UUID.test(value))
+    throw new BadRequestException(`${what} is not a valid id`);
   return value || undefined;
 };
 
@@ -209,11 +210,18 @@ export class AppointmentsService {
   /** Full transition history, newest first. */
   async history(id: string) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query('SELECT 1 FROM appointments WHERE id = $1', [id]);
+      const { rowCount } = await client.query(
+        'SELECT 1 FROM appointments WHERE id = $1',
+        [id],
+      );
       if (!rowCount) throw new NotFoundException('Appointment not found');
       const { rows } = await client.query<{
-        id: string; from_status: string | null; to_status: string;
-        note: string | null; actor_name: string | null; created_at: string;
+        id: string;
+        from_status: string | null;
+        to_status: string;
+        note: string | null;
+        actor_name: string | null;
+        created_at: string;
       }>(
         `SELECT e.id, e.from_status, e.to_status, e.note,
                 u.full_name AS actor_name, e.created_at
@@ -252,8 +260,14 @@ export class AppointmentsService {
               starts_at, ends_at, created_by)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
           [
-            tenantId, dto.patientId, dto.staffId ?? null, dto.operatoryId ?? null,
-            dto.reason, dto.startsAt, dto.endsAt, userId,
+            tenantId,
+            dto.patientId,
+            dto.staffId ?? null,
+            dto.operatoryId ?? null,
+            dto.reason,
+            dto.startsAt,
+            dto.endsAt,
+            userId,
           ],
         );
         id = rows[0].id;
@@ -262,9 +276,15 @@ export class AppointmentsService {
       }
 
       await this.recordEvent(client, tenantId, id, null, 'scheduled', null, userId);
-      const { rows: full } = await client.query<ApptRow>(`${SELECT} WHERE a.id = $1`, [id]);
+      const { rows: full } = await client.query<ApptRow>(`${SELECT} WHERE a.id = $1`, [
+        id,
+      ]);
       const appointment = map(full[0]);
-      await this.events.emit({ type: 'appointment.created', appointment, actorId: userId });
+      await this.events.emit({
+        type: 'appointment.created',
+        appointment,
+        actorId: userId,
+      });
       return appointment;
     });
   }
@@ -279,8 +299,12 @@ export class AppointmentsService {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       const { rows: cur } = await client.query<{
-        patient_id: string; staff_id: string | null; operatory_id: string | null;
-        starts_at: string; ends_at: string; status: AppointmentStatus;
+        patient_id: string;
+        staff_id: string | null;
+        operatory_id: string | null;
+        starts_at: string;
+        ends_at: string;
+        status: AppointmentStatus;
       }>(
         `SELECT patient_id, staff_id, operatory_id, starts_at, ends_at, status
            FROM appointments WHERE id = $1 FOR UPDATE`,
@@ -321,15 +345,23 @@ export class AppointmentsService {
                   updated_at = now()
             WHERE id = $8`,
           [
-            next.patientId, next.staffId, next.operatoryId,
-            next.startsAt, next.endsAt, dto.reason ?? null, moved, id,
+            next.patientId,
+            next.staffId,
+            next.operatoryId,
+            next.startsAt,
+            next.endsAt,
+            dto.reason ?? null,
+            moved,
+            id,
           ],
         );
       } catch (err) {
         this.rethrowConflict(err);
       }
 
-      const { rows: full } = await client.query<ApptRow>(`${SELECT} WHERE a.id = $1`, [id]);
+      const { rows: full } = await client.query<ApptRow>(`${SELECT} WHERE a.id = $1`, [
+        id,
+      ]);
       const appointment = map(full[0]);
       await this.events.emit(
         moved
@@ -388,16 +420,27 @@ export class AppointmentsService {
       }
 
       try {
-        await client.query(`UPDATE appointments SET ${sets.join(', ')} WHERE id = $1`, params);
+        await client.query(
+          `UPDATE appointments SET ${sets.join(', ')} WHERE id = $1`,
+          params,
+        );
       } catch (err) {
         this.rethrowConflict(err);
       }
 
       await this.recordEvent(
-        client, tenantId, id, from, to, dto.reason?.trim() || dto.note?.trim() || null, userId,
+        client,
+        tenantId,
+        id,
+        from,
+        to,
+        dto.reason?.trim() || dto.note?.trim() || null,
+        userId,
       );
 
-      const { rows: full } = await client.query<ApptRow>(`${SELECT} WHERE a.id = $1`, [id]);
+      const { rows: full } = await client.query<ApptRow>(`${SELECT} WHERE a.id = $1`, [
+        id,
+      ]);
       const appointment = map(full[0]);
       await this.events.emit({
         type: 'appointment.status_changed',
@@ -412,13 +455,19 @@ export class AppointmentsService {
 
   /** The clinic's zone and opening hours, with the defaults a new clinic starts on. */
   private async clinicClock(client: PoolClient) {
-    const { rows } = await client.query<{ timezone: string | null; working_hours: unknown }>(
-      'SELECT timezone, working_hours FROM clinic_settings LIMIT 1',
-    );
-    const zone = rows[0]?.timezone && isTimeZone(rows[0].timezone) ? rows[0].timezone : 'Europe/Tirane';
+    const { rows } = await client.query<{
+      timezone: string | null;
+      working_hours: unknown;
+    }>('SELECT timezone, working_hours FROM clinic_settings LIMIT 1');
+    const zone =
+      rows[0]?.timezone && isTimeZone(rows[0].timezone)
+        ? rows[0].timezone
+        : 'Europe/Tirane';
     const hours = rows[0]?.working_hours;
     const opening =
-      Array.isArray(hours) && hours.length === 7 ? (hours as OpeningDay[]) : DEFAULT_HOURS;
+      Array.isArray(hours) && hours.length === 7
+        ? (hours as OpeningDay[])
+        : DEFAULT_HOURS;
     return { zone, opening };
   }
 
@@ -452,8 +501,14 @@ export class AppointmentsService {
     const operatoryId = optionalUuid(opts.operatoryId, 'Room');
     const preferOperatoryId = optionalUuid(opts.preferOperatoryId, 'Room');
     const ignore = optionalUuid(opts.ignore, 'Appointment');
-    const days = Math.min(62, Math.max(1, Math.trunc(opts.days ?? (opts.spread ? 14 : 1))));
-    const limit = Math.min(100, Math.max(1, Math.trunc(opts.limit ?? (opts.spread ? 9 : 96))));
+    const days = Math.min(
+      62,
+      Math.max(1, Math.trunc(opts.days ?? (opts.spread ? 14 : 1))),
+    );
+    const limit = Math.min(
+      100,
+      Math.max(1, Math.trunc(opts.limit ?? (opts.spread ? 9 : 96))),
+    );
 
     return this.tx(async (client) => {
       const { zone, opening } = await this.clinicClock(client);

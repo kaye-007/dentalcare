@@ -1,9 +1,24 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
-import { CreateAvailabilityDto, SetHomeRoomDto, UpdateAvailabilityDto } from './dto/scheduling.dto';
-import { AV_SELECT, AvailabilityRow, EXCLUSION_VIOLATION, FK_VIOLATION, mapAvailability } from './operatories.service';
+import {
+  CreateAvailabilityDto,
+  SetHomeRoomDto,
+  UpdateAvailabilityDto,
+} from './dto/scheduling.dto';
+import {
+  AV_SELECT,
+  AvailabilityRow,
+  EXCLUSION_VIOLATION,
+  FK_VIOLATION,
+  mapAvailability,
+} from './operatories.service';
 
 @Injectable()
 export class AvailabilityService {
@@ -38,7 +53,9 @@ export class AvailabilityService {
     }
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const staff = await client.query('SELECT 1 FROM users WHERE id = $1', [dto.staffId]);
+      const staff = await client.query('SELECT 1 FROM users WHERE id = $1', [
+        dto.staffId,
+      ]);
       if (!staff.rowCount) throw new NotFoundException('Staff member not found');
 
       try {
@@ -46,10 +63,18 @@ export class AvailabilityService {
           `INSERT INTO staff_availability
              (tenant_id, staff_id, weekday, starts_at, ends_at, operatory_id)
            VALUES ($1,$2,$3,$4::time,$5::time,$6) RETURNING id`,
-          [tenantId, dto.staffId, dto.weekday, dto.startsAt, dto.endsAt, dto.operatoryId ?? null],
+          [
+            tenantId,
+            dto.staffId,
+            dto.weekday,
+            dto.startsAt,
+            dto.endsAt,
+            dto.operatoryId ?? null,
+          ],
         );
         const { rows: full } = await client.query<AvailabilityRow>(
-          `${AV_SELECT} WHERE a.id = $1`, [rows[0].id],
+          `${AV_SELECT} WHERE a.id = $1`,
+          [rows[0].id],
         );
         return mapAvailability(full[0]);
       } catch (err) {
@@ -89,7 +114,8 @@ export class AvailabilityService {
         );
         if (!rows[0]) throw new NotFoundException('Availability entry not found');
         const { rows: full } = await client.query<AvailabilityRow>(
-          `${AV_SELECT} WHERE a.id = $1`, [id],
+          `${AV_SELECT} WHERE a.id = $1`,
+          [id],
         );
         return mapAvailability(full[0]);
       } catch (err) {
@@ -109,7 +135,8 @@ export class AvailabilityService {
   async remove(id: string) {
     return this.tx(async (client) => {
       const { rowCount } = await client.query(
-        'DELETE FROM staff_availability WHERE id = $1', [id],
+        'DELETE FROM staff_availability WHERE id = $1',
+        [id],
       );
       if (!rowCount) throw new NotFoundException('Availability entry not found');
       return { deleted: true as const };
@@ -122,7 +149,8 @@ export class AvailabilityService {
     return this.tx(async (client) => {
       if (operatoryId) {
         const room = await client.query<{ is_active: boolean }>(
-          'SELECT is_active FROM operatories WHERE id = $1', [operatoryId],
+          'SELECT is_active FROM operatories WHERE id = $1',
+          [operatoryId],
         );
         if (!room.rowCount) throw new NotFoundException('Room not found');
         if (!room.rows[0].is_active) {
@@ -130,7 +158,8 @@ export class AvailabilityService {
         }
       }
       const { rowCount } = await client.query(
-        'UPDATE users SET home_operatory_id = $2 WHERE id = $1', [staffId, operatoryId],
+        'UPDATE users SET home_operatory_id = $2 WHERE id = $1',
+        [staffId, operatoryId],
       );
       if (!rowCount) throw new NotFoundException('Staff member not found');
       return { staffId, homeOperatoryId: operatoryId };
@@ -141,7 +170,8 @@ export class AvailabilityService {
   async ownerOf(id: string): Promise<string | null> {
     return this.tx(async (client) => {
       const { rows } = await client.query<{ staff_id: string }>(
-        'SELECT staff_id FROM staff_availability WHERE id = $1', [id],
+        'SELECT staff_id FROM staff_availability WHERE id = $1',
+        [id],
       );
       return rows[0]?.staff_id ?? null;
     });

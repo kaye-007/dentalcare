@@ -43,7 +43,11 @@ export default function DrawerChip() {
         : { text: 'Drawer awaits approval', tone: 'danger' };
 
   return (
-    <Link to="/drawer" className={`drawerchip drawerchip--${tone}`} aria-label={`${text}. Go to the cash drawer`}>
+    <Link
+      to="/drawer"
+      className={`drawerchip drawerchip--${tone}`}
+      aria-label={`${text}. Go to the cash drawer`}
+    >
       <Banknote size={15} aria-hidden />
       <span className="drawerchip__text">{text}</span>
     </Link>

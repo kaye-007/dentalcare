@@ -41,7 +41,10 @@ export function detectDelimiter(text: string): CsvDelimiter {
  * Parse CSV text into rows of fields. Blank lines are dropped; a trailing
  * delimiter produces a trailing empty field, as it does in the spreadsheet.
  */
-export function parseCsv(input: string, delimiter?: CsvDelimiter): {
+export function parseCsv(
+  input: string,
+  delimiter?: CsvDelimiter,
+): {
   rows: string[][];
   delimiter: CsvDelimiter;
 } {

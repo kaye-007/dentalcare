@@ -83,7 +83,8 @@
      look we are leaving behind. */
   --shadow-xs: 0 1px 2px rgba(28, 24, 18, 0.04);
   --shadow-sm: 0 2px 8px -2px rgba(28, 24, 18, 0.06), 0 1px 2px rgba(28, 24, 18, 0.03);
-  --shadow: 0 8px 24px -6px rgba(28, 24, 18, 0.1), 0 24px 56px -16px rgba(28, 24, 18, 0.16);
+  --shadow:
+    0 8px 24px -6px rgba(28, 24, 18, 0.1), 0 24px 56px -16px rgba(28, 24, 18, 0.16);
   --shadow-panel: -16px 0 48px -16px rgba(28, 24, 18, 0.2);
   --ring: 0 0 0 3px rgba(28, 28, 31, 0.14);
 
@@ -239,7 +240,9 @@ input[type='radio'] {
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border-right: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: var(--glass-edge), 1px 0 24px -10px rgba(28, 24, 18, 0.14);
+  box-shadow:
+    var(--glass-edge),
+    1px 0 24px -10px rgba(28, 24, 18, 0.14);
 }
 .sidebar__top {
   display: flex;
@@ -378,7 +381,6 @@ input[type='radio'] {
 .nav__item {
   border-radius: var(--radius-pill);
 }
-
 
 .sidebar__foot {
   display: flex;
@@ -841,7 +843,9 @@ a.crumbs__here:hover {
   backdrop-filter: blur(10px);
   border-color: rgba(255, 255, 255, 0.8);
   color: var(--ink-2);
-  box-shadow: var(--glass-edge), 0 2px 10px -4px rgba(28, 24, 18, 0.16);
+  box-shadow:
+    var(--glass-edge),
+    0 2px 10px -4px rgba(28, 24, 18, 0.16);
 }
 .btn--ghost:hover:not(:disabled) {
   background: var(--surface-2);
@@ -1270,7 +1274,6 @@ a.crumbs__here:hover {
   outline: none;
 }
 
-
 /* ── forms ────────────────────────────────────────────────── */
 .form {
   display: flex;
@@ -1612,7 +1615,6 @@ a.crumbs__here:hover {
   background: var(--surface);
 }
 
-
 /* ── layout grid ──────────────────────────────────────────── */
 .grid {
   display: grid;
@@ -1861,7 +1863,9 @@ a.crumbs__here:hover {
   font-weight: 500;
   color: var(--muted);
 }
-.money__negative { color: var(--danger-fg); }
+.money__negative {
+  color: var(--danger-fg);
+}
 .money__value {
   display: block;
   margin: 2px 0 10px;
@@ -3495,7 +3499,6 @@ button.cal__daycol-head:focus-visible {
   }
 }
 
-
 /* The M7 odontogram (.odo-svg, .odo__chart, .odo__panel, .odo__record*,
    .odo__chip*, .odo__key*, .odo__overview*, .odo__form) was replaced by the
    Phase 4 chart in Odontogram.tsx. Verified 0 references in any .tsx before
@@ -4071,7 +4074,6 @@ button.cal__daycol-head:focus-visible {
   color: var(--muted);
 }
 
-
 .tabs--sm .tab {
   min-height: 28px;
   padding: 0 10px;
@@ -4082,7 +4084,6 @@ button.cal__daycol-head:focus-visible {
     min-height: var(--target);
   }
 }
-
 
 @media (max-width: 720px) {
   .doclist {
@@ -4581,7 +4582,6 @@ button.cal__daycol-head:focus-visible {
   gap: 10px;
   padding-bottom: 6px;
 }
-
 
 /* Grouped by family, because the encoding is grouped by family: four rules to
    learn instead of thirteen marks to memorise. */
@@ -5985,20 +5985,99 @@ button.cal__daycol-head:focus-visible {
 }
 
 /* ── two-step sign-in and account security (migration 0005) ───────────── */
-.auth__alt { display: block; margin: 12px auto 0; font-size: 13px; }
-.mfasteps { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.mfaqr { display: grid; place-items: center; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; }
-.qrcode { display: block; max-width: 100%; height: auto; }
-.mfakey { display: flex; align-items: baseline; gap: 10px; margin: 0; font-size: 12px; color: var(--muted); }
-.mfakey code { font-size: 13px; letter-spacing: .06em; color: var(--ink); word-break: break-all; }
-.recovery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; margin: 0; padding: 12px 14px 12px 34px; border: 1px dashed var(--border); border-radius: var(--radius-sm); }
-.recovery code { font-size: 14px; letter-spacing: .08em; color: var(--ink); }
-.security { display: flex; flex-direction: column; gap: 24px; }
-.security__section { display: flex; flex-direction: column; gap: 10px; }
-.security__section h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; }
-.security__state { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 13.5px; }
-.security__state--warn { color: var(--danger-fg); }
-.security__state--on { color: var(--ok-fg); }
-.security__actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.iconbtn--alert { color: var(--danger-fg); }
-@media (max-width: 480px) { .recovery { grid-template-columns: 1fr; } }
+.auth__alt {
+  display: block;
+  margin: 12px auto 0;
+  font-size: 13px;
+}
+.mfasteps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.mfaqr {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+.qrcode {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.mfakey {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.mfakey code {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  word-break: break-all;
+}
+.recovery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 18px;
+  margin: 0;
+  padding: 12px 14px 12px 34px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+.recovery code {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.security {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.security__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.security__section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+.security__state {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 13.5px;
+}
+.security__state--warn {
+  color: var(--danger-fg);
+}
+.security__state--on {
+  color: var(--ok-fg);
+}
+.security__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.iconbtn--alert {
+  color: var(--danger-fg);
+}
+@media (max-width: 480px) {
+  .recovery {
+    grid-template-columns: 1fr;
+  }
+}

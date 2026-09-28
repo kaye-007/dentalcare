@@ -150,12 +150,16 @@ function main() {
   const written = hyperdriveEntries(parseJsoncTree(next));
   for (const e of edits) {
     if (written.find((w) => w.binding === e.binding)?.id !== e.id) {
-      refuse(`internal error: ${e.binding} did not come out as ${e.id}; nothing was written.`);
+      refuse(
+        `internal error: ${e.binding} did not come out as ${e.id}; nothing was written.`,
+      );
     }
   }
 
   if (next === source) {
-    console.log(`${shown}: both Hyperdrive ids were already set to these values. Nothing changed.`);
+    console.log(
+      `${shown}: both Hyperdrive ids were already set to these values. Nothing changed.`,
+    );
   } else {
     writeFileSync(configPath, next);
     console.log(`Updated ${shown}:`);

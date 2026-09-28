@@ -30,13 +30,21 @@ export class PlatformAuthController {
   // step that follows it.
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post('login')
-  login(@Body() dto: PlatformLoginDto, @Headers('user-agent') ua?: string, @Ip() ip?: string) {
+  login(
+    @Body() dto: PlatformLoginDto,
+    @Headers('user-agent') ua?: string,
+    @Ip() ip?: string,
+  ) {
     return this.auth.login(dto.email, dto.password, meta(ua, ip));
   }
 
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @Post('refresh')
-  refresh(@Body() dto: RefreshDto, @Headers('user-agent') ua?: string, @Ip() ip?: string) {
+  refresh(
+    @Body() dto: RefreshDto,
+    @Headers('user-agent') ua?: string,
+    @Ip() ip?: string,
+  ) {
     return this.auth.refresh(dto.refreshToken, meta(ua, ip));
   }
 
@@ -48,7 +56,11 @@ export class PlatformAuthController {
 
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post('mfa/verify')
-  verifyMfa(@Body() dto: VerifyMfaDto, @Headers('user-agent') ua?: string, @Ip() ip?: string) {
+  verifyMfa(
+    @Body() dto: VerifyMfaDto,
+    @Headers('user-agent') ua?: string,
+    @Ip() ip?: string,
+  ) {
     return this.auth.verifyMfa(
       dto.challengeToken,
       { code: dto.code, recoveryCode: dto.recoveryCode },

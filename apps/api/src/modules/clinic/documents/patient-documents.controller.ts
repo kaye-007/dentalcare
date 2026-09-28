@@ -76,7 +76,9 @@ export class PatientPhotoController {
 
   @Post()
   @RequirePermissions('patients:write', 'documents:write')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }),
+  )
   set(
     @Param('patientId', ParseUUIDPipe) patientId: string,
     @UploadedFile() file: Express.Multer.File,
@@ -99,7 +101,9 @@ export class PatientPhotoController {
  * The storage key is already non-enumerable (see mapDocument); dropping it
  * here as well means a later change to that helper cannot leak it.
  */
-function publicDocument<T extends { storageKey?: string }>(doc: T): Omit<T, 'storageKey'> {
+function publicDocument<T extends { storageKey?: string }>(
+  doc: T,
+): Omit<T, 'storageKey'> {
   const { storageKey: _key, ...rest } = doc;
   return rest;
 }

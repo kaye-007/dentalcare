@@ -66,7 +66,8 @@ function countsTowardTotal(line: PlanLineInput): boolean {
 }
 
 export function calculateLine(line: PlanLineInput): PlanLineCost {
-  const subtotal = Math.max(0, Math.round(line.unitFee)) * Math.max(1, Math.round(line.quantity));
+  const subtotal =
+    Math.max(0, Math.round(line.unitFee)) * Math.max(1, Math.round(line.quantity));
   // Never let a line go negative: a discount larger than the line is a data
   // error, and the database CHECK rejects it, but a read path must not produce
   // a negative quote if a row predates that constraint.
@@ -121,7 +122,12 @@ export function calculatePlan(
  * reason: a status that can move anywhere is a status nobody can trust.
  */
 export const PLAN_STATUSES = [
-  'draft', 'proposed', 'accepted', 'in_progress', 'completed', 'declined',
+  'draft',
+  'proposed',
+  'accepted',
+  'in_progress',
+  'completed',
+  'declined',
 ] as const;
 
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
@@ -153,15 +159,14 @@ export function isPlanStatus(v: unknown): v is PlanStatus {
   return typeof v === 'string' && (PLAN_STATUSES as readonly string[]).includes(v);
 }
 
-export const PLAN_STATUS_LABELS: Readonly<Record<PlanStatus, string>> =
-  Object.freeze({
-    draft: 'Draft',
-    proposed: 'Proposed',
-    accepted: 'Accepted',
-    in_progress: 'In progress',
-    completed: 'Completed',
-    declined: 'Declined',
-  });
+export const PLAN_STATUS_LABELS: Readonly<Record<PlanStatus, string>> = Object.freeze({
+  draft: 'Draft',
+  proposed: 'Proposed',
+  accepted: 'Accepted',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  declined: 'Declined',
+});
 
 export function explainPlanRefusal(from: PlanStatus, to: PlanStatus): string {
   if (from === to) {

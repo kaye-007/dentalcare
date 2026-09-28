@@ -10,7 +10,12 @@ import { FxRatesService } from './fx-rates.service';
 
 @Module({
   imports: [AuthModule],
-  controllers: [PlanInvoiceController, PlanEstimateController, PatientLedgerController, BillingController],
+  controllers: [
+    PlanInvoiceController,
+    PlanEstimateController,
+    PatientLedgerController,
+    BillingController,
+  ],
   providers: [BillingService, EstimateService, FxRatesService],
   exports: [BillingService],
 })

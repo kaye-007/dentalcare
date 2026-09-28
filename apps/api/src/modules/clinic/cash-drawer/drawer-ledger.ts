@@ -115,7 +115,8 @@ export async function appendEvent(
     [sessionId],
   );
   const row = head.rows[0];
-  if (!row) throw new Error(`drawer session ${sessionId} not found while appending an event`);
+  if (!row)
+    throw new Error(`drawer session ${sessionId} not found while appending an event`);
 
   const facts: EventFacts = {
     sessionId,
@@ -158,11 +159,10 @@ export async function appendEvent(
       hash,
     ],
   );
-  await client.query('UPDATE drawer_sessions SET last_seq = $2, last_hash = $3 WHERE id = $1', [
-    sessionId,
-    facts.seq,
-    hash,
-  ]);
+  await client.query(
+    'UPDATE drawer_sessions SET last_seq = $2, last_hash = $3 WHERE id = $1',
+    [sessionId, facts.seq, hash],
+  );
 
   return { ...facts, id: inserted.rows[0]!.id, prevHash: row.last_hash, hash };
 }

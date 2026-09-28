@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DeliveryError, type ReminderChannel, type ReminderPayload, type SendOutcome } from './channels';
+import {
+  DeliveryError,
+  type ReminderChannel,
+  type ReminderPayload,
+  type SendOutcome,
+} from './channels';
 import { classifyTwilioFailure } from './twilio';
 import {
   MESSAGE_PURPOSE_KEYS,
@@ -49,7 +54,10 @@ const UNREACHABLE = new Set(['63003', '63024', '21211', '21614']);
  */
 export function parseContentSids(spec: string | undefined): Map<string, string> {
   const out = new Map<string, string>();
-  for (const part of (spec ?? '').split(',').map((p) => p.trim()).filter(Boolean)) {
+  for (const part of (spec ?? '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)) {
     const [key, sid] = part.split(':').map((s) => s.trim());
     if (!key || !sid || !/^HX[0-9a-fA-F]{32}$/.test(sid)) continue;
     out.set(key.includes('.') ? key : `reminder.${key}`, sid);
@@ -58,16 +66,24 @@ export function parseContentSids(spec: string | undefined): Map<string, string> 
 }
 
 /** The approved template for a kind of message: its language, then English, then any. */
-export function contentSidFor(sids: Map<string, string>, purpose: MessagePurpose, locale: string): string | null {
+export function contentSidFor(
+  sids: Map<string, string>,
+  purpose: MessagePurpose,
+  locale: string,
+): string | null {
   const kind = MESSAGE_PURPOSE_KEYS[purpose];
   const own = [...sids.entries()].filter(([k]) => k.startsWith(`${kind}.`));
   return sids.get(`${kind}.${locale}`) ?? sids.get(`${kind}.en`) ?? own[0]?.[1] ?? null;
 }
 
 /** The template variables, in the order the approved template names them. */
-export function contentVariables(v: NonNullable<ReminderPayload['templateValues']>): string {
+export function contentVariables(
+  v: NonNullable<ReminderPayload['templateValues']>,
+): string {
   const purpose = v.purpose ?? 'appointment_reminder';
-  return JSON.stringify(whatsappVariables(purpose, v as unknown as Record<string, string>));
+  return JSON.stringify(
+    whatsappVariables(purpose, v as unknown as Record<string, string>),
+  );
 }
 
 const TIMEOUT_MS = 10_000;
@@ -97,7 +113,13 @@ export class TwilioWhatsAppChannel implements ReminderChannel {
 
   supports(purpose: MessagePurpose): boolean {
     if (!this.configured()) return false;
-    return contentSidFor(parseContentSids(this.value('TWILIO_WHATSAPP_CONTENT_SIDS')), purpose, 'en') !== null;
+    return (
+      contentSidFor(
+        parseContentSids(this.value('TWILIO_WHATSAPP_CONTENT_SIDS')),
+        purpose,
+        'en',
+      ) !== null
+    );
   }
 
   /** Which kinds of message have an approved template. */
@@ -123,12 +145,20 @@ export class TwilioWhatsAppChannel implements ReminderChannel {
     if (!payload.to) throw new DeliveryError('There is no mobile number to send to.');
     const values = payload.templateValues;
     if (!values) {
-      throw new DeliveryError('This reminder has no template values to send over WhatsApp.');
+      throw new DeliveryError(
+        'This reminder has no template values to send over WhatsApp.',
+      );
     }
     const sids = parseContentSids(this.value('TWILIO_WHATSAPP_CONTENT_SIDS'));
-    const contentSid = contentSidFor(sids, values.purpose ?? 'appointment_reminder', values.locale);
+    const contentSid = contentSidFor(
+      sids,
+      values.purpose ?? 'appointment_reminder',
+      values.locale,
+    );
     if (!contentSid) {
-      throw new DeliveryError('No approved WhatsApp template is configured for this kind of message.');
+      throw new DeliveryError(
+        'No approved WhatsApp template is configured for this kind of message.',
+      );
     }
 
     const form = new URLSearchParams({
@@ -139,7 +169,10 @@ export class TwilioWhatsAppChannel implements ReminderChannel {
     });
     if (payload.statusCallbackUrl) form.set('StatusCallback', payload.statusCallbackUrl);
 
-    const base = (this.value('TWILIO_API_BASE_URL') ?? 'https://api.twilio.com').replace(/\/+$/, '');
+    const base = (this.value('TWILIO_API_BASE_URL') ?? 'https://api.twilio.com').replace(
+      /\/+$/,
+      '',
+    );
     let res: Response;
     try {
       res = await fetch(`${base}/2010-04-01/Accounts/${sid}/Messages.json`, {
@@ -162,7 +195,9 @@ export class TwilioWhatsAppChannel implements ReminderChannel {
     if (!res.ok) {
       const code = String((body as { code?: unknown } | null)?.code ?? '');
       if (UNREACHABLE.has(code)) {
-        throw new DeliveryError('This number cannot receive WhatsApp messages.', { code });
+        throw new DeliveryError('This number cannot receive WhatsApp messages.', {
+          code,
+        });
       }
       throw classifyTwilioFailure(res.status, body);
     }

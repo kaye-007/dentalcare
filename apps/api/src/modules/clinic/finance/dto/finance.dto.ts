@@ -20,23 +20,29 @@ import { VAT_CATEGORIES, type VatCategory } from '@dentalcare/shared';
  * Every amount here is an integer of MINOR units — cents — in the clinic's
  * currency (migration 0006). 3750 is €37.50. */
 export class LineItemDto {
-  @IsOptional() @IsUUID()
+  @IsOptional()
+  @IsUUID()
   treatmentId?: string;
 
-  @IsString() @MinLength(1, { message: 'Line description is required' }) @MaxLength(200)
+  @IsString()
+  @MinLength(1, { message: 'Line description is required' })
+  @MaxLength(200)
   description!: string;
 
-  @IsInt() @Min(1)
+  @IsInt()
+  @Min(1)
   quantity!: number;
 
-  @IsInt() @Min(0)
+  @IsInt()
+  @Min(0)
   unitPrice!: number;
 
   /**
    * TVSH for this line. Omitted: the treatment's own category, or medical
    * (exempt) for a line that names no treatment.
    */
-  @IsOptional() @IsIn([...VAT_CATEGORIES])
+  @IsOptional()
+  @IsIn([...VAT_CATEGORIES])
   vatCategory?: VatCategory;
 
   /**
@@ -44,7 +50,8 @@ export class LineItemDto {
    * the patient, is completed and is not already on a live invoice, and
    * takes the tooth from it; the price stays what reception agreed.
    */
-  @IsOptional() @IsUUID()
+  @IsOptional()
+  @IsUUID()
   procedureId?: string;
 }
 
@@ -52,27 +59,35 @@ export class CreateInvoiceDto {
   @IsUUID()
   patientId!: string;
 
-  @IsOptional() @IsISO8601()
+  @IsOptional()
+  @IsISO8601()
   issuedAt?: string;
 
-  @IsArray() @ArrayMinSize(1, { message: 'An invoice needs at least one line item' })
-  @ValidateNested({ each: true }) @TT(() => LineItemDto)
+  @IsArray()
+  @ArrayMinSize(1, { message: 'An invoice needs at least one line item' })
+  @ValidateNested({ each: true })
+  @TT(() => LineItemDto)
   items!: LineItemDto[];
 }
 
 export class RecordPaymentDto {
-  @IsInt() @Min(1, { message: 'Amount must be positive' })
+  @IsInt()
+  @Min(1, { message: 'Amount must be positive' })
   amount!: number;
 
   /** The kind. Optional when `methodId` names one of the clinic's own methods. */
-  @IsOptional() @IsIn(['cash', 'card', 'bank'])
+  @IsOptional()
+  @IsIn(['cash', 'card', 'bank'])
   method?: 'cash' | 'card' | 'bank';
 
   /** One of the clinic's payment methods (Settings); its kind wins over `method`. */
-  @IsOptional() @Matches(/^[a-z0-9-]{1,40}$/)
+  @IsOptional()
+  @Matches(/^[a-z0-9-]{1,40}$/)
   methodId?: string;
 
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   note?: string;
 
   /**
@@ -84,7 +99,8 @@ export class RecordPaymentDto {
    *
    * Omitted: the clinic's default, or its last choice for this invoice.
    */
-  @IsOptional() @IsIn(['internal', 'fiscal'])
+  @IsOptional()
+  @IsIn(['internal', 'fiscal'])
   document?: 'internal' | 'fiscal';
 }
 
@@ -92,13 +108,17 @@ export class CreateExpenseDto {
   @IsIn(['rent', 'materials', 'utilities', 'salaries', 'lab', 'other'])
   category!: 'rent' | 'materials' | 'utilities' | 'salaries' | 'lab' | 'other';
 
-  @IsInt() @Min(1)
+  @IsInt()
+  @Min(1)
   amount!: number;
 
-  @IsOptional() @IsISO8601()
+  @IsOptional()
+  @IsISO8601()
   expenseDate?: string;
 
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   note?: string;
 }
 
@@ -107,6 +127,8 @@ export class CreateExpenseDto {
  * says who reversed it" is worth little if the why can be a single keystroke.
  */
 export class VoidDto {
-  @IsString() @MinLength(3) @MaxLength(300)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
   reason!: string;
 }

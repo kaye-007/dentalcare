@@ -115,7 +115,11 @@ export function verifyTotp(
 }
 
 /** The otpauth:// URI an authenticator app reads from a QR code. */
-export function otpauthUri(opts: { secret: string; account: string; issuer: string }): string {
+export function otpauthUri(opts: {
+  secret: string;
+  account: string;
+  issuer: string;
+}): string {
   const label = `${encodeURIComponent(opts.issuer)}:${encodeURIComponent(opts.account)}`;
   const params = new URLSearchParams({
     secret: opts.secret,

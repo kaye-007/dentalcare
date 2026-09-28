@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
@@ -8,7 +13,11 @@ import { CashDrawerService } from '@/modules/clinic/cash-drawer/cash-drawer.serv
 import { moneyText } from '@/core/money/clinic-currency';
 import { nextInvoiceNumber } from '@/core/money/invoice-number';
 import { vatCategoryOf, vatRateFor } from '@dentalcare/shared';
-import { calculateInvoice, calculateInvoiceLine, deriveInvoiceStatus } from './billing-engine';
+import {
+  calculateInvoice,
+  calculateInvoiceLine,
+  deriveInvoiceStatus,
+} from './billing-engine';
 import { CreateExpenseDto, CreateInvoiceDto, RecordPaymentDto } from './dto/finance.dto';
 
 /* ════════ Service ════════ */
@@ -81,10 +90,18 @@ async function paymentMethodOf(
       'SELECT payment_methods FROM clinic_settings LIMIT 1',
     );
     const list = Array.isArray(rows[0]?.payment_methods)
-      ? (rows[0]!.payment_methods as { id: string; label: string; kind: string; active: boolean }[])
+      ? (rows[0]!.payment_methods as {
+          id: string;
+          label: string;
+          kind: string;
+          active: boolean;
+        }[])
       : [];
     const found = list.find((m) => m.id === dto.methodId && m.active);
-    if (found && (found.kind === 'cash' || found.kind === 'card' || found.kind === 'bank')) {
+    if (
+      found &&
+      (found.kind === 'cash' || found.kind === 'card' || found.kind === 'bank')
+    ) {
       return { kind: found.kind, label: found.label };
     }
     // The built-in three exist even when a clinic has never edited the list.
@@ -120,7 +137,10 @@ export class FinanceService {
       // dashboard ask for, without fetching everything to filter it locally.
       if (opts.status === 'open') {
         where.push(`i.status IN ('unpaid','partially_paid')`);
-      } else if (opts.status && ['unpaid', 'partially_paid', 'paid', 'cancelled'].includes(opts.status)) {
+      } else if (
+        opts.status &&
+        ['unpaid', 'partially_paid', 'paid', 'cancelled'].includes(opts.status)
+      ) {
         params.push(opts.status);
         where.push(`i.status = $${params.length}`);
       }
@@ -131,7 +151,9 @@ export class FinanceService {
       if (opts.q?.trim()) {
         params.push(`%${opts.q.trim()}%`);
         const k = params.length;
-        where.push(`(i.invoice_number ILIKE $${k} OR (p.first_name || ' ' || p.last_name) ILIKE $${k})`);
+        where.push(
+          `(i.invoice_number ILIKE $${k} OR (p.first_name || ' ' || p.last_name) ILIKE $${k})`,
+        );
       }
       const { rows } = await client.query<InvRow>(
         `${INV_SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
@@ -267,7 +289,9 @@ export class FinanceService {
   createInvoice(dto: CreateInvoiceDto, actor: ClinicAuditActor) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const pat = await client.query('SELECT 1 FROM patients WHERE id = $1', [dto.patientId]);
+      const pat = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+        dto.patientId,
+      ]);
       if (!pat.rowCount) throw new NotFoundException('Patient not found');
       const taxable = new Map<string, boolean>();
       for (const it of dto.items) {
@@ -284,13 +308,20 @@ export class FinanceService {
       // Lines that bill charted work. Locked, so two desks billing the same
       // visit at once cannot both succeed; checked, so work is billed once.
       const procIds = dto.items.flatMap((it) => (it.procedureId ? [it.procedureId] : []));
-      const procs = new Map<string, { tooth: number | null; plan_item_id: string | null }>();
+      const procs = new Map<
+        string,
+        { tooth: number | null; plan_item_id: string | null }
+      >();
       if (procIds.length) {
         if (new Set(procIds).size !== procIds.length) {
-          throw new BadRequestException('The same treatment is on two lines of this invoice');
+          throw new BadRequestException(
+            'The same treatment is on two lines of this invoice',
+          );
         }
         const { rows } = await client.query<{
-          id: string; tooth: number | null; plan_item_id: string | null;
+          id: string;
+          tooth: number | null;
+          plan_item_id: string | null;
         }>(
           `SELECT id, tooth, plan_item_id FROM clinical_procedures
             WHERE id = ANY($1::uuid[]) AND patient_id = $2
@@ -303,7 +334,8 @@ export class FinanceService {
             'One of these treatments can no longer be billed. It may have been withdrawn or changed; reopen the invoice to see the current list.',
           );
         }
-        for (const r of rows) procs.set(r.id, { tooth: r.tooth, plan_item_id: r.plan_item_id });
+        for (const r of rows)
+          procs.set(r.id, { tooth: r.tooth, plan_item_id: r.plan_item_id });
         const planItems = rows.flatMap((r) => (r.plan_item_id ? [r.plan_item_id] : []));
         const { rows: billed } = await client.query<{ invoice_number: string }>(
           `SELECT i.invoice_number
@@ -331,7 +363,8 @@ export class FinanceService {
       const clinicRateBp = cfg[0]?.vat_rate_bp ?? 0;
       const lines = dto.items.map((it) => {
         const category =
-          it.vatCategory ?? vatCategoryOf(it.treatmentId ? taxable.get(it.treatmentId) : false);
+          it.vatCategory ??
+          vatCategoryOf(it.treatmentId ? taxable.get(it.treatmentId) : false);
         const input = {
           quantity: it.quantity,
           unitPrice: it.unitPrice,
@@ -363,8 +396,18 @@ export class FinanceService {
                (tenant_id, patient_id, seq, invoice_number, subtotal, tax_amount, total,
                 vat_rate_bp, issued_at, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::date, CURRENT_DATE), $10) RETURNING id`,
-            [tenantId, dto.patientId, seq, number, totals.subtotal, totals.taxAmount, total,
-             clinicRateBp, dto.issuedAt ?? null, actor.userId],
+            [
+              tenantId,
+              dto.patientId,
+              seq,
+              number,
+              totals.subtotal,
+              totals.taxAmount,
+              total,
+              clinicRateBp,
+              dto.issuedAt ?? null,
+              actor.userId,
+            ],
           );
           const invoiceId = ins.rows[0]!.id;
           for (const [idx, { item, input, cost }] of lines.entries()) {
@@ -374,9 +417,21 @@ export class FinanceService {
                  (tenant_id, invoice_id, treatment_id, description, quantity, unit_price,
                   tax_rate_bp, tax_amount, amount, sort_order, procedure_id, plan_item_id, tooth)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-              [tenantId, invoiceId, item.treatmentId ?? null, item.description,
-               input.quantity, input.unitPrice, input.taxRateBp, cost.taxAmount, cost.total, idx,
-               item.procedureId ?? null, proc?.plan_item_id ?? null, proc?.tooth ?? null],
+              [
+                tenantId,
+                invoiceId,
+                item.treatmentId ?? null,
+                item.description,
+                input.quantity,
+                input.unitPrice,
+                input.taxRateBp,
+                cost.taxAmount,
+                cost.total,
+                idx,
+                item.procedureId ?? null,
+                proc?.plan_item_id ?? null,
+                proc?.tooth ?? null,
+              ],
             );
           }
           // The ledger is written inside the SAME transaction as the invoice.
@@ -387,8 +442,15 @@ export class FinanceService {
                (tenant_id, patient_id, invoice_id, entry_type, amount, description,
                 occurred_on, created_by)
              VALUES ($1,$2,$3,'charge',$4,$5, coalesce($6::date, CURRENT_DATE), $7)`,
-            [tenantId, dto.patientId, invoiceId, total,
-             `Invoice ${number}`, dto.issuedAt ?? null, actor.userId],
+            [
+              tenantId,
+              dto.patientId,
+              invoiceId,
+              total,
+              `Invoice ${number}`,
+              dto.issuedAt ?? null,
+              actor.userId,
+            ],
           );
           await client.query('RELEASE SAVEPOINT invoice_seq');
           await this.audit.record(client, actor, {
@@ -452,9 +514,12 @@ export class FinanceService {
       );
       const row = cur.rows[0];
       if (!row) throw new NotFoundException('Invoice not found');
-      if (row.status === 'cancelled') throw new BadRequestException('Invoice is already cancelled');
+      if (row.status === 'cancelled')
+        throw new BadRequestException('Invoice is already cancelled');
       if (Number(row.paid) > 0) {
-        throw new BadRequestException('An invoice with recorded payments cannot be cancelled');
+        throw new BadRequestException(
+          'An invoice with recorded payments cannot be cancelled',
+        );
       }
       await client.query(
         `UPDATE invoices SET status = 'cancelled', cancelled_at = now(), updated_at = now()
@@ -486,7 +551,9 @@ export class FinanceService {
         entityType: 'invoice',
         entityId: id,
         summary: `Cancelled ${row.invoice_number}${
-          charged > 0 ? ` and reversed its ${await moneyText(client, charged)} charge` : ''
+          charged > 0
+            ? ` and reversed its ${await moneyText(client, charged)} charge`
+            : ''
         }`,
         metadata: {
           invoiceNumber: row.invoice_number,
@@ -511,9 +578,11 @@ export class FinanceService {
       );
       const inv = cur.rows[0];
       if (!inv) throw new NotFoundException('Invoice not found');
-      if (inv.status === 'cancelled') throw new BadRequestException('Cannot pay a cancelled invoice');
+      if (inv.status === 'cancelled')
+        throw new BadRequestException('Cannot pay a cancelled invoice');
       const balance = inv.total - Number(inv.paid);
-      if (balance <= 0) throw new BadRequestException('This invoice is already fully paid');
+      if (balance <= 0)
+        throw new BadRequestException('This invoice is already fully paid');
       if (dto.amount > balance) {
         throw new BadRequestException(
           `Amount exceeds the outstanding balance (${await moneyText(client, balance)})`,
@@ -526,7 +595,9 @@ export class FinanceService {
       // uses the cash drawer (0014); with no open drawer the payment is refused
       // here, before anything is written.
       const drawerSessionId =
-        how.kind === 'cash' ? await this.drawer.sessionForCashPayment(client, actor) : null;
+        how.kind === 'cash'
+          ? await this.drawer.sessionForCashPayment(client, actor)
+          : null;
 
       // The Idempotency-Key, when the request carried one, is stored on the
       // payment. A retry that slips past the interceptor fails on the unique
@@ -538,34 +609,61 @@ export class FinanceService {
              (tenant_id, invoice_id, amount, method, method_label, note, created_by,
               drawer_session_id, idempotency_key)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-          [tenantId, invoiceId, dto.amount, how.kind, how.label, dto.note ?? null, actor.userId,
-           drawerSessionId, idempotencyKey],
+          [
+            tenantId,
+            invoiceId,
+            dto.amount,
+            how.kind,
+            how.label,
+            dto.note ?? null,
+            actor.userId,
+            drawerSessionId,
+            idempotencyKey,
+          ],
         )
         .catch((err: { code?: string; constraint?: string }) => {
-          if (err.code === '23505' && err.constraint === 'payments_idempotency_key_unique') {
+          if (
+            err.code === '23505' &&
+            err.constraint === 'payments_idempotency_key_unique'
+          ) {
             throw new ConflictException({
               code: 'payment_already_recorded',
-              message: 'This payment was already recorded. Refresh the invoice to see it.',
+              message:
+                'This payment was already recorded. Refresh the invoice to see it.',
             });
           }
           throw err;
         });
       if (drawerSessionId) {
-        await this.drawer.recordCashSale(client, actor, drawerSessionId, payRows[0]!.id, dto.amount);
+        await this.drawer.recordCashSale(
+          client,
+          actor,
+          drawerSessionId,
+          payRows[0]!.id,
+          dto.amount,
+        );
       }
 
       // Ledger amounts are SIGNED: a payment reduces what the patient owes,
       // so a balance is one SUM rather than a reconciliation.
-      const { rows: who } = await client.query<{ patient_id: string; invoice_number: string }>(
-        'SELECT patient_id, invoice_number FROM invoices WHERE id = $1', [invoiceId],
-      );
+      const { rows: who } = await client.query<{
+        patient_id: string;
+        invoice_number: string;
+      }>('SELECT patient_id, invoice_number FROM invoices WHERE id = $1', [invoiceId]);
       await client.query(
         `INSERT INTO ledger_entries
            (tenant_id, patient_id, invoice_id, payment_id, entry_type, amount,
             description, created_by)
          VALUES ($1,$2,$3,$4,'payment',$5,$6,$7)`,
-        [tenantId, who[0]!.patient_id, invoiceId, payRows[0]!.id, -dto.amount,
-         `Payment (${how.label ?? how.kind}) for ${who[0]!.invoice_number}`, actor.userId],
+        [
+          tenantId,
+          who[0]!.patient_id,
+          invoiceId,
+          payRows[0]!.id,
+          -dto.amount,
+          `Payment (${how.label ?? how.kind}) for ${who[0]!.invoice_number}`,
+          actor.userId,
+        ],
       );
 
       const newPaid = Number(inv.paid) + dto.amount;
@@ -592,7 +690,10 @@ export class FinanceService {
           document,
         },
       });
-      return { ...(await this.getInvoiceWithin(client, invoiceId)), documentKind: document };
+      return {
+        ...(await this.getInvoiceWithin(client, invoiceId)),
+        documentKind: document,
+      };
     });
   }
 
@@ -628,17 +729,20 @@ export class FinanceService {
     if (row?.registered) return 'fiscal';
 
     const fallback = row?.default_checkout_mode ?? 'fiscal';
-    const document = chosen ?? (fallback === 'ask' ? undefined : (fallback as 'internal' | 'fiscal'));
+    const document =
+      chosen ?? (fallback === 'ask' ? undefined : (fallback as 'internal' | 'fiscal'));
     if (!document) {
       throw new BadRequestException({
         code: 'checkout_document_required',
-        message: 'Choose whether this payment issues a fiscal invoice or an internal receipt.',
+        message:
+          'Choose whether this payment issues a fiscal invoice or an internal receipt.',
       });
     }
     if (document === 'internal' && row?.internal_receipts_enabled === false) {
       throw new BadRequestException({
         code: 'internal_receipts_disabled',
-        message: 'This clinic issues fiscal invoices only. Internal receipts are turned off in Settings.',
+        message:
+          'This clinic issues fiscal invoices only. Internal receipts are turned off in Settings.',
       });
     }
     return document;
@@ -658,8 +762,14 @@ export class FinanceService {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       const cur = await client.query<{
-        invoice_id: string; amount: number; method: string; voided_at: string | null;
-        invoice_number: string; patient_id: string; invoice_status: string; total: number;
+        invoice_id: string;
+        amount: number;
+        method: string;
+        voided_at: string | null;
+        invoice_number: string;
+        patient_id: string;
+        invoice_status: string;
+        total: number;
       }>(
         `SELECT pay.invoice_id, pay.amount, pay.method, pay.voided_at,
                 i.invoice_number, i.patient_id, i.status AS invoice_status, i.total
@@ -682,7 +792,13 @@ export class FinanceService {
 
       // A cash payment taken into a drawer comes back off it (0014).
       if (pay.method === 'cash') {
-        await this.drawer.recordCashVoid(client, actor, paymentId, pay.amount, reason.trim());
+        await this.drawer.recordCashVoid(
+          client,
+          actor,
+          paymentId,
+          pay.amount,
+          reason.trim(),
+        );
       }
 
       // The reversal is a NEW entry, never an edit of the old one: a ledger
@@ -693,8 +809,15 @@ export class FinanceService {
            (tenant_id, patient_id, invoice_id, payment_id, entry_type, amount,
             description, created_by)
          VALUES ($1,$2,$3,$4,'refund',$5,$6,$7)`,
-        [tenantId, pay.patient_id, pay.invoice_id, paymentId, pay.amount,
-         `Voided payment (${pay.method}) on ${pay.invoice_number}`, actor.userId],
+        [
+          tenantId,
+          pay.patient_id,
+          pay.invoice_id,
+          paymentId,
+          pay.amount,
+          `Voided payment (${pay.method}) on ${pay.invoice_number}`,
+          actor.userId,
+        ],
       );
 
       const still = await client.query<{ s: string }>(
@@ -800,7 +923,14 @@ export class FinanceService {
         `INSERT INTO expenses (tenant_id, category, amount, expense_date, note, created_by)
          VALUES ($1,$2,$3, coalesce($4::date, CURRENT_DATE), $5, $6)
          RETURNING id, category, amount, expense_date::text AS expense_date, note`,
-        [tenantId, dto.category, dto.amount, dto.expenseDate ?? null, dto.note ?? null, actor.userId],
+        [
+          tenantId,
+          dto.category,
+          dto.amount,
+          dto.expenseDate ?? null,
+          dto.note ?? null,
+          actor.userId,
+        ],
       );
       const r = rows[0]!;
       await this.audit.record(client, actor, {
@@ -810,7 +940,13 @@ export class FinanceService {
         summary: `Recorded ${await moneyText(client, r.amount)} of ${r.category} spending`,
         metadata: { amount: r.amount, category: r.category, expenseDate: r.expense_date },
       });
-      return { id: r.id, category: r.category, amount: r.amount, expenseDate: r.expense_date, note: r.note };
+      return {
+        id: r.id,
+        category: r.category,
+        amount: r.amount,
+        expenseDate: r.expense_date,
+        note: r.note,
+      };
     });
   }
 
@@ -822,11 +958,12 @@ export class FinanceService {
   voidExpense(id: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
       const cur = await client.query<{
-        category: string; amount: number; voided_at: string | null;
-      }>(
-        'SELECT category, amount, voided_at FROM expenses WHERE id = $1 FOR UPDATE',
-        [id],
-      );
+        category: string;
+        amount: number;
+        voided_at: string | null;
+      }>('SELECT category, amount, voided_at FROM expenses WHERE id = $1 FOR UPDATE', [
+        id,
+      ]);
       const exp = cur.rows[0];
       if (!exp) throw new NotFoundException('Expense not found');
       if (exp.voided_at) throw new BadRequestException('This expense is already voided');
@@ -860,7 +997,10 @@ export class FinanceService {
       // Periods are the clinic's days and months, not the database's. On UTC,
       // a payment taken at 00:30 on the 1st in Tirana counted towards the
       // previous month, and "today" would end at 02:00 local time.
-      const { rows: zone } = await client.query<{ from_d: string | null; to_d: string | null }>(
+      const { rows: zone } = await client.query<{
+        from_d: string | null;
+        to_d: string | null;
+      }>(
         `WITH local AS (
            SELECT (now() AT TIME ZONE coalesce(
                      (SELECT timezone FROM clinic_settings LIMIT 1), 'Europe/Tirane'))::date AS d)
@@ -875,7 +1015,9 @@ export class FinanceService {
       const payFilter = range
         ? `AND (paid_at AT TIME ZONE ${tzSql})::date >= $1::date AND (paid_at AT TIME ZONE ${tzSql})::date < $2::date`
         : '';
-      const expFilter = range ? `AND expense_date >= $1::date AND expense_date < $2::date` : '';
+      const expFilter = range
+        ? `AND expense_date >= $1::date AND expense_date < $2::date`
+        : '';
       const args = range ?? [];
 
       const invoiced = await client.query<{ s: string }>(

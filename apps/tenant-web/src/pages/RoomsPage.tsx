@@ -23,7 +23,15 @@ import { PageHeader, EmptyState, LoadingRows, useConfirm } from '../components/u
  * practitioner starts in it, and the calendar can show the day room by room.
  */
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
 /** Monday-first for display; the stored value stays JS-native (0 = Sunday). */
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
@@ -117,15 +125,24 @@ export default function RoomsPage() {
       />
 
       {error && <p className="formerror">{error}</p>}
-      {notice && <p className="muted" style={{ fontSize: 13 }}>{notice}</p>}
+      {notice && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          {notice}
+        </p>
+      )}
 
       <div className="grid">
         {/* ── rooms ── */}
         <div className="card span-12">
           <header className="card__head">
-            <h3><DoorOpen size={16} aria-hidden /> Rooms</h3>
+            <h3>
+              <DoorOpen size={16} aria-hidden /> Rooms
+            </h3>
             {canManageRooms && !addingRoom && (
-              <button className="btn btn--ghost btn--sm" onClick={() => setAddingRoom(true)}>
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => setAddingRoom(true)}
+              >
                 <Plus size={14} /> Add room
               </button>
             )}
@@ -133,7 +150,10 @@ export default function RoomsPage() {
 
           {addingRoom && (
             <RoomForm
-              onDone={() => { setAddingRoom(false); void load(); }}
+              onDone={() => {
+                setAddingRoom(false);
+                void load();
+              }}
               onCancel={() => setAddingRoom(false)}
             />
           )}
@@ -157,14 +177,20 @@ export default function RoomsPage() {
                   <li key={r.id} className="recordrow">
                     <RoomForm
                       room={r}
-                      onDone={() => { setEditingRoom(null); void load(); }}
+                      onDone={() => {
+                        setEditingRoom(null);
+                        void load();
+                      }}
                       onCancel={() => setEditingRoom(null)}
                     />
                   </li>
                 ) : (
                   <li key={r.id} className="recordrow">
                     <div className="recordrow__main">
-                      <span className="month__dot" style={r.color ? { background: r.color } : undefined} />
+                      <span
+                        className="month__dot"
+                        style={r.color ? { background: r.color } : undefined}
+                      />
                       <span className="recordrow__title">{r.name}</span>
                       <span className="cell-sub">
                         {homeOf(r.id).length
@@ -210,13 +236,21 @@ export default function RoomsPage() {
                   {archived.map((r) => (
                     <li key={r.id} className="recordrow recordrow--muted">
                       <div className="recordrow__main">
-                        <span className="month__dot" style={r.color ? { background: r.color } : undefined} />
+                        <span
+                          className="month__dot"
+                          style={r.color ? { background: r.color } : undefined}
+                        />
                         <span className="recordrow__title">{r.name}</span>
-                        <span className="cell-sub">Archived — kept for past appointments</span>
+                        <span className="cell-sub">
+                          Archived — kept for past appointments
+                        </span>
                       </div>
                       {canManageRooms && (
                         <div className="recordrow__actions">
-                          <button className="btn btn--ghost btn--sm" onClick={() => restoreRoom(r)}>
+                          <button
+                            className="btn btn--ghost btn--sm"
+                            onClick={() => restoreRoom(r)}
+                          >
                             Restore
                           </button>
                         </div>
@@ -232,13 +266,14 @@ export default function RoomsPage() {
         {/* ── practitioners ── */}
         <div className="card span-12">
           <header className="card__head">
-            <h3><CalendarClock size={16} aria-hidden /> Practitioners</h3>
+            <h3>
+              <CalendarClock size={16} aria-hidden /> Practitioners
+            </h3>
           </header>
           <p className="muted" style={{ fontSize: 12.5, margin: '0 0 14px' }}>
-            Their room is where new bookings with them start — it can still be
-            changed per booking. Hours are clinic-local and drive the free-slot
-            finder. Everyone can edit their own; changing someone else&apos;s
-            needs administrator access.
+            Their room is where new bookings with them start — it can still be changed per
+            booking. Hours are clinic-local and drive the free-slot finder. Everyone can
+            edit their own; changing someone else&apos;s needs administrator access.
           </p>
 
           {staff === null ? (
@@ -267,7 +302,9 @@ export default function RoomsPage() {
 
 /* ── add / edit a room ──────────────────────────────────── */
 function RoomForm({
-  room, onDone, onCancel,
+  room,
+  onDone,
+  onCancel,
 }: {
   room?: Operatory;
   onDone: () => void;
@@ -295,14 +332,16 @@ function RoomForm({
 
   return (
     <form className="inlineform" onSubmit={submit} style={{ flex: 1 }}>
-      <label className="field"><span>Room name</span>
+      <label className="field">
+        <span>Room name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Chair 1, Surgery, Hygiene…"
           autoFocus
           required
-        /></label>
+        />
+      </label>
       <div className="field">
         <span>Colour on the calendar</span>
         <div className="sendrow">
@@ -321,7 +360,9 @@ function RoomForm({
       </div>
       {err && <p className="formerror">{err}</p>}
       <div className="inlineform__foot">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
         <button className="btn btn--primary btn--sm" disabled={busy}>
           {busy ? 'Saving…' : room ? 'Save' : 'Add room'}
         </button>
@@ -332,7 +373,11 @@ function RoomForm({
 
 /* ── one practitioner: room + week ──────────────────────── */
 function StaffSchedule({
-  staff, rooms, entries, canEdit, onChange,
+  staff,
+  rooms,
+  entries,
+  canEdit,
+  onChange,
 }: {
   staff: StaffMember;
   rooms: Operatory[];
@@ -416,7 +461,9 @@ function StaffSchedule({
               >
                 <option value="">No fixed room</option>
                 {rooms.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
                 ))}
               </select>
             </label>
@@ -448,14 +495,35 @@ function StaffSchedule({
             </div>
           </div>
           <div className="grid2">
-            <label className="field"><span>From</span>
-              <input type="time" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} required /></label>
-            <label className="field"><span>To</span>
-              <input type="time" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} required /></label>
+            <label className="field">
+              <span>From</span>
+              <input
+                type="time"
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>To</span>
+              <input
+                type="time"
+                value={endsAt}
+                onChange={(e) => setEndsAt(e.target.value)}
+                required
+              />
+            </label>
           </div>
           {err && <p className="formerror">{err}</p>}
           <div className="inlineform__foot">
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => { setAdding(false); setErr(null); }}>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => {
+                setAdding(false);
+                setErr(null);
+              }}
+            >
               Cancel
             </button>
             <button className="btn btn--primary btn--sm" disabled={busy}>

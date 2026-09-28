@@ -25,7 +25,11 @@ export class FeaturesController {
 
   @Patch(':key')
   @RequirePermissions('settings:manage')
-  set(@Param('key') key: string, @Body() dto: SetFeatureDto, @CurrentUser() user?: AccessTokenPayload) {
+  set(
+    @Param('key') key: string,
+    @Body() dto: SetFeatureDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.features.setEnabled(key, dto.enabled, auditActor(user));
   }
 }

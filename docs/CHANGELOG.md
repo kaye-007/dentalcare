@@ -19,7 +19,7 @@ widths against the local stack with no console errors.
 #### Added
 
 - **Overview** (`/`, now the home screen): MRR, clinics, this month's
-  collection and overdue money; a *Needs attention* list (overdue invoices,
+  collection and overdue money; a _Needs attention_ list (overdue invoices,
   trials ending within three days, expired trials still active, an unbilled
   month, clinics quiet for 30 days); invoiced vs collected by month; revenue
   by plan; new clinics per month; the latest console activity.
@@ -41,7 +41,7 @@ widths against the local stack with no console errors.
   existing `/platform/usage/:id` (never the clinic's own revenue); records a
   payment in place; checks a new subdomain as it is typed.
 - **Clinics, Billing, Usage**: sortable columns, search, CSV export (with a
-  BOM for Albanian names and formula-prefix escaping); an *On trial* filter
+  BOM for Albanian names and formula-prefix escaping); an _On trial_ filter
   and a plan filter; billing can be run for either of the two previous months,
   with a warning that those invoices may be overdue on issue.
 - Confirmation dialogs replace `window.confirm`; success is a toast; a
@@ -295,7 +295,6 @@ time: health, login (tenant resolved from the Host subdomain), an RLS-scoped
 patient read, and one cron sweep that delivered two due reminders. Worker
 bundle 2477 KiB raw / 708 KiB gzipped.
 
-
 ### Cleanup pass
 
 Repository hygiene and removal of all demo/fixture tooling. **No feature was
@@ -326,7 +325,6 @@ suite and all three builds verified green afterwards.
   scripts).
 - Rewrote `.gitignore` and `.dockerignore`; deleted five completed process
   documents; marked `RELEASE_CHECKLIST.md` as a historical record.
-
 
 Security remediation, test coverage, and deployment preparation. **No feature
 was added or removed; no business logic changed.**

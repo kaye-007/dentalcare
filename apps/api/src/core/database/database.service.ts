@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool, PoolClient, QueryResultRow } from 'pg';
 
@@ -77,9 +72,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         idleTimeoutMillis: 30_000,
       });
       this.pool.on('error', (e) => this.logger.error(`app pool: ${e.message}`));
-      this.adminPool.on('error', (e) =>
-        this.logger.error(`admin pool: ${e.message}`),
-      );
+      this.adminPool.on('error', (e) => this.logger.error(`admin pool: ${e.message}`));
     }
 
     await this.assertTenantRoleIsRestricted(isProd);
@@ -118,7 +111,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const how = row.rolsuper ? 'is a SUPERUSER' : 'has BYPASSRLS';
     const message =
       `The tenant database role ${how}, so Row-Level Security is NOT enforced ` +
-      'and every clinic can read every other clinic\'s data. ' +
+      "and every clinic can read every other clinic's data. " +
       'Point APP_DATABASE_URL (or the HYPERDRIVE_APP binding) at the ' +
       'non-superuser app_user role created by migration 0003.';
 
@@ -197,10 +190,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.transaction('app', fn);
   }
 
-  async withTenant<T>(
-    tenantId: string,
-    fn: (c: PoolClient) => Promise<T>,
-  ): Promise<T> {
+  async withTenant<T>(tenantId: string, fn: (c: PoolClient) => Promise<T>): Promise<T> {
     return this.withTransaction(async (client) => {
       await client.query('SELECT set_config($1, $2, true)', [
         'app.current_tenant_id',

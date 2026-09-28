@@ -89,7 +89,8 @@ export const TENANT_MIDDLEWARE_EXCLUSIONS: readonly TenantExclusion[] = [
     // checks the signature before reading anything.
     path: 'reminders/delivery/twilio',
     method: RequestMethod.POST,
-    because: 'called by the SMS provider; the clinic is named in a URL its signature covers',
+    because:
+      'called by the SMS provider; the clinic is named in a URL its signature covers',
   },
   {
     // GET only. Downloads of files kept on the API's own disk. The link was

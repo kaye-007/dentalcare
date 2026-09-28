@@ -97,7 +97,10 @@ export class WhatsAppController {
 
   @Delete('templates/:id')
   @RequirePermissions('settings:manage')
-  deleteTemplate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AccessTokenPayload) {
+  deleteTemplate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AccessTokenPayload,
+  ) {
     return this.whatsapp.deleteTemplate(id, auditActor(user));
   }
 

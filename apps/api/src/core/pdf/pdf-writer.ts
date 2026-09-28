@@ -22,26 +22,51 @@ export type Rgb = [number, number, number];
 
 // Advance widths, 1/1000 em, for ASCII 32..126 — from the standard AFM files.
 const HELVETICA = [
-  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
-  556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667,
-  611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
-  667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
-  222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667,
+  667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722,
+  667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500,
+  556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278,
+  556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
 ];
 const HELVETICA_BOLD = [
-  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
-  556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667,
-  611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
-  667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556,
-  278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722,
+  722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722,
+  667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556,
+  611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333,
+  611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
 ];
 
 /** Characters outside Latin-1 that WinAnsi places in 0x80..0x9F. */
 const WIN_ANSI_EXTRA: Readonly<Record<string, number>> = {
-  '€': 0x80, '‚': 0x82, 'ƒ': 0x83, '„': 0x84, '…': 0x85, '†': 0x86, '‡': 0x87, 'ˆ': 0x88,
-  '‰': 0x89, 'Š': 0x8a, '‹': 0x8b, 'Œ': 0x8c, 'Ž': 0x8e, '‘': 0x91, '’': 0x92, '“': 0x93,
-  '”': 0x94, '•': 0x95, '–': 0x96, '—': 0x97, '˜': 0x98, '™': 0x99, 'š': 0x9a, '›': 0x9b,
-  'œ': 0x9c, 'ž': 0x9e, 'Ÿ': 0x9f,
+  '€': 0x80,
+  '‚': 0x82,
+  ƒ: 0x83,
+  '„': 0x84,
+  '…': 0x85,
+  '†': 0x86,
+  '‡': 0x87,
+  ˆ: 0x88,
+  '‰': 0x89,
+  Š: 0x8a,
+  '‹': 0x8b,
+  Œ: 0x8c,
+  Ž: 0x8e,
+  '‘': 0x91,
+  '’': 0x92,
+  '“': 0x93,
+  '”': 0x94,
+  '•': 0x95,
+  '–': 0x96,
+  '—': 0x97,
+  '˜': 0x98,
+  '™': 0x99,
+  š: 0x9a,
+  '›': 0x9b,
+  œ: 0x9c,
+  ž: 0x9e,
+  Ÿ: 0x9f,
 };
 
 function winAnsiCode(ch: string): number {
@@ -59,7 +84,8 @@ function pdfString(text: string): string {
   let out = '(';
   for (const ch of text) {
     const code = winAnsiCode(ch);
-    if (code === 0x28 || code === 0x29 || code === 0x5c) out += `\\${String.fromCharCode(code)}`;
+    if (code === 0x28 || code === 0x29 || code === 0x5c)
+      out += `\\${String.fromCharCode(code)}`;
     else if (code > 0x7e) out += `\\${code.toString(8).padStart(3, '0')}`;
     else out += String.fromCharCode(code);
   }
@@ -78,7 +104,12 @@ export function textWidth(text: string, size: number, bold = false): number {
 }
 
 /** Break text into lines no wider than `maxWidth`, on spaces where possible. */
-export function wrapText(text: string, size: number, maxWidth: number, bold = false): string[] {
+export function wrapText(
+  text: string,
+  size: number,
+  maxWidth: number,
+  bold = false,
+): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split(/\r?\n/)) {
     let line = '';
@@ -113,7 +144,13 @@ export function jpegInfo(bytes: Uint8Array): JpegInfo | null {
     const marker = bytes[i + 1]!;
     const length = (bytes[i + 2]! << 8) | bytes[i + 3]!;
     // SOF0..SOF15, except DHT (C4), JPG (C8) and DAC (CC).
-    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+    if (
+      marker >= 0xc0 &&
+      marker <= 0xcf &&
+      marker !== 0xc4 &&
+      marker !== 0xc8 &&
+      marker !== 0xcc
+    ) {
       return {
         height: (bytes[i + 5]! << 8) | bytes[i + 6]!,
         width: (bytes[i + 7]! << 8) | bytes[i + 8]!,
@@ -167,19 +204,30 @@ export class PdfPage {
     );
   }
 
-  line(x1: number, y1: number, x2: number, y2: number, width = 0.5, color: Rgb = [0.85, 0.87, 0.9]): void {
+  line(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    width = 0.5,
+    color: Rgb = [0.85, 0.87, 0.9],
+  ): void {
     this.ops.push(
       `${rgb(color)} RG ${num(width)} w ${num(x1)} ${num(this.y(y1))} m ${num(x2)} ${num(this.y(y2))} l S`,
     );
   }
 
   rect(x: number, y: number, w: number, h: number, fill: Rgb): void {
-    this.ops.push(`${rgb(fill)} rg ${num(x)} ${num(this.y(y + h))} ${num(w)} ${num(h)} re f`);
+    this.ops.push(
+      `${rgb(fill)} rg ${num(x)} ${num(this.y(y + h))} ${num(w)} ${num(h)} re f`,
+    );
   }
 
   image(img: PdfImage, x: number, y: number, w: number, h: number): void {
     this.images.add(img.name);
-    this.ops.push(`q ${num(w)} 0 0 ${num(h)} ${num(x)} ${num(this.y(y + h))} cm /${img.name} Do Q`);
+    this.ops.push(
+      `q ${num(w)} 0 0 ${num(h)} ${num(x)} ${num(this.y(y + h))} cm /${img.name} Do Q`,
+    );
   }
 
   /** A QR code from its module matrix, `size` points square, one filled path. */
@@ -190,7 +238,10 @@ export class PdfPage {
     const parts: string[] = ['0 0 0 rg'];
     for (let r = 0; r < n; r++) {
       for (let c = 0; c < n; c++) {
-        if (modules[r]![c]) parts.push(`${num(x + c * cell)} ${num(this.y(y + (r + 1) * cell))} ${num(cell)} ${num(cell)} re`);
+        if (modules[r]![c])
+          parts.push(
+            `${num(x + c * cell)} ${num(this.y(y + (r + 1) * cell))} ${num(cell)} ${num(cell)} re`,
+          );
       }
     }
     parts.push('f');
@@ -200,7 +251,8 @@ export class PdfPage {
 
 export class PdfDocument {
   private readonly pages: PdfPage[] = [];
-  private readonly images: { info: PdfImage; bytes: Uint8Array; components: number }[] = [];
+  private readonly images: { info: PdfImage; bytes: Uint8Array; components: number }[] =
+    [];
 
   constructor(private readonly title = 'Document') {}
 
@@ -219,7 +271,11 @@ export class PdfDocument {
   addJpeg(bytes: Uint8Array): PdfImage | null {
     const info = jpegInfo(bytes);
     if (!info || ![1, 3].includes(info.components)) return null;
-    const image = { name: `Im${this.images.length + 1}`, width: info.width, height: info.height };
+    const image = {
+      name: `Im${this.images.length + 1}`,
+      width: info.width,
+      height: info.height,
+    };
     this.images.push({ info: image, bytes, components: info.components });
     return image;
   }
@@ -250,15 +306,23 @@ export class PdfDocument {
 
     const fontIds = { F1: 3, F2: 4 };
     const firstImageId = 5;
-    const imageIds = new Map(this.images.map((img, i) => [img.info.name, firstImageId + i]));
+    const imageIds = new Map(
+      this.images.map((img, i) => [img.info.name, firstImageId + i]),
+    );
     const firstPageId = firstImageId + this.images.length;
     const infoId = firstPageId + this.pages.length * 2;
 
     object(1, '<< /Type /Catalog /Pages 2 0 R >>');
     const kids = this.pages.map((_, i) => `${firstPageId + i * 2} 0 R`).join(' ');
     object(2, `<< /Type /Pages /Kids [${kids}] /Count ${this.pages.length} >>`);
-    object(fontIds.F1, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
-    object(fontIds.F2, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    object(
+      fontIds.F1,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    );
+    object(
+      fontIds.F2,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+    );
 
     for (const img of this.images) {
       object(
@@ -272,14 +336,20 @@ export class PdfDocument {
 
     this.pages.forEach((page, i) => {
       const pageId = firstPageId + i * 2;
-      const xobjects = [...page.images].map((name) => `/${name} ${imageIds.get(name)} 0 R`).join(' ');
+      const xobjects = [...page.images]
+        .map((name) => `/${name} ${imageIds.get(name)} 0 R`)
+        .join(' ');
       object(
         pageId,
         `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(page.width)} ${num(page.height)}] ` +
           `/Resources << /Font << /F1 ${fontIds.F1} 0 R /F2 ${fontIds.F2} 0 R >>` +
           `${xobjects ? ` /XObject << ${xobjects} >>` : ''} >> /Contents ${pageId + 1} 0 R >>`,
       );
-      object(pageId + 1, [Buffer.from(page.ops.join('\n'), 'latin1')], '<< /Length __LENGTH__ >>');
+      object(
+        pageId + 1,
+        [Buffer.from(page.ops.join('\n'), 'latin1')],
+        '<< /Length __LENGTH__ >>',
+      );
     });
 
     object(infoId, `<< /Title ${pdfString(this.title)} /Producer (DentalCare) >>`);
@@ -287,9 +357,12 @@ export class PdfDocument {
     const xrefAt = length;
     const count = infoId + 1;
     let xref = `xref\n0 ${count}\n0000000000 65535 f \n`;
-    for (let id = 1; id < count; id++) xref += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
+    for (let id = 1; id < count; id++)
+      xref += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
     push(xref);
-    push(`trailer\n<< /Size ${count} /Root 1 0 R /Info ${infoId} 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`);
+    push(
+      `trailer\n<< /Size ${count} /Root 1 0 R /Info ${infoId} 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`,
+    );
 
     const out = new Uint8Array(length);
     let at = 0;

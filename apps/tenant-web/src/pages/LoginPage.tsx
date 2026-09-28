@@ -98,8 +98,8 @@ export default function LoginPage() {
           <>
             <h1 className="auth__title">Set up two-step sign-in</h1>
             <p className="auth__sub">
-              Your account needs a second step when you sign in. It takes a minute, and you
-              only do it once.
+              Your account needs a second step when you sign in. It takes a minute, and
+              you only do it once.
             </p>
             <TotpEnrollment
               start={() => api.beginEnrollment(step.challengeToken)}
@@ -280,7 +280,9 @@ function VerifyStep({
           setError(null);
         }}
       >
-        {recovery ? 'Use my authenticator app instead' : 'Lost your phone? Use a recovery code'}
+        {recovery
+          ? 'Use my authenticator app instead'
+          : 'Lost your phone? Use a recovery code'}
       </button>
       <button type="button" className="linkbtn auth__alt" onClick={onRestart}>
         Start over

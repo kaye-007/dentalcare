@@ -11,11 +11,11 @@ analytics · two-step sign-in.
 
 ## Apps
 
-| Workspace | Purpose | Dev URL |
-|---|---|---|
-| `apps/api` | NestJS API — clinic plane + platform plane | http://localhost:3000 |
+| Workspace         | Purpose                                                         | Dev URL               |
+| ----------------- | --------------------------------------------------------------- | --------------------- |
+| `apps/api`        | NestJS API — clinic plane + platform plane                      | http://localhost:3000 |
 | `apps/tenant-web` | Clinic SPA (admin, dentist, hygienist, assistant, receptionist) | http://localhost:5173 |
-| `apps/admin-web` | NODE X platform console | http://localhost:5174 |
+| `apps/admin-web`  | NODE X platform console                                         | http://localhost:5174 |
 
 **Stack.** NestJS 11 · PostgreSQL 16 (raw SQL, no ORM) · React 18 + Vite ·
 JWT access tokens with rotating server-side sessions and TOTP · Cloudflare
@@ -101,8 +101,8 @@ npm run dev:setup:reset       # drop the database first, then all of the above
 app_user password to match .env** (a role outlives the database it was created
 for, so a rebuilt database inherits a stale one), runs migrations, repairs
 grants for any table created outside a migration, checks that the deliberate
-revocations are still in place, and then proves the result by connecting *as
-the application role* and reading the data back.
+revocations are still in place, and then proves the result by connecting _as
+the application role_ and reading the data back.
 
 If it prints `ready`, the app will run. If it fails, it names the step.
 
@@ -148,15 +148,15 @@ API accepts an `X-Tenant-Subdomain` header — but only when
 
 ## Scripts
 
-| Command | Description |
-|---|---|
-| `npm run api:dev` / `web:dev` / `admin:dev` | Development servers |
-| `npm run api:build` / `web:build` / `admin:build` | Production builds |
-| `npm test -w @dentalcare/api` | Unit tests, no database |
-| `npm run test:integration -w @dentalcare/api` | Integration tests against Postgres |
-| `npm run cf:check-caching -w @dentalcare/api` | Ask Cloudflare whether both Hyperdrive configs have caching disabled |
-| `npm run migrate:up` / `migrate:down` | Database migrations |
-| `npm run migrate:create` | Scaffold a new migration |
+| Command                                           | Description                                                          |
+| ------------------------------------------------- | -------------------------------------------------------------------- |
+| `npm run api:dev` / `web:dev` / `admin:dev`       | Development servers                                                  |
+| `npm run api:build` / `web:build` / `admin:build` | Production builds                                                    |
+| `npm test -w @dentalcare/api`                     | Unit tests, no database                                              |
+| `npm run test:integration -w @dentalcare/api`     | Integration tests against Postgres                                   |
+| `npm run cf:check-caching -w @dentalcare/api`     | Ask Cloudflare whether both Hyperdrive configs have caching disabled |
+| `npm run migrate:up` / `migrate:down`             | Database migrations                                                  |
+| `npm run migrate:create`                          | Scaffold a new migration                                             |
 
 ## Configuration
 
@@ -188,14 +188,14 @@ either.
 
 ## Documentation
 
-| Document | Contents |
-|---|---|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, tenancy model, data model |
-| [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | Folder map and conventions |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment, configuration, scaling limits |
-| [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | Findings, fixes, what remains |
-| [CHANGELOG.md](docs/CHANGELOG.md) | Release history |
-| [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Historical RC1 readiness record |
+| Document                                          | Contents                                  |
+| ------------------------------------------------- | ----------------------------------------- |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md)           | System design, tenancy model, data model  |
+| [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | Folder map and conventions                |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md)               | Deployment, configuration, scaling limits |
+| [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)       | Findings, fixes, what remains             |
+| [CHANGELOG.md](docs/CHANGELOG.md)                 | Release history                           |
+| [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Historical RC1 readiness record           |
 
 ## Tests
 

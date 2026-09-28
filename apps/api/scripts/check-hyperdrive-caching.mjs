@@ -60,7 +60,11 @@ function parseArgs(argv) {
 
 /** The first complete JSON object in `text`, or null. Wrangler prints a banner first. */
 export function firstJsonObject(text) {
-  for (let start = text.indexOf('{'); start !== -1; start = text.indexOf('{', start + 1)) {
+  for (
+    let start = text.indexOf('{');
+    start !== -1;
+    start = text.indexOf('{', start + 1)
+  ) {
     let depth = 0;
     let inString = false;
     for (let i = start; i < text.length; i++) {
@@ -91,7 +95,8 @@ export function firstJsonObject(text) {
  */
 export function cachingState(config) {
   const caching = config?.caching;
-  if (caching === undefined || caching === null || typeof caching !== 'object') return 'unknown';
+  if (caching === undefined || caching === null || typeof caching !== 'object')
+    return 'unknown';
   return caching.disabled === true ? 'disabled' : 'enabled';
 }
 

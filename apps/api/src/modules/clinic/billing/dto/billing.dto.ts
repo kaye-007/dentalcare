@@ -18,13 +18,17 @@ export class GenerateInvoiceDto {
    * invoice work it has not done. Set false to bill the whole plan up front,
    * which some clinics do for orthodontics.
    */
-  @IsOptional() @IsBoolean()
+  @IsOptional()
+  @IsBoolean()
   completedOnly?: boolean;
 
-  @IsOptional() @IsISO8601()
+  @IsOptional()
+  @IsISO8601()
   issuedAt?: string;
 
-  @IsOptional() @IsString() @MaxLength(1000)
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   notes?: string;
 }
 
@@ -41,9 +45,12 @@ export class LedgerAdjustmentDto {
   @IsInt()
   amount!: number;
 
-  @IsString() @MinLength(1, { message: 'Say why this adjustment was made' }) @MaxLength(300)
+  @IsString()
+  @MinLength(1, { message: 'Say why this adjustment was made' })
+  @MaxLength(300)
   description!: string;
 
-  @IsOptional() @IsISO8601()
+  @IsOptional()
+  @IsISO8601()
   occurredOn?: string;
 }

@@ -8,12 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import {
-  api,
-  setSessionExpiredHandler,
-  tokenStore,
-  type AuthUser,
-} from './api';
+import { api, setSessionExpiredHandler, tokenStore, type AuthUser } from './api';
 import { roleCan, type Permission } from './permissions';
 import { setCurrency } from './format';
 import { setClinicZone } from './clinic-time';
@@ -33,7 +28,10 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<SignInStep>;
   /** Store tokens the API issued at the end of a sign-in, and load the user. */
-  completeSignIn: (tokens: { accessToken: string; refreshToken: string }) => Promise<void>;
+  completeSignIn: (tokens: {
+    accessToken: string;
+    refreshToken: string;
+  }) => Promise<void>;
   /**
    * Adopt a session minted elsewhere — today, the Google callback. Re-reads
    * /auth/me rather than trusting a decoded token, so the client's view of the
@@ -185,7 +183,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       readOnly,
       trialEndsAt,
     }),
-    [user, loading, login, completeSignIn, adoptSession, refreshUser, logout, can, readOnly, trialEndsAt],
+    [
+      user,
+      loading,
+      login,
+      completeSignIn,
+      adoptSession,
+      refreshUser,
+      logout,
+      can,
+      readOnly,
+      trialEndsAt,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

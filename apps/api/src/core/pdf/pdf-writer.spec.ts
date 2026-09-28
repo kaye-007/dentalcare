@@ -5,11 +5,35 @@ const latin1 = (bytes: Uint8Array) => Buffer.from(bytes).toString('latin1');
 /** A JPEG header with only a start-of-frame: enough for jpegInfo and the PDF dictionary. */
 function fakeJpeg(width: number, height: number): Uint8Array {
   return Uint8Array.from([
-    0xff, 0xd8, // SOI
-    0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, // APP0, empty
-    0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 0xff, width >> 8, width & 0xff, 0x03,
-    0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
-    0xff, 0xd9, // EOI
+    0xff,
+    0xd8, // SOI
+    0xff,
+    0xe0,
+    0x00,
+    0x04,
+    0x00,
+    0x00, // APP0, empty
+    0xff,
+    0xc0,
+    0x00,
+    0x11,
+    0x08,
+    height >> 8,
+    height & 0xff,
+    width >> 8,
+    width & 0xff,
+    0x03,
+    0x01,
+    0x22,
+    0x00,
+    0x02,
+    0x11,
+    0x01,
+    0x03,
+    0x11,
+    0x01,
+    0xff,
+    0xd9, // EOI
   ]);
 }
 
@@ -27,7 +51,9 @@ describe('PdfDocument', () => {
     const startxref = Number(/startxref\n(\d+)/.exec(pdf)![1]);
     expect(pdf.slice(startxref, startxref + 4)).toBe('xref');
 
-    const entries = [...pdf.slice(startxref).matchAll(/^(\d{10}) 00000 n $/gm)].map((m) => Number(m[1]));
+    const entries = [...pdf.slice(startxref).matchAll(/^(\d{10}) 00000 n $/gm)].map((m) =>
+      Number(m[1]),
+    );
     expect(entries.length).toBeGreaterThan(5);
     entries.forEach((offset, i) => {
       expect(pdf.slice(offset, offset + `${i + 1} 0 obj`.length)).toBe(`${i + 1} 0 obj`);
@@ -56,7 +82,9 @@ describe('PdfDocument', () => {
   });
 
   it('refuses bytes that are not a JPEG', () => {
-    expect(new PdfDocument().addJpeg(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]))).toBeNull();
+    expect(
+      new PdfDocument().addJpeg(Uint8Array.from([0x89, 0x50, 0x4e, 0x47])),
+    ).toBeNull();
     expect(jpegInfo(Uint8Array.from([0xff, 0xd8]))).toBeNull();
   });
 });

@@ -11,7 +11,7 @@
     "not_found_handling": "single-page-application",
     // Without this, /api/... would be answered with index.html by the asset
     // server before the Worker ever ran.
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*"],
   },
 
   // Internal hop to the API Worker, so /api stays same-origin and the clinic
@@ -24,5 +24,5 @@
   // the app needs a clinic subdomain to resolve a tenant.
   "routes": [{ "pattern": "*.dentalcare.com/*", "zone_name": "dentalcare.com" }],
 
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
 }

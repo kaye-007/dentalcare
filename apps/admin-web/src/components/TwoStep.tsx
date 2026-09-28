@@ -117,7 +117,10 @@ export function TotpEnrollment({
       )}
       {error && <p className="auth__error">{error}</p>}
       {setup && (
-        <button className="btn btn--primary btn--block" disabled={busy || digits.length !== 6}>
+        <button
+          className="btn btn--primary btn--block"
+          disabled={busy || digits.length !== 6}
+        >
           {busy ? 'Checking…' : 'Turn on and continue'}
         </button>
       )}
@@ -125,7 +128,13 @@ export function TotpEnrollment({
   );
 }
 
-export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
+export function RecoveryCodes({
+  codes,
+  onDone,
+}: {
+  codes: string[];
+  onDone: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="auth__form">

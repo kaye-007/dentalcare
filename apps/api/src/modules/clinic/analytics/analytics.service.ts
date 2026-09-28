@@ -55,8 +55,11 @@ export class AnalyticsService {
 
     return this.tx(async (client) => {
       const { rows } = await client.query<{
-        period: string; billed: string; collected: string;
-        invoice_count: string; payment_count: string;
+        period: string;
+        billed: string;
+        collected: string;
+        invoice_count: string;
+        payment_count: string;
       }>(
         `WITH periods AS (
            SELECT generate_series($1::date, $2::date, ('1 ' || $3)::interval)::date AS period
@@ -102,7 +105,9 @@ export class AnalyticsService {
       const collected = series.reduce((s, r) => s + r.collected, 0);
 
       return {
-        from, to, granularity,
+        from,
+        to,
+        granularity,
         series,
         totals: {
           billed,
@@ -127,8 +132,11 @@ export class AnalyticsService {
     const { from, to } = resolveRange(fromRaw, toRaw);
     return this.tx(async (client) => {
       const { rows } = await client.query<{
-        clinician_id: string | null; clinician_name: string | null;
-        production: string; procedure_count: string; patient_count: string;
+        clinician_id: string | null;
+        clinician_name: string | null;
+        production: string;
+        procedure_count: string;
+        patient_count: string;
       }>(
         `SELECT cp.clinician_id,
                 coalesce(u.full_name, 'Unattributed') AS clinician_name,
@@ -145,7 +153,8 @@ export class AnalyticsService {
         [from, to],
       );
       return {
-        from, to,
+        from,
+        to,
         rows: rows.map((r) => ({
           clinicianId: r.clinician_id,
           clinicianName: r.clinician_name,
@@ -170,9 +179,12 @@ export class AnalyticsService {
     const { from, to } = resolveRange(fromRaw, toRaw);
     return this.tx(async (client) => {
       const { rows } = await client.query<{
-        operatory_id: string | null; operatory_name: string | null;
-        production: string; procedure_count: string;
-        appointment_count: string; booked_minutes: string;
+        operatory_id: string | null;
+        operatory_name: string | null;
+        production: string;
+        procedure_count: string;
+        appointment_count: string;
+        booked_minutes: string;
       }>(
         `WITH proc AS (
            SELECT a.operatory_id,
@@ -207,7 +219,8 @@ export class AnalyticsService {
         [from, to],
       );
       return {
-        from, to,
+        from,
+        to,
         rows: rows.map((r) => ({
           operatoryId: r.operatory_id,
           operatoryName: r.operatory_name,
@@ -230,8 +243,11 @@ export class AnalyticsService {
     const { from, to } = resolveRange(fromRaw, toRaw);
     return this.tx(async (client) => {
       const { rows } = await client.query<{
-        label: string; code: string | null;
-        production: string; procedure_count: string; average_fee: string;
+        label: string;
+        code: string | null;
+        production: string;
+        procedure_count: string;
+        average_fee: string;
       }>(
         `SELECT coalesce(t.name, pc.description, cp.description) AS label,
                 pc.code,
@@ -250,7 +266,8 @@ export class AnalyticsService {
         [from, to],
       );
       return {
-        from, to,
+        from,
+        to,
         rows: rows.map((r) => ({
           label: r.label,
           code: r.code,
@@ -267,9 +284,14 @@ export class AnalyticsService {
     const { from, to } = resolveRange(fromRaw, toRaw);
     return this.tx(async (client) => {
       const { rows } = await client.query<{
-        billed: string; collected: string; outstanding: string;
-        expenses: string; invoice_count: string; unpaid_count: string;
-        patients_seen: string; procedures_done: string;
+        billed: string;
+        collected: string;
+        outstanding: string;
+        expenses: string;
+        invoice_count: string;
+        unpaid_count: string;
+        patients_seen: string;
+        procedures_done: string;
       }>(
         `SELECT
            (SELECT coalesce(sum(total),0) FROM invoices
@@ -303,7 +325,8 @@ export class AnalyticsService {
       const expenses = Number(r.expenses);
 
       return {
-        from, to,
+        from,
+        to,
         billed,
         collected,
         expenses,

@@ -107,7 +107,8 @@ beforeAll(async () => {
 
   api = await harness.startApi();
   s = await createScenario();
-  token = (await harness.login(api, s.a.subdomain, s.a.adminEmail, s.password)).accessToken;
+  token = (await harness.login(api, s.a.subdomain, s.a.adminEmail, s.password))
+    .accessToken;
   reminders = api.app.get(service.RemindersService);
 
   await owner().query(
@@ -192,7 +193,8 @@ function receipt(query: string, params: Record<string, string>, signature?: stri
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'X-Twilio-Signature': signature ?? twilioSignature(TOKEN, `${PUBLIC}${path}`, params),
+      'X-Twilio-Signature':
+        signature ?? twilioSignature(TOKEN, `${PUBLIC}${path}`, params),
     },
     body: new URLSearchParams(params).toString(),
   });
@@ -219,12 +221,18 @@ describe('automatic reminders over SMS', () => {
     const sms = outbound[0]!;
     expect(sms.to).toBe('+355691234567');
     expect(sms.from).toBe('+15005550006');
-    expect(sms.auth).toBe(`Basic ${Buffer.from(`${ACCOUNT}:${TOKEN}`).toString('base64')}`);
+    expect(sms.auth).toBe(
+      `Basic ${Buffer.from(`${ACCOUNT}:${TOKEN}`).toString('base64')}`,
+    );
     expect(sms.body).toContain('Ana');
     expect(sms.body).toContain('+355 4 222 3333');
 
     const row = await reminderFor(ana.appointmentId);
-    expect(row).toMatchObject({ status: 'sent', to_address: '+355691234567', attempts: 1 });
+    expect(row).toMatchObject({
+      status: 'sent',
+      to_address: '+355691234567',
+      attempts: 1,
+    });
     expect(row.provider_message_id).toMatch(/^SM/);
     expect(sms.callback).toBe(
       `${PUBLIC}${RECEIPT_PATH}?tenant=${s.a.id}&reminder=${row.id}`,
@@ -276,12 +284,18 @@ describe('when the provider says no', () => {
     );
     await reminders.scanTenant(s.a.id);
     expect(outbound.length).toBe(before + 1);
-    expect(await reminderFor(besa.appointmentId)).toMatchObject({ status: 'sent', attempts: 2 });
+    expect(await reminderFor(besa.appointmentId)).toMatchObject({
+      status: 'sent',
+      attempts: 2,
+    });
   });
 
   it('an unsubscribed number stops reminders for that patient', async () => {
     const drita = await booked({ firstName: 'Drita', phone: '069 999 0000' });
-    script.push({ status: 400, body: { code: 21610, message: 'Attempt to send to unsubscribed recipient' } });
+    script.push({
+      status: 400,
+      body: { code: 21610, message: 'Attempt to send to unsubscribed recipient' },
+    });
 
     await reminders.scanTenant(s.a.id);
 
@@ -289,11 +303,16 @@ describe('when the provider says no', () => {
       status: 'failed',
       error_code: '21610',
     });
-    const { rows } = await owner().query<{ reminders_opt_out: boolean; reminders_opt_out_source: string }>(
-      'SELECT reminders_opt_out, reminders_opt_out_source FROM patients WHERE id = $1',
-      [drita.patientId],
-    );
-    expect(rows[0]).toEqual({ reminders_opt_out: true, reminders_opt_out_source: 'provider' });
+    const { rows } = await owner().query<{
+      reminders_opt_out: boolean;
+      reminders_opt_out_source: string;
+    }>('SELECT reminders_opt_out, reminders_opt_out_source FROM patients WHERE id = $1', [
+      drita.patientId,
+    ]);
+    expect(rows[0]).toEqual({
+      reminders_opt_out: true,
+      reminders_opt_out_source: 'provider',
+    });
   });
 });
 
@@ -358,20 +377,41 @@ describe('from the appointment screen', () => {
   });
 
   it('sends an SMS on demand', async () => {
-    const elira = await booked({ firstName: 'Elira', phone: '069 555 1234', inHours: 30 });
-    const res = await asAdmin('POST', `/api/appointments/${elira.appointmentId}/reminders`, {
-      channel: 'sms',
+    const elira = await booked({
+      firstName: 'Elira',
+      phone: '069 555 1234',
+      inHours: 30,
     });
+    const res = await asAdmin(
+      'POST',
+      `/api/appointments/${elira.appointmentId}/reminders`,
+      {
+        channel: 'sms',
+      },
+    );
 
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ channel: 'sms', status: 'sent', toAddress: '+355695551234' });
+    expect(res.body).toMatchObject({
+      channel: 'sms',
+      status: 'sent',
+      toAddress: '+355695551234',
+    });
   });
 
   it('refuses to text a patient who opted out', async () => {
-    const fisnik = await booked({ firstName: 'Fisnik', phone: '069 555 9876', optedOut: true, inHours: 30 });
-    const res = await asAdmin('POST', `/api/appointments/${fisnik.appointmentId}/reminders`, {
-      channel: 'sms',
+    const fisnik = await booked({
+      firstName: 'Fisnik',
+      phone: '069 555 9876',
+      optedOut: true,
+      inHours: 30,
     });
+    const res = await asAdmin(
+      'POST',
+      `/api/appointments/${fisnik.appointmentId}/reminders`,
+      {
+        channel: 'sms',
+      },
+    );
 
     expect(res.status).toBe(409);
   });

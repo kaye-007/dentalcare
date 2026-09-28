@@ -56,9 +56,17 @@ describe('the staff list', () => {
   });
 
   it('shows sign-in and fiscal details to whoever manages staff only', async () => {
-    const forAdmin = (await call<Staff[]>(api, 'GET', '/api/staff', A(admin))).body.find((x) => x.id === deskId)!;
-    expect(forAdmin).toMatchObject({ twoStepEnabled: false, fiscalOperatorCode: null, seesPatients: false });
-    const forDesk = (await call<Staff[]>(api, 'GET', '/api/staff', A(desk))).body.find((x) => x.id === deskId)!;
+    const forAdmin = (await call<Staff[]>(api, 'GET', '/api/staff', A(admin))).body.find(
+      (x) => x.id === deskId,
+    )!;
+    expect(forAdmin).toMatchObject({
+      twoStepEnabled: false,
+      fiscalOperatorCode: null,
+      seesPatients: false,
+    });
+    const forDesk = (await call<Staff[]>(api, 'GET', '/api/staff', A(desk))).body.find(
+      (x) => x.id === deskId,
+    )!;
     expect(forDesk).not.toHaveProperty('twoStepEnabled');
     expect(forDesk).not.toHaveProperty('fiscalOperatorCode');
     expect(forDesk.seesPatients).toBe(false);
@@ -67,25 +75,55 @@ describe('the staff list', () => {
 
 describe('sees patients', () => {
   it('follows the role for a new account unless told otherwise', async () => {
-    const dentist = await call<Staff>(api, 'POST', '/api/staff', A(admin, {
-      fullName: 'Dr. New Dentist', email: `dentist@${s.a.subdomain}.test`, password: 'long-enough-1', role: 'dentist',
-    }));
+    const dentist = await call<Staff>(
+      api,
+      'POST',
+      '/api/staff',
+      A(admin, {
+        fullName: 'Dr. New Dentist',
+        email: `dentist@${s.a.subdomain}.test`,
+        password: 'long-enough-1',
+        role: 'dentist',
+      }),
+    );
     expect(dentist.status).toBe(201);
     expect(dentist.body.seesPatients).toBe(true);
 
-    const owner = await call<Staff>(api, 'POST', '/api/staff', A(admin, {
-      fullName: 'The Owner', email: `owner@${s.a.subdomain}.test`, password: 'long-enough-1', role: 'admin',
-    }));
+    const owner = await call<Staff>(
+      api,
+      'POST',
+      '/api/staff',
+      A(admin, {
+        fullName: 'The Owner',
+        email: `owner@${s.a.subdomain}.test`,
+        password: 'long-enough-1',
+        role: 'admin',
+      }),
+    );
     expect(owner.body.seesPatients).toBe(false);
 
-    const treatingAdmin = await call<Staff>(api, 'POST', '/api/staff', A(admin, {
-      fullName: 'Dr. Also Admin', email: `drad@${s.a.subdomain}.test`, password: 'long-enough-1', role: 'admin', seesPatients: true,
-    }));
+    const treatingAdmin = await call<Staff>(
+      api,
+      'POST',
+      '/api/staff',
+      A(admin, {
+        fullName: 'Dr. Also Admin',
+        email: `drad@${s.a.subdomain}.test`,
+        password: 'long-enough-1',
+        role: 'admin',
+        seesPatients: true,
+      }),
+    );
     expect(treatingAdmin.body).toMatchObject({ role: 'admin', seesPatients: true });
   });
 
   it('is changed by an administrator, and the change is on the activity trail', async () => {
-    const res = await call<Staff>(api, 'PATCH', `/api/staff/${deskId}`, A(admin, { seesPatients: true }));
+    const res = await call<Staff>(
+      api,
+      'PATCH',
+      `/api/staff/${deskId}`,
+      A(admin, { seesPatients: true }),
+    );
     expect(res.status).toBe(200);
     expect(res.body.seesPatients).toBe(true);
     const trail = await ownerQuery<{ summary: string }>(
@@ -97,14 +135,29 @@ describe('sees patients', () => {
   });
 
   it('is not changed by anyone else', async () => {
-    const res = await call(api, 'PATCH', `/api/staff/${deskId}`, A(desk, { seesPatients: false }));
+    const res = await call(
+      api,
+      'PATCH',
+      `/api/staff/${deskId}`,
+      A(desk, { seesPatients: false }),
+    );
     expect(res.status).toBe(403);
   });
 
   it('no longer accepts a salary', async () => {
-    const res = await call(api, 'PATCH', `/api/staff/${deskId}`, A(admin, { salaryAmount: 90000 }));
+    const res = await call(
+      api,
+      'PATCH',
+      `/api/staff/${deskId}`,
+      A(admin, { salaryAmount: 90000 }),
+    );
     expect(res.status).toBe(400);
-    const row = (await ownerQuery<{ salary_amount: number }>('SELECT salary_amount FROM users WHERE id = $1', [deskId])).rows[0]!;
+    const row = (
+      await ownerQuery<{ salary_amount: number }>(
+        'SELECT salary_amount FROM users WHERE id = $1',
+        [deskId],
+      )
+    ).rows[0]!;
     expect(row.salary_amount).toBe(50000);
   });
 });

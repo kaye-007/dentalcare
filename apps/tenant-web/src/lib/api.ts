@@ -63,7 +63,8 @@ export class ApiError extends Error {
 }
 
 /** What the person at the desk reads when the failure is ours, not theirs. */
-export const GENERIC_ERROR = 'Something went wrong on our side. Please try again in a moment.';
+export const GENERIC_ERROR =
+  'Something went wrong on our side. Please try again in a moment.';
 export const NETWORK_ERROR =
   'DentalCare could not be reached. Check the internet connection and try again.';
 
@@ -76,13 +77,17 @@ const TECHNICAL =
   /\b(sql|syntax error|relation "|violates|constraint|econn|etimedout|enotfound|stack|undefined is not|cannot read propert|typeerror|referenceerror|internal server error|bad gateway|gateway time-?out|service unavailable|cloudflare|worker threw|exception|hyperdrive|postgres|pg_)\b/i;
 
 function humanMessage(status: number, message: string): string {
-  if (status === 429) return 'Too many attempts in a short time. Wait a moment and try again.';
+  if (status === 429)
+    return 'Too many attempts in a short time. Wait a moment and try again.';
   if (status === 413) return 'That file is too large to upload.';
   if (status >= 500 || TECHNICAL.test(message)) return GENERIC_ERROR;
   // Nest's defaults, which are true but say nothing a person can act on.
   if (status === 403 && (!message || /^forbidden( resource)?$/i.test(message)))
     return 'Your role does not allow this. Ask a clinic administrator if you need it.';
-  if (status === 404 && (!message || /^(not found|cannot (get|post|put|patch|delete) )/i.test(message)))
+  if (
+    status === 404 &&
+    (!message || /^(not found|cannot (get|post|put|patch|delete) )/i.test(message))
+  )
     return 'That record could not be found. It may have been removed.';
   if (!message) return GENERIC_ERROR;
   return message;
@@ -107,7 +112,12 @@ async function toApiError(res: Response): Promise<ApiError> {
   } catch {
     /* response had no JSON body — the status decides the wording */
   }
-  return new ApiError(res.status, humanMessage(res.status, String(message)), code, details);
+  return new ApiError(
+    res.status,
+    humanMessage(res.status, String(message)),
+    code,
+    details,
+  );
 }
 
 /**
@@ -412,7 +422,9 @@ export const securityApi = {
     return request<ActiveSession[]>('/auth/sessions');
   },
   revokeOtherSessions() {
-    return request<{ revoked: number }>('/auth/sessions/revoke-others', { method: 'POST' });
+    return request<{ revoked: number }>('/auth/sessions/revoke-others', {
+      method: 'POST',
+    });
   },
   revokeSession(familyId: string) {
     return request<{ revoked: true }>(`/auth/sessions/${familyId}/revoke`, {
@@ -671,7 +683,9 @@ export const api = {
   },
   /** Patients due for a check-up: last completed visit more than `months` ago, nothing booked. */
   recallDue(months: number) {
-    return request<{ months: number; items: RecallPatient[] }>(`/patients/recall?months=${months}`);
+    return request<{ months: number; items: RecallPatient[] }>(
+      `/patients/recall?months=${months}`,
+    );
   },
   getPatient(id: string) {
     return request<Patient>(`/patients/${id}`);
@@ -736,13 +750,20 @@ export interface PatientAccessEntry {
   id: string;
   resource: PatientAccessResource;
   accessedAt: string;
-  actor: { userId: string | null; label: string; role: string; currentName: string | null };
+  actor: {
+    userId: string | null;
+    label: string;
+    role: string;
+    currentName: string | null;
+  };
 }
 
 export const patientAccessApi = {
   /** Administrator only (`audit:read`). */
   list(patientId: string, limit = 200) {
-    return request<PatientAccessEntry[]>(`/patients/${patientId}/access-log?limit=${limit}`);
+    return request<PatientAccessEntry[]>(
+      `/patients/${patientId}/access-log?limit=${limit}`,
+    );
   },
 };
 
@@ -925,19 +946,27 @@ export const documentsApi = {
 
   /** Signed view links for every drawable image of the patient, for thumbnails. */
   thumbnails(patientId: string) {
-    return request<{ id: string; url: string }[]>(`/patients/${patientId}/documents/thumbnails`);
+    return request<{ id: string; url: string }[]>(
+      `/patients/${patientId}/documents/thumbnails`,
+    );
   },
 
   /** The cropped profile picture, already re-encoded by the browser. */
   setProfilePhoto(patientId: string, image: Blob) {
     const form = new FormData();
     form.append('file', image, 'profile.jpg');
-    return upload<{ photoDocumentId: string; photoUrl: string }>(`/patients/${patientId}/photo`, form);
+    return upload<{ photoDocumentId: string; photoUrl: string }>(
+      `/patients/${patientId}/photo`,
+      form,
+    );
   },
   clearProfilePhoto(patientId: string) {
-    return request<{ photoDocumentId: null; photoUrl: null }>(`/patients/${patientId}/photo`, {
-      method: 'DELETE',
-    });
+    return request<{ photoDocumentId: null; photoUrl: null }>(
+      `/patients/${patientId}/photo`,
+      {
+        method: 'DELETE',
+      },
+    );
   },
 
   /** Short-lived signed URL for inline preview. */
@@ -1111,7 +1140,10 @@ export const closuresApi = {
     return request<Closure[]>(`/closures${s ? `?${s}` : ''}`);
   },
   create(p: { staffId?: string; startsOn: string; endsOn: string; reason: string }) {
-    return request<Closure>('/closures', { method: 'POST', body: JSON.stringify(clean(p)) });
+    return request<Closure>('/closures', {
+      method: 'POST',
+      body: JSON.stringify(clean(p)),
+    });
   },
   remove(id: string) {
     return request<{ deleted: true }>(`/closures/${id}`, { method: 'DELETE' });
@@ -1841,7 +1873,9 @@ export interface Estimate {
 export const estimatesApi = {
   /** currency: a code for a second currency, 'none' for none, omitted for the clinic's default. */
   forPlan(planId: string, currency?: CurrencyCode | 'none') {
-    return request<Estimate>(`/treatment-plans/${planId}/estimate${currency ? `?currency=${currency}` : ''}`);
+    return request<Estimate>(
+      `/treatment-plans/${planId}/estimate${currency ? `?currency=${currency}` : ''}`,
+    );
   },
 };
 
@@ -2135,7 +2169,12 @@ export interface FiscalSettings {
     town: string | null;
     currency: string;
   };
-  operators: { userId: string; fullName: string; role: Role; operatorCode: string | null }[];
+  operators: {
+    userId: string;
+    fullName: string;
+    role: Role;
+    operatorCode: string | null;
+  }[];
 }
 
 export interface FiscalRecord {
@@ -2168,7 +2207,14 @@ export interface FiscalRecord {
 export interface FiscalReceipt {
   environment: 'test' | 'production';
   status: FiscalRecord['status'];
-  seller: { name: string; nipt: string; address: string; town: string; phone: string | null; email: string | null };
+  seller: {
+    name: string;
+    nipt: string;
+    address: string;
+    town: string;
+    phone: string | null;
+    email: string | null;
+  };
   invoiceNumber: string;
   buyerName: string;
   fiscal: FiscalRecord;
@@ -2207,11 +2253,29 @@ export const fiscalApi = {
   settings() {
     return request<FiscalSettings>('/fiscal/settings');
   },
-  update(p: Partial<Pick<FiscalSettings, 'enabled' | 'environment' | 'businessUnitCode' | 'tcrCode' | 'isIssuerInVat' | 'vatExemptionCode'>>) {
-    return request<FiscalSettings>('/fiscal/settings', { method: 'PATCH', body: JSON.stringify(p) });
+  update(
+    p: Partial<
+      Pick<
+        FiscalSettings,
+        | 'enabled'
+        | 'environment'
+        | 'businessUnitCode'
+        | 'tcrCode'
+        | 'isIssuerInVat'
+        | 'vatExemptionCode'
+      >
+    >,
+  ) {
+    return request<FiscalSettings>('/fiscal/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
   installCertificate(pem: string) {
-    return request<FiscalSettings>('/fiscal/certificate', { method: 'POST', body: JSON.stringify({ pem }) });
+    return request<FiscalSettings>('/fiscal/certificate', {
+      method: 'POST',
+      body: JSON.stringify({ pem }),
+    });
   },
   /** The .p12/.pfx as issued. The password opens it on the server and is not kept. */
   installCertificateFile(p12Base64: string, password: string) {
@@ -2230,7 +2294,10 @@ export const fiscalApi = {
     return request<CashDeposit[]>('/fiscal/cash-deposits');
   },
   registerCashDeposit(p: { operation: 'INITIAL' | 'WITHDRAW'; amount: number }) {
-    return request<CashDeposit>('/fiscal/cash-deposits', { method: 'POST', body: JSON.stringify(p) });
+    return request<CashDeposit>('/fiscal/cash-deposits', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
   },
   forInvoice(invoiceId: string) {
     return request<FiscalRecord | null>(`/invoices/${invoiceId}/fiscal`);
@@ -2321,16 +2388,20 @@ export const patientImportApi = {
     return request<ImportRecord[]>('/patient-imports');
   },
   preview(batch: ImportBatch) {
-    return request<{ valid: number; invalid: number; duplicates: number; rows: ImportRowResult[] }>(
-      '/patient-imports/preview',
-      { method: 'POST', body: JSON.stringify(batch) },
-    );
+    return request<{
+      valid: number;
+      invalid: number;
+      duplicates: number;
+      rows: ImportRowResult[];
+    }>('/patient-imports/preview', { method: 'POST', body: JSON.stringify(batch) });
   },
   commit(batch: ImportBatch) {
-    return request<{ importId: string; imported: number; skipped: number; rows: ImportRowResult[] }>(
-      '/patient-imports',
-      { method: 'POST', body: JSON.stringify(batch) },
-    );
+    return request<{
+      importId: string;
+      imported: number;
+      skipped: number;
+      rows: ImportRowResult[];
+    }>('/patient-imports', { method: 'POST', body: JSON.stringify(batch) });
   },
 };
 
@@ -2701,7 +2772,8 @@ export const reportsApi = {
  * failed    refused, or out of attempts; `error` says why
  * skipped   deliberately not sent; `error` says why
  */
-export type ReminderStatus = 'pending' | 'sending' | 'sent' | 'delivered' | 'failed' | 'skipped';
+export type ReminderStatus =
+  'pending' | 'sending' | 'sent' | 'delivered' | 'failed' | 'skipped';
 
 export interface Reminder {
   id: string;
@@ -2756,7 +2828,10 @@ export const remindersApi = {
    * message is handed to the staff member's own app — the row is a hand-off
    * record, not proof of delivery.
    */
-  sendManual(appointmentId: string, channel: 'sms' | 'log' | 'whatsapp' | 'email' = 'log') {
+  sendManual(
+    appointmentId: string,
+    channel: 'sms' | 'log' | 'whatsapp' | 'email' = 'log',
+  ) {
     return request<Reminder>(`/appointments/${appointmentId}/reminders`, {
       method: 'POST',
       body: JSON.stringify({ channel }),
@@ -2814,10 +2889,29 @@ export interface MessageThread {
   };
   messages: Reminder[];
   context: {
-    upcoming: { id: string; startsAt: string; reason: string | null; dentist: string | null; date: string; time: string }[];
-    visits: { id: string; startsAt: string; reason: string | null; dentist: string | null; visitDate: string }[];
+    upcoming: {
+      id: string;
+      startsAt: string;
+      reason: string | null;
+      dentist: string | null;
+      date: string;
+      time: string;
+    }[];
+    visits: {
+      id: string;
+      startsAt: string;
+      reason: string | null;
+      dentist: string | null;
+      visitDate: string;
+    }[];
     latestVisit: { visitDate: string; dentist: string | null } | null;
-    invoices: { id: string; invoiceNumber: string; issuedAt: string; balance: number; balanceText: string }[];
+    invoices: {
+      id: string;
+      invoiceNumber: string;
+      issuedAt: string;
+      balance: number;
+      balanceText: string;
+    }[];
     balance: number;
     balanceText: string;
     currency: CurrencyCode;
@@ -2825,7 +2919,9 @@ export interface MessageThread {
 }
 
 export const messagesApi = {
-  conversations(filter: { channel?: ConversationFilter; purpose?: MessagePurpose; q?: string } = {}) {
+  conversations(
+    filter: { channel?: ConversationFilter; purpose?: MessagePurpose; q?: string } = {},
+  ) {
     const params = new URLSearchParams();
     if (filter.channel && filter.channel !== 'all') params.set('channel', filter.channel);
     if (filter.purpose) params.set('purpose', filter.purpose);
@@ -2842,12 +2938,20 @@ export const messagesApi = {
    */
   send(
     patientId: string,
-    body: { purpose: MessagePurpose; channel: SendChannel; appointmentId?: string; invoiceId?: string },
+    body: {
+      purpose: MessagePurpose;
+      channel: SendChannel;
+      appointmentId?: string;
+      invoiceId?: string;
+    },
   ) {
-    return request<{ message: Reminder; handoffUrl: string | null }>(`/patients/${patientId}/messages`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    return request<{ message: Reminder; handoffUrl: string | null }>(
+      `/patients/${patientId}/messages`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    );
   },
 };
 
@@ -3342,10 +3446,13 @@ export const featuresApi = {
 };
 
 /* ── Cash drawer (API 0014) ──────────────────────────────── */
-export type DrawerSessionStatus = 'open' | 'counting' | 'pending_approval' | 'closed' | 'force_closed';
+export type DrawerSessionStatus =
+  'open' | 'counting' | 'pending_approval' | 'closed' | 'force_closed';
 export type CurrencyAmounts = Partial<Record<CurrencyCode, number>>;
 export type DenominationCounts = Record<string, number>;
-export type Thresholds = Partial<Record<CurrencyCode, { tolerance: number; approval: number }>>;
+export type Thresholds = Partial<
+  Record<CurrencyCode, { tolerance: number; approval: number }>
+>;
 
 export interface DrawerPolicy {
   blindCount: boolean;
@@ -3361,7 +3468,11 @@ export interface CashDrawer {
   currencies: CurrencyCode[];
   isActive: boolean;
   locationId: string;
-  openSession: { id: string; status: DrawerSessionStatus; heldBy: { id: string; name: string } } | null;
+  openSession: {
+    id: string;
+    status: DrawerSessionStatus;
+    heldBy: { id: string; name: string };
+  } | null;
 }
 
 export interface DrawerReview {
@@ -3419,7 +3530,8 @@ export interface DrawerSession {
   reviews: DrawerReview[];
   approvals: {
     id: string;
-    action: 'drawer_variance' | 'drawer_payout' | 'drawer_force_close' | 'drawer_add_float';
+    action:
+      'drawer_variance' | 'drawer_payout' | 'drawer_force_close' | 'drawer_add_float';
     approver: string | null;
     method: 'pin' | 'session';
     selfApproved: boolean;
@@ -3452,7 +3564,12 @@ export interface DrawerCurrent {
 }
 
 export interface DrawerChecklist {
-  openInvoices: { id: string; invoiceNumber: string; patientName: string; balance: number }[];
+  openInvoices: {
+    id: string;
+    invoiceNumber: string;
+    patientName: string;
+    balance: number;
+  }[];
   card: { count: number; total: number };
   bank: { count: number; total: number };
 }
@@ -3508,19 +3625,33 @@ export const drawerApi = {
     return request<DrawerPolicy>('/drawer/policy');
   },
   updatePolicy(p: Partial<DrawerPolicy>) {
-    return request<DrawerPolicy>('/drawer/policy', { method: 'PUT', body: JSON.stringify(p) });
+    return request<DrawerPolicy>('/drawer/policy', {
+      method: 'PUT',
+      body: JSON.stringify(p),
+    });
   },
   drawers() {
     return request<CashDrawer[]>('/drawer/drawers');
   },
   createDrawer(p: { name: string; currencies: CurrencyCode[]; tcrCode?: string | null }) {
-    return request<{ id: string }>('/drawer/drawers', { method: 'POST', body: JSON.stringify(p) });
+    return request<{ id: string }>('/drawer/drawers', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
   },
   updateDrawer(
     id: string,
-    p: { name?: string; currencies?: CurrencyCode[]; tcrCode?: string | null; isActive?: boolean },
+    p: {
+      name?: string;
+      currencies?: CurrencyCode[];
+      tcrCode?: string | null;
+      isActive?: boolean;
+    },
   ) {
-    return request<{ id: string }>(`/drawer/drawers/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+    return request<{ id: string }>(`/drawer/drawers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
   approvers() {
     return request<{ id: string; name: string }[]>('/drawer/approvers');
@@ -3535,17 +3666,28 @@ export const drawerApi = {
     p: {
       /** Omitted: the clinic's drawer, created on first use. */
       drawerId?: string;
-      floats: { currency: CurrencyCode; amount: number; denominations?: DenominationCounts }[];
+      floats: {
+        currency: CurrencyCode;
+        amount: number;
+        denominations?: DenominationCounts;
+      }[];
     },
     key: string,
   ) {
-    return request<DrawerSession & { fiscalDeclaration: FiscalDeclaration }>('/drawer/sessions', {
-      method: 'POST',
-      body: JSON.stringify(p),
-      headers: idempotent(key),
-    });
+    return request<DrawerSession & { fiscalDeclaration: FiscalDeclaration }>(
+      '/drawer/sessions',
+      {
+        method: 'POST',
+        body: JSON.stringify(p),
+        headers: idempotent(key),
+      },
+    );
   },
-  drop(sessionId: string, p: { currency: CurrencyCode; amount: number; reason?: string }, key: string) {
+  drop(
+    sessionId: string,
+    p: { currency: CurrencyCode; amount: number; reason?: string },
+    key: string,
+  ) {
     return request<DrawerSession & { fiscalDeclaration: FiscalDeclaration }>(
       `/drawer/sessions/${sessionId}/drops`,
       { method: 'POST', body: JSON.stringify(p), headers: idempotent(key) },
@@ -3575,7 +3717,9 @@ export const drawerApi = {
     );
   },
   cancelCount(sessionId: string) {
-    return request<DrawerSession>(`/drawer/sessions/${sessionId}/count/cancel`, { method: 'POST' });
+    return request<DrawerSession>(`/drawer/sessions/${sessionId}/count/cancel`, {
+      method: 'POST',
+    });
   },
   submitCount(sessionId: string, counts: CountPayload, key: string) {
     return request<CountResult>(`/drawer/sessions/${sessionId}/counts`, {
@@ -3619,7 +3763,13 @@ export const drawerApi = {
     });
   },
   sessions(
-    q: { from?: string; to?: string; userId?: string; drawerId?: string; varianceOnly?: boolean } = {},
+    q: {
+      from?: string;
+      to?: string;
+      userId?: string;
+      drawerId?: string;
+      varianceOnly?: boolean;
+    } = {},
   ) {
     const qs = new URLSearchParams();
     if (q.from) qs.set('from', q.from);
@@ -3700,7 +3850,11 @@ export interface ReminderRow {
   whatsappPhone: string | null;
   startsAt: string;
   appointmentStatus: string;
-  reminder: { status: WhatsAppSendStatus; at: string | null; failureReason: string | null } | null;
+  reminder: {
+    status: WhatsAppSendStatus;
+    at: string | null;
+    failureReason: string | null;
+  } | null;
   exclusion: WhatsAppExclusion | null;
   exclusionLabel: string | null;
   values: WhatsAppValues;
@@ -3757,10 +3911,16 @@ export const whatsappApi = {
     return request<WhatsAppConnection>('/whatsapp/connection');
   },
   test(p: { accessToken?: string; phoneNumberId?: string; wabaId?: string }) {
-    return request<WhatsAppTestResult>('/whatsapp/connection/test', { method: 'POST', body: JSON.stringify(p) });
+    return request<WhatsAppTestResult>('/whatsapp/connection/test', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
   },
   save(p: { accessToken?: string; phoneNumberId: string; wabaId: string }) {
-    return request<WhatsAppConnection>('/whatsapp/connection', { method: 'PUT', body: JSON.stringify(p) });
+    return request<WhatsAppConnection>('/whatsapp/connection', {
+      method: 'PUT',
+      body: JSON.stringify(p),
+    });
   },
   disconnect() {
     return request<WhatsAppConnection>('/whatsapp/connection', { method: 'DELETE' });
@@ -3769,33 +3929,46 @@ export const whatsappApi = {
     return request<WhatsAppTemplate[]>('/whatsapp/templates');
   },
   createTemplate(p: WhatsAppTemplateInput) {
-    return request<WhatsAppTemplate>('/whatsapp/templates', { method: 'POST', body: JSON.stringify(p) });
+    return request<WhatsAppTemplate>('/whatsapp/templates', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    });
   },
   updateTemplate(id: string, p: Partial<WhatsAppTemplateInput>) {
-    return request<WhatsAppTemplate>(`/whatsapp/templates/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+    return request<WhatsAppTemplate>(`/whatsapp/templates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
   deleteTemplate(id: string) {
     return request<{ deleted: true }>(`/whatsapp/templates/${id}`, { method: 'DELETE' });
   },
   checkTemplate(id: string) {
-    return request<WhatsAppTemplate>(`/whatsapp/templates/${id}/check`, { method: 'POST' });
+    return request<WhatsAppTemplate>(`/whatsapp/templates/${id}/check`, {
+      method: 'POST',
+    });
   },
   day(date?: string) {
     return request<ReminderDay>(`/whatsapp/reminders${date ? `?date=${date}` : ''}`);
   },
   send(p: { date: string; templateId: string; appointmentIds: string[] }, key: string) {
-    return request<WhatsAppBatch & { sends: WhatsAppSend[] }>('/whatsapp/reminders/send', {
-      method: 'POST',
-      body: JSON.stringify(p),
-      headers: idempotent(key),
-    });
+    return request<WhatsAppBatch & { sends: WhatsAppSend[] }>(
+      '/whatsapp/reminders/send',
+      {
+        method: 'POST',
+        body: JSON.stringify(p),
+        headers: idempotent(key),
+      },
+    );
   },
   history(q: { batchId?: string; status?: WhatsAppSendStatus | '' } = {}) {
     const qs = new URLSearchParams();
     if (q.batchId) qs.set('batchId', q.batchId);
     if (q.status) qs.set('status', q.status);
     const s = qs.toString();
-    return request<{ batches: WhatsAppBatch[]; sends: WhatsAppSend[] }>(`/whatsapp/history${s ? `?${s}` : ''}`);
+    return request<{ batches: WhatsAppBatch[]; sends: WhatsAppSend[] }>(
+      `/whatsapp/history${s ? `?${s}` : ''}`,
+    );
   },
 };
 /* ── Lab work, labs and suppliers (0020) ─────────────────── */
@@ -3827,7 +4000,10 @@ function partnersOf(base: '/labs' | '/suppliers') {
       return request<Partner>(base, { method: 'POST', body: JSON.stringify(p) });
     },
     update(id: string, p: PartnerPayload) {
-      return request<Partner>(`${base}/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+      return request<Partner>(`${base}/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(p),
+      });
     },
   };
 }
@@ -3906,7 +4082,10 @@ export const labApi = {
     return request<LabOrder>('/lab-orders', { method: 'POST', body: JSON.stringify(p) });
   },
   update(id: string, p: Partial<Omit<LabOrderPayload, 'patientId'>>) {
-    return request<LabOrder>(`/lab-orders/${id}`, { method: 'PATCH', body: JSON.stringify(p) });
+    return request<LabOrder>(`/lab-orders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(p),
+    });
   },
   /** One step along, one back (undo), or cancelled with a reason. */
   move(id: string, status: LabStatus, reason?: string) {

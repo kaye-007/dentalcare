@@ -48,17 +48,51 @@ export function templateVariables(body: string): string[] {
 
 /** Variables a text uses that a reminder cannot fill. */
 export function unknownWhatsAppVariables(body: string): string[] {
-  return templateVariables(body).filter((v) => !(WHATSAPP_REMINDER_VARIABLES as readonly string[]).includes(v));
+  return templateVariables(body).filter(
+    (v) => !(WHATSAPP_REMINDER_VARIABLES as readonly string[]).includes(v),
+  );
 }
 
 /** The text with its variables filled; an unknown one is left as written. */
-export function renderWhatsAppPreview(body: string, values: Partial<WhatsAppValues>): string {
-  return body.replace(VARIABLE, (whole, name: string) => values[name as WhatsAppVariable] ?? whole);
+export function renderWhatsAppPreview(
+  body: string,
+  values: Partial<WhatsAppValues>,
+): string {
+  return body.replace(
+    VARIABLE,
+    (whole, name: string) => values[name as WhatsAppVariable] ?? whole,
+  );
 }
 
 const MONTHS = {
-  sq: ['janar', 'shkurt', 'mars', 'prill', 'maj', 'qershor', 'korrik', 'gusht', 'shtator', 'tetor', 'nëntor', 'dhjetor'],
-  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+  sq: [
+    'janar',
+    'shkurt',
+    'mars',
+    'prill',
+    'maj',
+    'qershor',
+    'korrik',
+    'gusht',
+    'shtator',
+    'tetor',
+    'nëntor',
+    'dhjetor',
+  ],
+  en: [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ],
 } as const;
 
 /** The language family a template code belongs to, for dates: "en_US" -> "en". Albanian otherwise. */
@@ -67,7 +101,10 @@ export function dateLanguage(languageCode: string): 'sq' | 'en' {
 }
 
 /** Wall-clock parts of an instant in the clinic's zone. */
-function zonedParts(at: Date, timeZone: string): { month: number; day: number; hour: string; minute: string } {
+function zonedParts(
+  at: Date,
+  timeZone: string,
+): { month: number; day: number; hour: string; minute: string } {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
       timeZone,
@@ -80,7 +117,12 @@ function zonedParts(at: Date, timeZone: string): { month: number; day: number; h
       .formatToParts(at)
       .map((p) => [p.type, p.value]),
   );
-  return { month: Number(parts.month), day: Number(parts.day), hour: parts.hour!, minute: parts.minute! };
+  return {
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: parts.hour!,
+    minute: parts.minute!,
+  };
 }
 
 /** "27 shtator" / "27 September" and "09:00", in the clinic's zone. Written out, not left to the runtime's locale data. */
@@ -157,7 +199,9 @@ export function whatsAppRecipient(
   const written = patient.whatsappPhone?.trim() || patient.phone?.trim() || '';
   if (!written) return { phone: null, problem: 'phone_missing' };
   const e164 = toE164(written, countryCode);
-  return e164 ? { phone: e164, problem: null } : { phone: null, problem: 'phone_invalid' };
+  return e164
+    ? { phone: e164, problem: null }
+    : { phone: null, problem: 'phone_invalid' };
 }
 
 /** The first reason an appointment is excluded, or null when it can be reminded. */
@@ -205,10 +249,20 @@ export const WHATSAPP_SEND_STATUS_LABELS: Record<WhatsAppSendStatus, string> = {
 
 /** A send that holds the appointment's one reminder: nothing else may be sent for it. */
 export function isLiveSend(status: WhatsAppSendStatus): boolean {
-  return status === 'queued' || status === 'sending' || status === 'accepted' || status === 'sent';
+  return (
+    status === 'queued' ||
+    status === 'sending' ||
+    status === 'accepted' ||
+    status === 'sent'
+  );
 }
 
-export const WHATSAPP_OPT_IN_SOURCES = ['in_person', 'paper_form', 'phone', 'message'] as const;
+export const WHATSAPP_OPT_IN_SOURCES = [
+  'in_person',
+  'paper_form',
+  'phone',
+  'message',
+] as const;
 export type WhatsAppOptInSource = (typeof WHATSAPP_OPT_IN_SOURCES)[number];
 export const WHATSAPP_OPT_IN_SOURCE_LABELS: Record<WhatsAppOptInSource, string> = {
   in_person: 'In person at the clinic',

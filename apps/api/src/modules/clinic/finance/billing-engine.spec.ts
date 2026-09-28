@@ -1,13 +1,39 @@
-import { AGEING_BUCKETS, CURRENCIES, LEDGER_ENTRY_TYPES, LEDGER_SIGN, VAT_RATE_SCALE, apportion, bucketFor, calculateInvoice, calculateInvoiceLine, collectionRate, deriveInvoiceStatus, isCurrency, planLinesToInvoiceLines, type InvoiceLineInput } from './billing-engine';
+import {
+  AGEING_BUCKETS,
+  CURRENCIES,
+  LEDGER_ENTRY_TYPES,
+  LEDGER_SIGN,
+  VAT_RATE_SCALE,
+  apportion,
+  bucketFor,
+  calculateInvoice,
+  calculateInvoiceLine,
+  collectionRate,
+  deriveInvoiceStatus,
+  isCurrency,
+  planLinesToInvoiceLines,
+  type InvoiceLineInput,
+} from './billing-engine';
 
 const line = (o: Partial<InvoiceLineInput> = {}): InvoiceLineInput => ({
-  quantity: 1, unitPrice: 100, discountAmount: 0, taxRateBp: 0, ...o,
+  quantity: 1,
+  unitPrice: 100,
+  discountAmount: 0,
+  taxRateBp: 0,
+  ...o,
 });
 
 describe('apportion', () => {
   it('splits exactly, losing nothing', () => {
     for (const amount of [0, 1, 7, 100, 999, 12345]) {
-      for (const weights of [[1], [1, 1], [1, 1, 1], [3, 5, 7], [10, 0, 1], [1, 2, 3, 4, 5]]) {
+      for (const weights of [
+        [1],
+        [1, 1],
+        [1, 1, 1],
+        [3, 5, 7],
+        [10, 0, 1],
+        [1, 2, 3, 4, 5],
+      ]) {
         const parts = apportion(amount, weights);
         expect(parts.reduce((s, v) => s + v, 0)).toBe(amount);
         expect(parts).toHaveLength(weights.length);
@@ -50,7 +76,9 @@ describe('apportion', () => {
 describe('line costing and VAT', () => {
   it('multiplies then discounts then taxes, in that order', () => {
     // 2 × 100 = 200, less 50 = 150 net, 20% VAT = 30, total 180.
-    const c = calculateInvoiceLine(line({ quantity: 2, unitPrice: 100, discountAmount: 50, taxRateBp: 2000 }));
+    const c = calculateInvoiceLine(
+      line({ quantity: 2, unitPrice: 100, discountAmount: 50, taxRateBp: 2000 }),
+    );
     expect(c.subtotal).toBe(200);
     expect(c.net).toBe(150);
     expect(c.taxAmount).toBe(30);
@@ -58,7 +86,9 @@ describe('line costing and VAT', () => {
   });
 
   it('charges VAT on the discounted value, never the gross', () => {
-    const discounted = calculateInvoiceLine(line({ unitPrice: 200, discountAmount: 100, taxRateBp: 2000 }));
+    const discounted = calculateInvoiceLine(
+      line({ unitPrice: 200, discountAmount: 100, taxRateBp: 2000 }),
+    );
     const gross = calculateInvoiceLine(line({ unitPrice: 200, taxRateBp: 2000 }));
     expect(discounted.taxAmount).toBe(20);
     expect(gross.taxAmount).toBe(40);
@@ -72,25 +102,35 @@ describe('line costing and VAT', () => {
 
   it('rounds tax to whole units, half up', () => {
     // 10% of 105 = 10.5 → 11
-    expect(calculateInvoiceLine(line({ unitPrice: 105, taxRateBp: 1000 })).taxAmount).toBe(11);
+    expect(
+      calculateInvoiceLine(line({ unitPrice: 105, taxRateBp: 1000 })).taxAmount,
+    ).toBe(11);
     // 10% of 104 = 10.4 → 10
-    expect(calculateInvoiceLine(line({ unitPrice: 104, taxRateBp: 1000 })).taxAmount).toBe(10);
+    expect(
+      calculateInvoiceLine(line({ unitPrice: 104, taxRateBp: 1000 })).taxAmount,
+    ).toBe(10);
   });
 
   it('expresses fractional rates that a percentage integer could not', () => {
     // 8.5% of 1000 = 85
-    expect(calculateInvoiceLine(line({ unitPrice: 1000, taxRateBp: 850 })).taxAmount).toBe(85);
+    expect(
+      calculateInvoiceLine(line({ unitPrice: 1000, taxRateBp: 850 })).taxAmount,
+    ).toBe(85);
   });
 
   it('never produces a negative line, whatever the stored data says', () => {
-    const c = calculateInvoiceLine(line({ unitPrice: 100, discountAmount: 9999, taxRateBp: 2000 }));
+    const c = calculateInvoiceLine(
+      line({ unitPrice: 100, discountAmount: 9999, taxRateBp: 2000 }),
+    );
     expect(c.net).toBe(0);
     expect(c.taxAmount).toBe(0);
     expect(c.total).toBe(0);
   });
 
   it('clamps an absurd tax rate to 100%', () => {
-    const c = calculateInvoiceLine(line({ unitPrice: 100, taxRateBp: VAT_RATE_SCALE * 5 }));
+    const c = calculateInvoiceLine(
+      line({ unitPrice: 100, taxRateBp: VAT_RATE_SCALE * 5 }),
+    );
     expect(c.taxAmount).toBe(100);
   });
 
@@ -128,8 +168,8 @@ describe('invoice totals', () => {
 
   it('mixes taxable and exempt lines correctly', () => {
     const c = calculateInvoice([
-      line({ unitPrice: 100, taxRateBp: 2000 }),  // taxable: 20
-      line({ unitPrice: 100, taxRateBp: 0 }),      // exempt
+      line({ unitPrice: 100, taxRateBp: 2000 }), // taxable: 20
+      line({ unitPrice: 100, taxRateBp: 0 }), // exempt
     ]);
     expect(c.taxAmount).toBe(20);
     expect(c.total).toBe(220);
@@ -144,7 +184,8 @@ describe('invoice totals', () => {
 describe('plan → invoice conversion', () => {
   it('passes lines straight through when there is no plan discount', () => {
     const out = planLinesToInvoiceLines(
-      [{ quantity: 1, unitFee: 100, discountAmount: 10, taxRateBp: 0 }], 0,
+      [{ quantity: 1, unitFee: 100, discountAmount: 10, taxRateBp: 0 }],
+      0,
     );
     expect(out[0]!.discountAmount).toBe(10);
   });
@@ -165,7 +206,7 @@ describe('plan → invoice conversion', () => {
   it('weights by the already-discounted value, not the gross', () => {
     const plan = [
       { quantity: 1, unitFee: 200, discountAmount: 150, taxRateBp: 0 }, // net 50
-      { quantity: 1, unitFee: 200, discountAmount: 0, taxRateBp: 0 },   // net 200
+      { quantity: 1, unitFee: 200, discountAmount: 0, taxRateBp: 0 }, // net 200
     ];
     const out = planLinesToInvoiceLines(plan, 50);
     const added = out.map((l, i) => l.discountAmount - plan[i]!.discountAmount);
@@ -176,7 +217,8 @@ describe('plan → invoice conversion', () => {
 
   it('caps the plan discount at the total value of the plan', () => {
     const out = planLinesToInvoiceLines(
-      [{ quantity: 1, unitFee: 100, discountAmount: 0, taxRateBp: 0 }], 99999,
+      [{ quantity: 1, unitFee: 100, discountAmount: 0, taxRateBp: 0 }],
+      99999,
     );
     expect(out[0]!.discountAmount).toBe(100);
     expect(calculateInvoice(out).total).toBe(0);
@@ -184,14 +226,42 @@ describe('plan → invoice conversion', () => {
 
   it('produces an invoice total matching the plan total exactly', () => {
     // The property that matters: what was quoted is what gets invoiced.
-    const cases: { lines: { quantity: number; unitFee: number; discountAmount: number; taxRateBp: number }[]; planDiscount: number }[] = [
-      { lines: [{ quantity: 1, unitFee: 333, discountAmount: 0, taxRateBp: 0 }, { quantity: 1, unitFee: 667, discountAmount: 0, taxRateBp: 0 }], planDiscount: 100 },
-      { lines: [{ quantity: 3, unitFee: 77, discountAmount: 11, taxRateBp: 0 }, { quantity: 2, unitFee: 49, discountAmount: 0, taxRateBp: 0 }], planDiscount: 37 },
-      { lines: [{ quantity: 1, unitFee: 1, discountAmount: 0, taxRateBp: 0 }, { quantity: 1, unitFee: 1, discountAmount: 0, taxRateBp: 0 }, { quantity: 1, unitFee: 1, discountAmount: 0, taxRateBp: 0 }], planDiscount: 2 },
+    const cases: {
+      lines: {
+        quantity: number;
+        unitFee: number;
+        discountAmount: number;
+        taxRateBp: number;
+      }[];
+      planDiscount: number;
+    }[] = [
+      {
+        lines: [
+          { quantity: 1, unitFee: 333, discountAmount: 0, taxRateBp: 0 },
+          { quantity: 1, unitFee: 667, discountAmount: 0, taxRateBp: 0 },
+        ],
+        planDiscount: 100,
+      },
+      {
+        lines: [
+          { quantity: 3, unitFee: 77, discountAmount: 11, taxRateBp: 0 },
+          { quantity: 2, unitFee: 49, discountAmount: 0, taxRateBp: 0 },
+        ],
+        planDiscount: 37,
+      },
+      {
+        lines: [
+          { quantity: 1, unitFee: 1, discountAmount: 0, taxRateBp: 0 },
+          { quantity: 1, unitFee: 1, discountAmount: 0, taxRateBp: 0 },
+          { quantity: 1, unitFee: 1, discountAmount: 0, taxRateBp: 0 },
+        ],
+        planDiscount: 2,
+      },
     ];
     for (const c of cases) {
       const planNet = c.lines.reduce(
-        (s, l) => s + Math.max(0, l.unitFee * l.quantity - l.discountAmount), 0,
+        (s, l) => s + Math.max(0, l.unitFee * l.quantity - l.discountAmount),
+        0,
       );
       const expected = planNet - Math.min(c.planDiscount, planNet);
       const invoice = calculateInvoice(planLinesToInvoiceLines(c.lines, c.planDiscount));
@@ -273,7 +343,8 @@ describe('ageing and collection rate', () => {
 describe('currency', () => {
   it('recognises only supported codes', () => {
     for (const c of CURRENCIES) expect(isCurrency(c)).toBe(true);
-    for (const bad of ['eur', 'XYZ', '', null, 3, {}]) expect(isCurrency(bad)).toBe(false);
+    for (const bad of ['eur', 'XYZ', '', null, 3, {}])
+      expect(isCurrency(bad)).toBe(false);
   });
 
   it('includes the two the product actually needs', () => {

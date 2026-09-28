@@ -22,7 +22,8 @@ describe('feature catalogue', () => {
 
   it('recognises keys and nothing else', () => {
     expect(isFeatureKey('cash_drawer')).toBe(true);
-    for (const bad of ['Cash_drawer', 'commission', '', null, 3]) expect(isFeatureKey(bad)).toBe(false);
+    for (const bad of ['Cash_drawer', 'commission', '', null, 3])
+      expect(isFeatureKey(bad)).toBe(false);
   });
 });
 
@@ -35,13 +36,17 @@ describe('resolveFeatures', () => {
       entitledBy: 'default',
       missing: [],
     });
-    expect(resolveFeatures({ ...none, settings: { cash_drawer: true } }).cash_drawer.state).toBe(
-      'enabled',
-    );
+    expect(
+      resolveFeatures({ ...none, settings: { cash_drawer: true } }).cash_drawer.state,
+    ).toBe('enabled');
   });
 
   it('lets the plan withhold a feature the clinic switched on', () => {
-    const r = resolveFeatures({ plan: { cash_drawer: false }, overrides: {}, settings: { cash_drawer: true } });
+    const r = resolveFeatures({
+      plan: { cash_drawer: false },
+      overrides: {},
+      settings: { cash_drawer: true },
+    });
     expect(r.cash_drawer.state).toBe('not_in_plan');
     expect(r.cash_drawer.entitledBy).toBe('plan');
   });
@@ -52,14 +57,20 @@ describe('resolveFeatures', () => {
       overrides: { cash_drawer: true },
       settings: { cash_drawer: true },
     });
-    expect(granted.cash_drawer).toMatchObject({ state: 'enabled', entitledBy: 'override' });
+    expect(granted.cash_drawer).toMatchObject({
+      state: 'enabled',
+      entitledBy: 'override',
+    });
 
     const withheld = resolveFeatures({
       plan: { cash_drawer: true },
       overrides: { cash_drawer: false },
       settings: { cash_drawer: true },
     });
-    expect(withheld.cash_drawer).toMatchObject({ state: 'not_in_plan', entitledBy: 'override' });
+    expect(withheld.cash_drawer).toMatchObject({
+      state: 'not_in_plan',
+      entitledBy: 'override',
+    });
   });
 
   it('never lets a plan or a clinic switch off a legal obligation', () => {

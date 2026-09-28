@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DeliveryError, type ReminderChannel, type ReminderPayload, type SendOutcome } from './channels';
+import {
+  DeliveryError,
+  type ReminderChannel,
+  type ReminderPayload,
+  type SendOutcome,
+} from './channels';
 
 /**
  * Viber Business Messages through the Vonage Messages API, with fetch.
@@ -30,13 +35,17 @@ import { DeliveryError, type ReminderChannel, type ReminderPayload, type SendOut
 /** What a failed Vonage response means for the reminder. Mirrors the Twilio policy. */
 export function classifyVonageFailure(httpStatus: number, body: unknown): DeliveryError {
   const detail = body as { title?: unknown; type?: unknown } | null;
-  const code = typeof detail?.type === 'string' ? detail.type.split('/').pop() ?? null : null;
+  const code =
+    typeof detail?.type === 'string' ? (detail.type.split('/').pop() ?? null) : null;
   const ref = code ?? `HTTP ${httpStatus}`;
   if (httpStatus === 429 || httpStatus === 503) {
-    return new DeliveryError(`The Viber provider is busy (${ref}); it will be tried again.`, {
-      code,
-      retryable: true,
-    });
+    return new DeliveryError(
+      `The Viber provider is busy (${ref}); it will be tried again.`,
+      {
+        code,
+        retryable: true,
+      },
+    );
   }
   if (httpStatus >= 500) {
     return new DeliveryError(
@@ -45,7 +54,9 @@ export function classifyVonageFailure(httpStatus: number, body: unknown): Delive
     );
   }
   if (httpStatus === 401 || httpStatus === 403) {
-    return new DeliveryError('The Viber provider refused the account credentials.', { code });
+    return new DeliveryError('The Viber provider refused the account credentials.', {
+      code,
+    });
   }
   if (httpStatus === 402) {
     return new DeliveryError('The Viber provider account is out of credit.', { code });
@@ -86,7 +97,10 @@ export class VonageViberChannel implements ReminderChannel {
     }
     if (!payload.to) throw new DeliveryError('There is no mobile number to send to.');
 
-    const base = (this.value('VONAGE_API_BASE_URL') ?? 'https://api.nexmo.com').replace(/\/+$/, '');
+    const base = (this.value('VONAGE_API_BASE_URL') ?? 'https://api.nexmo.com').replace(
+      /\/+$/,
+      '',
+    );
     let res: Response;
     try {
       res = await fetch(`${base}/v1/messages`, {
@@ -117,6 +131,9 @@ export class VonageViberChannel implements ReminderChannel {
     const body: unknown = await res.json().catch(() => null);
     if (!res.ok) throw classifyVonageFailure(res.status, body);
     const id = (body as { message_uuid?: unknown } | null)?.message_uuid;
-    return { providerMessageId: typeof id === 'string' ? id : null, providerStatus: 'submitted' };
+    return {
+      providerMessageId: typeof id === 'string' ? id : null,
+      providerStatus: 'submitted',
+    };
   }
 }

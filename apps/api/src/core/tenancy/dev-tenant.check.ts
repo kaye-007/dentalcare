@@ -60,9 +60,7 @@ export class DevTenantCheck implements OnApplicationBootstrap {
     } catch (e) {
       // An unreachable or unmigrated database is a different problem with its
       // own louder symptoms. Do not add a confusing second one.
-      this.logger.debug(
-        `Could not check DEV_TENANT_SUBDOMAIN: ${(e as Error).message}`,
-      );
+      this.logger.debug(`Could not check DEV_TENANT_SUBDOMAIN: ${(e as Error).message}`);
       return;
     }
 
@@ -74,9 +72,7 @@ export class DevTenantCheck implements OnApplicationBootstrap {
         'before login is reached.',
     );
     if (known.length > 0) {
-      this.logger.warn(
-        `Set DEV_TENANT_SUBDOMAIN in .env to one of: ${known.join(', ')}`,
-      );
+      this.logger.warn(`Set DEV_TENANT_SUBDOMAIN in .env to one of: ${known.join(', ')}`);
     } else {
       this.logger.warn(
         'No clinics exist yet. Create one from the platform console, or run:',

@@ -15,7 +15,18 @@ import { MfaService } from '@/core/mfa/mfa.service';
 import { revokeAllFor } from '@/core/sessions/session-store';
 import { CreateTenantDto, DeleteTenantDto, SUBDOMAIN } from './dto/tenant.dto';
 
-const RESERVED = ['www', 'admin', 'api', 'app', 'mail', 'static', 'console', 'status', 'docs', 'support'];
+const RESERVED = [
+  'www',
+  'admin',
+  'api',
+  'app',
+  'mail',
+  'static',
+  'console',
+  'status',
+  'docs',
+  'support',
+];
 
 /** How long a deleted clinic can be restored before a person may purge it. */
 const RESTORE_WINDOW_DAYS = 30;
@@ -93,8 +104,14 @@ export class TenantsService {
   /** The fleet at a glance. Monthly recurring revenue counts paying, active clinics only. */
   async overview() {
     const { rows } = await this.db.adminQuery<{
-      active: number; suspended: number; archived: number; deleted: number;
-      trials: number; mrr: string; patients: number; storage_bytes: string;
+      active: number;
+      suspended: number;
+      archived: number;
+      deleted: number;
+      trials: number;
+      mrr: string;
+      patients: number;
+      storage_bytes: string;
       appointments_this_month: number;
     }>(
       `SELECT count(*) FILTER (WHERE t.status = 'active')::int    AS active,
@@ -114,7 +131,12 @@ export class TenantsService {
     );
     const r = rows[0]!;
     return {
-      clinics: { active: r.active, suspended: r.suspended, archived: r.archived, deleted: r.deleted },
+      clinics: {
+        active: r.active,
+        suspended: r.suspended,
+        archived: r.archived,
+        deleted: r.deleted,
+      },
       trials: r.trials,
       mrr: Number(r.mrr),
       patients: r.patients,
@@ -151,9 +173,14 @@ export class TenantsService {
   async checkSubdomain(raw: string, exceptTenantId?: string) {
     const subdomain = raw.trim().toLowerCase();
     if (!SUBDOMAIN.test(subdomain)) {
-      return { subdomain, available: false, reason: '3–30 lowercase letters, numbers or hyphens' };
+      return {
+        subdomain,
+        available: false,
+        reason: '3–30 lowercase letters, numbers or hyphens',
+      };
     }
-    if (RESERVED.includes(subdomain)) return { subdomain, available: false, reason: 'Reserved' };
+    if (RESERVED.includes(subdomain))
+      return { subdomain, available: false, reason: 'Reserved' };
     const { rowCount } = await this.db.adminQuery(
       'SELECT 1 FROM tenants WHERE subdomain = $1 AND ($2::uuid IS NULL OR id <> $2::uuid)',
       [subdomain, exceptTenantId ?? null],
@@ -167,7 +194,9 @@ export class TenantsService {
     const check = await this.checkSubdomain(dto.subdomain);
     if (!check.available) {
       throw new ConflictException(
-        check.reason === 'Already in use' ? 'A clinic with that subdomain already exists' : `That subdomain is ${check.reason?.toLowerCase()}`,
+        check.reason === 'Already in use'
+          ? 'A clinic with that subdomain already exists'
+          : `That subdomain is ${check.reason?.toLowerCase()}`,
       );
     }
     const subdomain = check.subdomain;
@@ -190,7 +219,9 @@ export class TenantsService {
       const tenantId = t.rows[0]!.id;
 
       // Every table below is FORCE RLS, which binds this role too.
-      await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [tenantId]);
+      await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [
+        tenantId,
+      ]);
 
       const hash = await bcrypt.hash(dto.ownerPassword, BCRYPT_ROUNDS);
       await client.query(
@@ -213,9 +244,16 @@ export class TenantsService {
                  $5, $6, $7, $8,
                  CASE WHEN coalesce($2, 'ALL') = 'ALL' THEN 'EUR' END,
                  CASE WHEN coalesce($4, '355') IN ('355', '383') THEN 'sq' ELSE 'en' END)`,
-        [tenantId, dto.currency ?? null, dto.timezone ?? null, dto.phoneCountryCode ?? null,
-         dto.phone?.trim() || null, dto.address?.trim() || null, dto.city?.trim() || null,
-         dto.taxNumber?.trim().toUpperCase().replace(/\s+/g, '') || null],
+        [
+          tenantId,
+          dto.currency ?? null,
+          dto.timezone ?? null,
+          dto.phoneCountryCode ?? null,
+          dto.phone?.trim() || null,
+          dto.address?.trim() || null,
+          dto.city?.trim() || null,
+          dto.taxNumber?.trim().toUpperCase().replace(/\s+/g, '') || null,
+        ],
       );
 
       await this.audit.record(client, actor, {
@@ -249,13 +287,15 @@ export class TenantsService {
       const row = current.rows[0];
       if (!row) throw new NotFoundException('Tenant not found');
       if (row.status === 'deleted') {
-        throw new ConflictException('This clinic is deleted. Restore it before changing its status.');
+        throw new ConflictException(
+          'This clinic is deleted. Restore it before changing its status.',
+        );
       }
 
-      await client.query('UPDATE tenants SET status = $1, updated_at = now() WHERE id = $2', [
-        status,
-        id,
-      ]);
+      await client.query(
+        'UPDATE tenants SET status = $1, updated_at = now() WHERE id = $2',
+        [status, id],
+      );
 
       const action =
         status === 'suspended'
@@ -283,10 +323,17 @@ export class TenantsService {
       );
       if (!rows[0]) throw new NotFoundException('Tenant not found');
       if (planId) {
-        const plan = await client.query('SELECT 1 FROM plans WHERE id = $1 AND is_active', [planId]);
-        if (!plan.rowCount) throw new NotFoundException('That plan does not exist or is retired');
+        const plan = await client.query(
+          'SELECT 1 FROM plans WHERE id = $1 AND is_active',
+          [planId],
+        );
+        if (!plan.rowCount)
+          throw new NotFoundException('That plan does not exist or is retired');
       }
-      await client.query('UPDATE tenants SET plan_id = $1, updated_at = now() WHERE id = $2', [planId, id]);
+      await client.query(
+        'UPDATE tenants SET plan_id = $1, updated_at = now() WHERE id = $2',
+        [planId, id],
+      );
       await this.audit.record(client, actor, {
         action: 'tenant.plan_changed',
         entityType: 'tenant',
@@ -304,7 +351,8 @@ export class TenantsService {
    */
   async changeSubdomain(id: string, next: string, actor: PlatformAuditActor) {
     const check = await this.checkSubdomain(next, id);
-    if (!check.available) throw new ConflictException(`That subdomain is ${check.reason?.toLowerCase()}`);
+    if (!check.available)
+      throw new ConflictException(`That subdomain is ${check.reason?.toLowerCase()}`);
     return this.db.withAdminTransaction(async (client) => {
       const { rows } = await client.query<{ subdomain: string }>(
         'SELECT subdomain FROM tenants WHERE id = $1 FOR UPDATE',
@@ -312,9 +360,13 @@ export class TenantsService {
       );
       if (!rows[0]) throw new NotFoundException('Tenant not found');
       await client
-        .query('UPDATE tenants SET subdomain = $1, updated_at = now() WHERE id = $2', [check.subdomain, id])
+        .query('UPDATE tenants SET subdomain = $1, updated_at = now() WHERE id = $2', [
+          check.subdomain,
+          id,
+        ])
         .catch((err: { code?: string }) => {
-          if (err.code === '23505') throw new ConflictException('A clinic with that subdomain already exists');
+          if (err.code === '23505')
+            throw new ConflictException('A clinic with that subdomain already exists');
           throw err;
         });
       await this.audit.record(client, actor, {
@@ -340,7 +392,8 @@ export class TenantsService {
       );
       const row = rows[0];
       if (!row) throw new NotFoundException('Tenant not found');
-      if (row.status === 'deleted') throw new ConflictException('This clinic is already deleted');
+      if (row.status === 'deleted')
+        throw new ConflictException('This clinic is already deleted');
       if (dto.confirmSubdomain.trim().toLowerCase() !== row.subdomain) {
         throw new BadRequestException('Type the clinic’s subdomain exactly to confirm');
       }
@@ -357,22 +410,35 @@ export class TenantsService {
         action: 'tenant.deleted',
         entityType: 'tenant',
         entityId: id,
-        metadata: { subdomain: row.subdomain, from: row.status, reason: dto.reason.trim() },
+        metadata: {
+          subdomain: row.subdomain,
+          from: row.status,
+          reason: dto.reason.trim(),
+        },
       });
-      return { id, status: 'deleted' as const, purgeAfter: updated[0]!.purge_after.toISOString() };
+      return {
+        id,
+        status: 'deleted' as const,
+        purgeAfter: updated[0]!.purge_after.toISOString(),
+      };
     });
   }
 
   /** Bring a deleted clinic back, suspended: switching it on again is its own decision. */
   async restore(id: string, actor: PlatformAuditActor) {
     return this.db.withAdminTransaction(async (client) => {
-      const { rows } = await client.query<{ status: string; subdomain: string; status_before_delete: string | null }>(
+      const { rows } = await client.query<{
+        status: string;
+        subdomain: string;
+        status_before_delete: string | null;
+      }>(
         'SELECT status, subdomain, status_before_delete FROM tenants WHERE id = $1 FOR UPDATE',
         [id],
       );
       const row = rows[0];
       if (!row) throw new NotFoundException('Tenant not found');
-      if (row.status !== 'deleted') throw new ConflictException('Only a deleted clinic can be restored');
+      if (row.status !== 'deleted')
+        throw new ConflictException('Only a deleted clinic can be restored');
       await client.query(
         `UPDATE tenants
             SET status = 'suspended', deleted_at = NULL, deleted_by = NULL, deletion_reason = NULL,
@@ -384,7 +450,10 @@ export class TenantsService {
         action: 'tenant.restored',
         entityType: 'tenant',
         entityId: id,
-        metadata: { subdomain: row.subdomain, statusBeforeDelete: row.status_before_delete },
+        metadata: {
+          subdomain: row.subdomain,
+          statusBeforeDelete: row.status_before_delete,
+        },
       });
       return { id, status: 'suspended' as const };
     });
@@ -423,7 +492,9 @@ export class TenantsService {
           ORDER BY c.table_name`,
       );
       const { rows: migration } = await client
-        .query<{ name: string }>('SELECT name FROM pgmigrations ORDER BY run_on DESC, id DESC LIMIT 1')
+        .query<{ name: string }>(
+          'SELECT name FROM pgmigrations ORDER BY run_on DESC, id DESC LIMIT 1',
+        )
         .catch(() => ({ rows: [] as { name: string }[] }));
 
       const data: Record<string, unknown[]> = {};
@@ -455,10 +526,12 @@ export class TenantsService {
       const snapshot =
         `{"format":"dentalcare-clinic-export","version":1,"exportedAt":${JSON.stringify(exportedAt)},` +
         `"schema":${JSON.stringify(migration[0]?.name ?? null)},"tenant":${JSON.stringify(t[0])},` +
-        `"counts":${JSON.stringify(counts)},"sha256":"${sha256}","redacted":${JSON.stringify({
-          tables: [...EXPORT_SKIP_TABLES],
-          columns: EXPORT_REDACT,
-        })},"tables":${body}}`;
+        `"counts":${JSON.stringify(counts)},"sha256":"${sha256}","redacted":${JSON.stringify(
+          {
+            tables: [...EXPORT_SKIP_TABLES],
+            columns: EXPORT_REDACT,
+          },
+        )},"tables":${body}}`;
 
       await this.audit.record(client, actor, {
         action: 'tenant.exported',
@@ -472,10 +545,10 @@ export class TenantsService {
 
   async setTrial(id: string, days: number | null, actor: PlatformAuditActor) {
     return this.db.withAdminTransaction(async (client) => {
-      const current = await client.query<{ trial_ends_at: Date | null; subdomain: string }>(
-        'SELECT trial_ends_at, subdomain FROM tenants WHERE id = $1 FOR UPDATE',
-        [id],
-      );
+      const current = await client.query<{
+        trial_ends_at: Date | null;
+        subdomain: string;
+      }>('SELECT trial_ends_at, subdomain FROM tenants WHERE id = $1 FOR UPDATE', [id]);
       const row = current.rows[0];
       if (!row) throw new NotFoundException('Tenant not found');
 

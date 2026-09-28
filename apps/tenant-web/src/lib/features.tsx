@@ -1,4 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { FeatureKey } from '@dentalcare/shared';
 import { featuresApi, type ClinicFeature } from './api';
 import { useAuth } from './auth';
@@ -43,12 +50,15 @@ export function FeaturesProvider({ children }: { children: ReactNode }) {
   }, [user, refresh]);
 
   const enabled = useCallback(
-    (key: FeatureKey) => features?.some((f) => f.key === key && f.state === 'enabled') ?? false,
+    (key: FeatureKey) =>
+      features?.some((f) => f.key === key && f.state === 'enabled') ?? false,
     [features],
   );
 
   return (
-    <FeaturesContext.Provider value={{ features, enabled, refresh, replace: setFeatures }}>
+    <FeaturesContext.Provider
+      value={{ features, enabled, refresh, replace: setFeatures }}
+    >
       {children}
     </FeaturesContext.Provider>
   );

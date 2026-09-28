@@ -123,15 +123,24 @@ describe('receiving into lots', () => {
 
   it('creates a lot on first arrival and adds to it when more arrives', async () => {
     expect(
-      (await move({ kind: 'receipt', amount: 20, lotNumber: 'ART-SOON', expiresOn: day(10) }))
-        .status,
+      (
+        await move({
+          kind: 'receipt',
+          amount: 20,
+          lotNumber: 'ART-SOON',
+          expiresOn: day(10),
+        })
+      ).status,
     ).toBe(201);
     // Typed differently the second time — it is still the same lot.
-    expect((await move({ kind: 'receipt', amount: 5, lotNumber: ' art-soon ' })).status).toBe(
-      201,
-    );
+    expect(
+      (await move({ kind: 'receipt', amount: 5, lotNumber: ' art-soon ' })).status,
+    ).toBe(201);
 
-    expect(await lotNamed('ART-SOON')).toMatchObject({ quantity: 25, expiry: 'expiring' });
+    expect(await lotNamed('ART-SOON')).toMatchObject({
+      quantity: 25,
+      expiry: 'expiring',
+    });
     const item = await asAdmin('GET', `/api/inventory/${itemId}`);
     expect((item.body as { quantity: number }).quantity).toBe(75);
   });
@@ -154,7 +163,8 @@ describe('using stock', () => {
       asReception,
     );
     expect(res.status).toBe(201);
-    const movement = (res.body as { movement: { id: string; lotNumber: string } }).movement;
+    const movement = (res.body as { movement: { id: string; lotNumber: string } })
+      .movement;
     expect(movement.lotNumber).toBe('ART-SOON');
 
     const recent = await asAdmin('GET', `/api/inventory/${itemId}/movements`);
@@ -213,11 +223,12 @@ describe('using stock', () => {
   });
 
   it('asks which lot when writing off or counting', async () => {
-    expect((await move({ kind: 'write_off', amount: 1, reason: 'Dropped a box' })).status).toBe(
-      400,
-    );
     expect(
-      (await move({ kind: 'adjustment', countedQuantity: 3, reason: 'Shelf count' })).status,
+      (await move({ kind: 'write_off', amount: 1, reason: 'Dropped a box' })).status,
+    ).toBe(400);
+    expect(
+      (await move({ kind: 'adjustment', countedQuantity: 3, reason: 'Shelf count' }))
+        .status,
     ).toBe(400);
   });
 
@@ -285,9 +296,9 @@ describe('recalls', () => {
 
   it('a recalled lot cannot be used or restocked', async () => {
     expect((await move({ kind: 'usage', amount: 1, lotId: soon.id })).status).toBe(409);
-    expect((await move({ kind: 'receipt', amount: 1, lotNumber: 'ART-SOON' })).status).toBe(
-      409,
-    );
+    expect(
+      (await move({ kind: 'receipt', amount: 1, lotNumber: 'ART-SOON' })).status,
+    ).toBe(409);
   });
 
   it('recalled stock still on the shelf is flagged', async () => {
@@ -350,7 +361,9 @@ describe('what the database refuses, whatever the service does', () => {
   it('a stock level that no longer matches its lots', async () => {
     const code = await errorCodeOf(
       asTenant(s.a.id, (c) =>
-        c.query('UPDATE inventory_items SET quantity = quantity + 1 WHERE id = $1', [itemId]),
+        c.query('UPDATE inventory_items SET quantity = quantity + 1 WHERE id = $1', [
+          itemId,
+        ]),
       ),
     );
     expect(code).toBe(CHECK_VIOLATION);
@@ -358,7 +371,9 @@ describe('what the database refuses, whatever the service does', () => {
 
   it('deleting a lot', async () => {
     const code = await errorCodeOf(
-      asTenant(s.a.id, (c) => c.query('DELETE FROM inventory_lots WHERE item_id = $1', [itemId])),
+      asTenant(s.a.id, (c) =>
+        c.query('DELETE FROM inventory_lots WHERE item_id = $1', [itemId]),
+      ),
     );
     expect(code).toBe(DENIED);
   });
@@ -366,7 +381,9 @@ describe('what the database refuses, whatever the service does', () => {
   it('rewriting a lot number', async () => {
     const code = await errorCodeOf(
       asTenant(s.a.id, (c) =>
-        c.query(`UPDATE inventory_lots SET lot_number = 'SWAPPED' WHERE item_id = $1`, [itemId]),
+        c.query(`UPDATE inventory_lots SET lot_number = 'SWAPPED' WHERE item_id = $1`, [
+          itemId,
+        ]),
       ),
     );
     expect(code).toBe(DENIED);

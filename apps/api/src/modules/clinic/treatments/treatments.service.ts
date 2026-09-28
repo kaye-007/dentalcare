@@ -72,15 +72,26 @@ export class TreatmentsService {
         const { rows } = await client.query<Row>(
           `INSERT INTO treatments (tenant_id, name, price, duration_minutes, visit_type, status, is_taxable)
            VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING ${FULL}`,
-          [tenantId, dto.name, dto.price, dto.durationMinutes, dto.visitType ?? null, dto.status ?? 'active',
-           dto.vatCategory === 'cosmetic'],
+          [
+            tenantId,
+            dto.name,
+            dto.price,
+            dto.durationMinutes,
+            dto.visitType ?? null,
+            dto.status ?? 'active',
+            dto.vatCategory === 'cosmetic',
+          ],
         );
         await this.audit.record(client, actor, {
           action: 'treatment.created',
           entityType: 'treatment',
           entityId: rows[0]!.id,
           summary: `Added "${dto.name}" at ${await moneyText(client, dto.price)}`,
-          metadata: { name: dto.name, price: dto.price, vatCategory: dto.vatCategory ?? 'medical' },
+          metadata: {
+            name: dto.name,
+            price: dto.price,
+            vatCategory: dto.vatCategory ?? 'medical',
+          },
         });
         return map(rows[0]!);
       } catch (err: unknown) {
@@ -115,13 +126,19 @@ export class TreatmentsService {
     }
     return this.tx(async (client) => {
       if (!sets.length) {
-        const r = await client.query<Row>(`SELECT ${FULL} FROM treatments WHERE id = $1`, [id]);
+        const r = await client.query<Row>(
+          `SELECT ${FULL} FROM treatments WHERE id = $1`,
+          [id],
+        );
         if (!r.rows[0]) throw new NotFoundException('Treatment not found');
         return map(r.rows[0]);
       }
       // Repricing is the quietest way to move money in a clinic, so the old
       // price is captured before the write, not inferred afterwards.
-      const before = await client.query<Row>(`SELECT ${FULL} FROM treatments WHERE id = $1`, [id]);
+      const before = await client.query<Row>(
+        `SELECT ${FULL} FROM treatments WHERE id = $1`,
+        [id],
+      );
       if (!before.rows[0]) throw new NotFoundException('Treatment not found');
       params.push(id);
       const { rows } = await client.query<Row>(
@@ -136,7 +153,9 @@ export class TreatmentsService {
       // A category change moves TVSH on every future invoice for this work,
       // so it is said in the summary rather than folded into "Updated".
       const recategorised = prev.is_taxable !== next.is_taxable;
-      const vatNote = recategorised ? ` (TVSH category now ${vatCategoryOf(next.is_taxable)})` : '';
+      const vatNote = recategorised
+        ? ` (TVSH category now ${vatCategoryOf(next.is_taxable)})`
+        : '';
       await this.audit.record(client, actor, {
         action: 'treatment.updated',
         entityType: 'treatment',
@@ -148,7 +167,10 @@ export class TreatmentsService {
           name: next.name,
           ...(repriced ? { priceFrom: prev.price, priceTo: next.price } : {}),
           ...(recategorised
-            ? { vatCategoryFrom: vatCategoryOf(prev.is_taxable), vatCategoryTo: vatCategoryOf(next.is_taxable) }
+            ? {
+                vatCategoryFrom: vatCategoryOf(prev.is_taxable),
+                vatCategoryTo: vatCategoryOf(next.is_taxable),
+              }
             : {}),
         },
       });

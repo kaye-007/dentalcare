@@ -11,19 +11,19 @@ running the repository's own commands on 2026-09-26. Where something could not
 be verified, it says so. Nothing here was taken from the existing docs without
 checking it against the code.
 
-| Check | Result |
-|---|---|
-| `npm run typecheck` | ✅ pass |
-| `npm test` (unit, includes `packages/shared` and `scripts/` specs) | ✅ 43 suites, 695 tests |
-| `npm run build` (shared, api, tenant-web, admin-web) | ✅ pass |
-| `npm run lint` | ✅ pass |
-| `npm run cf:dry-run` (all three Workers) | ✅ pass |
-| `npm run format:check` | ❌ 80 files need Prettier — CI would fail |
-| `npm run doctor` | ❌ database unreachable; `.env` tenant resolution incomplete |
-| `npm run test:integration` (27 suites) | ⚠️ **not run** — no PostgreSQL available (Docker daemon down, no local install) |
-| `npm run audit:classes` | ✅ no missing classes; 13 dead CSS classes in admin-web |
-| TODO / FIXME / HACK / XXX | none in source, migrations, worker, scripts |
-| Unimported source files | none (332 files checked) |
+| Check                                                              | Result                                                                          |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `npm run typecheck`                                                | ✅ pass                                                                         |
+| `npm test` (unit, includes `packages/shared` and `scripts/` specs) | ✅ 43 suites, 695 tests                                                         |
+| `npm run build` (shared, api, tenant-web, admin-web)               | ✅ pass                                                                         |
+| `npm run lint`                                                     | ✅ pass                                                                         |
+| `npm run cf:dry-run` (all three Workers)                           | ✅ pass                                                                         |
+| `npm run format:check`                                             | ❌ 80 files need Prettier — CI would fail                                       |
+| `npm run doctor`                                                   | ❌ database unreachable; `.env` tenant resolution incomplete                    |
+| `npm run test:integration` (27 suites)                             | ⚠️ **not run** — no PostgreSQL available (Docker daemon down, no local install) |
+| `npm run audit:classes`                                            | ✅ no missing classes; 13 dead CSS classes in admin-web                         |
+| TODO / FIXME / HACK / XXX                                          | none in source, migrations, worker, scripts                                     |
+| Unimported source files                                            | none (332 files checked)                                                        |
 
 ---
 
@@ -31,13 +31,13 @@ checking it against the code.
 
 npm-workspaces monorepo, Node ≥ 20 (tested on 24.13).
 
-| Workspace | What | Size (non-test TS) |
-|---|---|---|
-| `apps/api` | NestJS 11 API, both planes | ~31,400 lines, 44 controllers |
-| `apps/tenant-web` | Clinic SPA, React 18 + Vite + react-router 7 | ~27,900 lines |
-| `apps/admin-web` | NODE X platform console SPA | ~7,600 lines |
+| Workspace         | What                                                                                                                | Size (non-test TS)                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `apps/api`        | NestJS 11 API, both planes                                                                                          | ~31,400 lines, 44 controllers                                    |
+| `apps/tenant-web` | Clinic SPA, React 18 + Vite + react-router 7                                                                        | ~27,900 lines                                                    |
+| `apps/admin-web`  | NODE X platform console SPA                                                                                         | ~7,600 lines                                                     |
 | `packages/shared` | Permissions, money, VAT, tooth notation, reminders, messages, cash-drawer, CSV, patient import, features, API types | consumed from **source** by the API tests, from `dist` by builds |
-| `infra/docker` | compose: Postgres → one-shot `migrate` → API | |
+| `infra/docker`    | compose: Postgres → one-shot `migrate` → API                                                                        |                                                                  |
 
 API layout: `src/core/*` (cross-cutting: audit, authz, config, database,
 entitlements, health, idempotency, mfa, money, oauth, pdf, request-context,
@@ -72,34 +72,34 @@ Present and wired end-to-end (API route + SPA screen), by static inspection:
   clinic activity trail, settings (clinic profile, VAT, fiscal, channels,
   features), staff & payroll, sessions & MFA self-service, Google sign-in.
 - **Platform plane:** tenants (create wizard, suspend/reactivate, trial, delete
-  + restore window, subdomain change with typed confirmation), plans +
-  entitlements + per-tenant overrides, platform billing (subscription invoices,
-  payments), usage/storage, cross-tenant activity, platform audit, platform
-  auth with mandatory MFA in production.
+  - restore window, subdomain change with typed confirmation), plans +
+    entitlements + per-tenant overrides, platform billing (subscription invoices,
+    payments), usage/storage, cross-tenant activity, platform audit, platform
+    auth with mandatory MFA in production.
 
 ## 3. Database / migration inventory
 
 16 migrations, 57 tables. **Only `0001` is committed; `0002`–`0016` are
 untracked files** (§17).
 
-| # | Purpose | Lines | In git |
-|---|---|---|---|
-| 0001 | Baseline (squash of an earlier 0001–0021), 33 tables, grants, RLS, `resolve_tenant()` | 3086 | tracked, **modified** |
-| 0002 | Inventory | 183 | no |
-| 0003 | Clinical roles | 43 | no |
-| 0004 | Clinical record integrity (DELETE revoked, sign-locks, access log) | 354 | no |
-| 0005 | Sessions + MFA (opaque rotating refresh tokens, TOTP, recovery codes) | 207 | no |
-| 0006 | Money in minor units, one currency per clinic, payer | 239 | no |
-| 0007 | Inventory lots, expiry, traceability | 298 | no |
-| 0008 | Reminder delivery | 171 | no |
-| 0009 | Clinic operations (profile, calendar, channels, import, photos) | 248 | no |
-| 0010 | Albanian fiscalization + fiscal locks on invoices/payments | 272 | no |
-| 0011 | Platform lifecycle (delete + restore) | 67 | no |
-| 0012 | Albanian market (patient messages, ID documents, EUR quotes, FX) | 230 | no |
-| 0013 | Foundations (accountant role, locations, idempotency, request evidence) | 275 | no |
-| 0014 | Cash drawer | 417 | no |
-| 0015 | Which document a payment issues | 92 | no |
-| 0016 | Platform billing | 110 | no |
+| #    | Purpose                                                                               | Lines | In git                |
+| ---- | ------------------------------------------------------------------------------------- | ----- | --------------------- |
+| 0001 | Baseline (squash of an earlier 0001–0021), 33 tables, grants, RLS, `resolve_tenant()` | 3086  | tracked, **modified** |
+| 0002 | Inventory                                                                             | 183   | no                    |
+| 0003 | Clinical roles                                                                        | 43    | no                    |
+| 0004 | Clinical record integrity (DELETE revoked, sign-locks, access log)                    | 354   | no                    |
+| 0005 | Sessions + MFA (opaque rotating refresh tokens, TOTP, recovery codes)                 | 207   | no                    |
+| 0006 | Money in minor units, one currency per clinic, payer                                  | 239   | no                    |
+| 0007 | Inventory lots, expiry, traceability                                                  | 298   | no                    |
+| 0008 | Reminder delivery                                                                     | 171   | no                    |
+| 0009 | Clinic operations (profile, calendar, channels, import, photos)                       | 248   | no                    |
+| 0010 | Albanian fiscalization + fiscal locks on invoices/payments                            | 272   | no                    |
+| 0011 | Platform lifecycle (delete + restore)                                                 | 67    | no                    |
+| 0012 | Albanian market (patient messages, ID documents, EUR quotes, FX)                      | 230   | no                    |
+| 0013 | Foundations (accountant role, locations, idempotency, request evidence)               | 275   | no                    |
+| 0014 | Cash drawer                                                                           | 417   | no                    |
+| 0015 | Which document a payment issues                                                       | 92    | no                    |
+| 0016 | Platform billing                                                                      | 110   | no                    |
 
 The uncommitted edit to `0001` removes a pg_dump-emitted
 `ALTER DEFAULT PRIVILEGES … GRANT … TO app_user` (it named the developer's own
@@ -153,7 +153,7 @@ Strong, and the core of the design.
 5. The privileged pool is used by platform modules, and in the clinic plane
    only by the two schedulers to enumerate tenant IDs and by a dev-only check.
 6. Reserved subdomains (`www admin api app mail static console status docs
-   support`) are refused on create and rename.
+support`) are refused on create and rename.
 
 The integration suites `tenant-isolation`, `privileges`, `role`,
 `api-tenant-binding`, `tenant-middleware` exist to prove this against a real
@@ -294,16 +294,16 @@ tokens or bodies (log statements reviewed).
 
 Ordered by severity. None is a cross-tenant leak.
 
-| Sev | Finding | Where |
-|---|---|---|
-| **High** | Brute-force protection is in-memory. On Workers every isolate has its own counter, so the 10/min login limit is largely ineffective; there is **no password-attempt lockout** (only MFA locks). Staff without MFA are exposed to password guessing. | `app.module.ts:114`, `auth.controller.ts:49` |
-| **Medium** | **Login CSRF on Google sign-in.** OAuth `state` is signed but not bound to the initiating browser (no cookie/nonce check), so an attacker can complete a Google login with their own account and hand the callback URL to a victim, who is then signed in as the attacker. | `core/oauth/oauth-state.ts`, `oauth.controller.ts` |
-| **Medium** | Duplicate-submission gaps on money routes: create invoice, create/void expense, ledger adjustment, invoice-from-plan, fiscal cash deposit have no idempotency; the header is optional even where supported. | `finance/*.controller.ts`, `billing/*.controller.ts`, `fiscal.controller.ts` |
-| **Medium** | Revocation lag: access JWTs are honoured for up to 15 min after logout-everywhere, disable, or role change. | `jwt.guard.ts` |
-| Low | Boot check that `app_user` cannot bypass RLS **fails open** if the check query itself errors, even in production. | `database.service.ts:113` |
-| Low | `app_user` has `INSERT` (and column UPDATE) on `tenants`. RLS makes it harmless today; it is unnecessary privilege. | `0001_baseline.js:3038` |
-| Low | Access + refresh tokens in `localStorage`. Mitigated by the strict CSP; `connect-src https:` is broader than needed. | `lib/api.ts`, `_headers` |
-| Low | Reserved-subdomain list enforced in application code only. | `tenants.service.ts:18` |
+| Sev        | Finding                                                                                                                                                                                                                                                                    | Where                                                                        |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **High**   | Brute-force protection is in-memory. On Workers every isolate has its own counter, so the 10/min login limit is largely ineffective; there is **no password-attempt lockout** (only MFA locks). Staff without MFA are exposed to password guessing.                        | `app.module.ts:114`, `auth.controller.ts:49`                                 |
+| **Medium** | **Login CSRF on Google sign-in.** OAuth `state` is signed but not bound to the initiating browser (no cookie/nonce check), so an attacker can complete a Google login with their own account and hand the callback URL to a victim, who is then signed in as the attacker. | `core/oauth/oauth-state.ts`, `oauth.controller.ts`                           |
+| **Medium** | Duplicate-submission gaps on money routes: create invoice, create/void expense, ledger adjustment, invoice-from-plan, fiscal cash deposit have no idempotency; the header is optional even where supported.                                                                | `finance/*.controller.ts`, `billing/*.controller.ts`, `fiscal.controller.ts` |
+| **Medium** | Revocation lag: access JWTs are honoured for up to 15 min after logout-everywhere, disable, or role change.                                                                                                                                                                | `jwt.guard.ts`                                                               |
+| Low        | Boot check that `app_user` cannot bypass RLS **fails open** if the check query itself errors, even in production.                                                                                                                                                          | `database.service.ts:113`                                                    |
+| Low        | `app_user` has `INSERT` (and column UPDATE) on `tenants`. RLS makes it harmless today; it is unnecessary privilege.                                                                                                                                                        | `0001_baseline.js:3038`                                                      |
+| Low        | Access + refresh tokens in `localStorage`. Mitigated by the strict CSP; `connect-src https:` is broader than needed.                                                                                                                                                       | `lib/api.ts`, `_headers`                                                     |
+| Low        | Reserved-subdomain list enforced in application code only.                                                                                                                                                                                                                 | `tenants.service.ts:18`                                                      |
 
 Least-privilege questions (decisions, not bugs): the **receptionist** holds
 `clinical:read` (full clinical record), `expenses:read` (all clinic spending),
@@ -382,30 +382,30 @@ The docs warn that this repository "diverges from another copy" —
 `Downloads/dentalcare-m16/dentalcare`, said to have 32 migrations to this
 repo's 11 and features absent here. **That warning is out of date.**
 
-| | This repo (working tree) | m16 (`Downloads/dentalcare-m16.zip`, 2026-08-10) |
-|---|---|---|
-| Folder on disk | yes | **no — only the zip remains** |
-| Git history | 39 commits, remote `kaye-007/dentalcare` | 13 commits, **unrelated** history, no remote |
-| Latest work | 2026-09-18 (uncommitted) | 2026-07-02 (last migration) |
-| Migrations | 16 (baseline squash + 15) | 32 (0001–0032) |
-| Tables | 57 | 31 |
-| App source files | 386 | 145 |
+|                  | This repo (working tree)                 | m16 (`Downloads/dentalcare-m16.zip`, 2026-08-10) |
+| ---------------- | ---------------------------------------- | ------------------------------------------------ |
+| Folder on disk   | yes                                      | **no — only the zip remains**                    |
+| Git history      | 39 commits, remote `kaye-007/dentalcare` | 13 commits, **unrelated** history, no remote     |
+| Latest work      | 2026-09-18 (uncommitted)                 | 2026-07-02 (last migration)                      |
+| Migrations       | 16 (baseline squash + 15)                | 32 (0001–0032)                                   |
+| Tables           | 57                                       | 31                                               |
+| App source files | 386                                      | 145                                              |
 
 m16-only tables and where they went:
 
-| m16 | Here |
-|---|---|
-| `tooth_records` | `tooth_conditions` |
-| `treatment_items`, `treatment_plan_steps` | `treatment_plan_items` |
-| `patient_images` | `patient_documents` (kinds `xray`, `photo`, …) |
-| `patient_alerts` | `patient_allergies` / `_conditions` / `_medications` |
-| `activity_log` | `clinic_audit_log` + `patient_access_log` |
-| `user_mfa_recovery_codes`, `platform_admin_recovery_codes` | MFA tables in `0005` |
-| `staff` | `users` + `staff_availability` + payroll |
-| message templates / clinic identity (m16 0032) | per-kind templates in `shared/messages.ts`, clinic profile in `0009` |
-| `backup_runs` | **deliberately not carried** — backups are the provider's PITR |
-| `waitlist_entries` | **absent** |
-| mobile-first shell / PWA | **absent** |
+| m16                                                        | Here                                                                 |
+| ---------------------------------------------------------- | -------------------------------------------------------------------- |
+| `tooth_records`                                            | `tooth_conditions`                                                   |
+| `treatment_items`, `treatment_plan_steps`                  | `treatment_plan_items`                                               |
+| `patient_images`                                           | `patient_documents` (kinds `xray`, `photo`, …)                       |
+| `patient_alerts`                                           | `patient_allergies` / `_conditions` / `_medications`                 |
+| `activity_log`                                             | `clinic_audit_log` + `patient_access_log`                            |
+| `user_mfa_recovery_codes`, `platform_admin_recovery_codes` | MFA tables in `0005`                                                 |
+| `staff`                                                    | `users` + `staff_availability` + payroll                             |
+| message templates / clinic identity (m16 0032)             | per-kind templates in `shared/messages.ts`, clinic profile in `0009` |
+| `backup_runs`                                              | **deliberately not carried** — backups are the provider's PITR       |
+| `waitlist_entries`                                         | **absent**                                                           |
+| mobile-first shell / PWA                                   | **absent**                                                           |
 
 **Conclusion:** this working tree is a superset of m16 in every area except the
 waitlist and the mobile/PWA shell. There is nothing to merge from m16. It
@@ -421,17 +421,17 @@ The **real** divergence is between this working tree and its own git history
 Nine phases. Details, order, and exit criteria are in
 [`CLAUDE_EXECUTION_PLAN.md`](CLAUDE_EXECUTION_PLAN.md).
 
-| # | Phase | Complexity |
-|---|---|---|
-| 0 | Secure the uncommitted work (commit in reviewed slices, push to a branch) | S — but first and non-negotiable |
-| 1 | Prove the tree on a real database (integration, fresh migrate, doctor, format) | S–M |
-| 2 | Close the money gaps (idempotency on remaining routes; void policy) | M |
-| 3 | Authentication hardening (durable rate limit + lockout, OAuth login-CSRF, fail-closed boot check, drop excess grant) | M |
-| 4 | Least-privilege decisions applied to the matrix | S |
-| 5 | Fiscalization: verify rules, CIS test environment, corrective invoice | L |
-| 6 | Deployment decision, staging checklist, backup/restore rehearsal | M |
-| 7 | Daily-workflow UX pass, incl. the language decision | M–L (L if Shqip) |
-| 8 | Documentation truth pass + retire divergence warnings | S |
+| #   | Phase                                                                                                                | Complexity                       |
+| --- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| 0   | Secure the uncommitted work (commit in reviewed slices, push to a branch)                                            | S — but first and non-negotiable |
+| 1   | Prove the tree on a real database (integration, fresh migrate, doctor, format)                                       | S–M                              |
+| 2   | Close the money gaps (idempotency on remaining routes; void policy)                                                  | M                                |
+| 3   | Authentication hardening (durable rate limit + lockout, OAuth login-CSRF, fail-closed boot check, drop excess grant) | M                                |
+| 4   | Least-privilege decisions applied to the matrix                                                                      | S                                |
+| 5   | Fiscalization: verify rules, CIS test environment, corrective invoice                                                | L                                |
+| 6   | Deployment decision, staging checklist, backup/restore rehearsal                                                     | M                                |
+| 7   | Daily-workflow UX pass, incl. the language decision                                                                  | M–L (L if Shqip)                 |
+| 8   | Documentation truth pass + retire divergence warnings                                                                | S                                |
 
 Deliberately **not** a phase: consolidating `tx()`, formatters and `api.ts`.
 Worth doing, but only opportunistically inside a phase that already touches
@@ -439,14 +439,14 @@ those files — never as a sweep.
 
 ## 20. Files / modules affected by each phase
 
-| Phase | Files / modules |
-|---|---|
-| 0 | Whole working tree; `.gitignore`; no source edits |
-| 1 | `infra/docker/*`, `.env` (local), `apps/api/test/integration/*`; Prettier on the 80 files flagged |
-| 2 | `api/src/modules/clinic/finance/{invoices,expenses}.controller.ts`, `billing/{patient-ledger,plan-invoice}.controller.ts`, `fiscalization/fiscal.controller.ts`, `core/idempotency/*`, `tenant-web/src/lib/api.ts` + calling pages, `test/integration/money.itest.ts`, `checkout.itest.ts` |
-| 3 | `app.module.ts` (throttler storage), `modules/clinic/auth/*`, `modules/platform/auth/*`, a new migration for login-attempt state, `core/oauth/{oauth-state,oauth.controller}.ts`, both `AuthCallbackPage.tsx`, `core/database/database.service.ts`, a migration revoking `INSERT` on `tenants`, `api-throttle.itest.ts`, `privileges.itest.ts` |
-| 4 | `packages/shared/src/permissions.ts` (+ spec), possibly `finance/payments.controller.ts` for approval, `route-coverage.spec.ts` |
-| 5 | `modules/clinic/fiscalization/*`, `packages/shared/src/vat.ts`, a new migration (corrective invoice linkage), `InvoiceDetailPage.tsx`, `FiscalQueuePage.tsx`, `FiscalReceiptPage.tsx`, fiscal integration tests |
-| 6 | `apps/*/wrangler.jsonc`, `apps/api/worker/*`, `docs/DEPLOYMENT.md`, `.env.production.example` |
-| 7 | `tenant-web/src/lib/strings.ts` (and possibly restoring `lib/i18n/*`), `DashboardPage.tsx`, `AppLayout.tsx`, `ReservationsPage.tsx`, `PatientProfilePage.tsx` |
-| 8 | `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_AUDIT.md`, `docs/RELEASE_CHECKLIST.md`, `docs/CHANGELOG.md` |
+| Phase | Files / modules                                                                                                                                                                                                                                                                                                                                |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | Whole working tree; `.gitignore`; no source edits                                                                                                                                                                                                                                                                                              |
+| 1     | `infra/docker/*`, `.env` (local), `apps/api/test/integration/*`; Prettier on the 80 files flagged                                                                                                                                                                                                                                              |
+| 2     | `api/src/modules/clinic/finance/{invoices,expenses}.controller.ts`, `billing/{patient-ledger,plan-invoice}.controller.ts`, `fiscalization/fiscal.controller.ts`, `core/idempotency/*`, `tenant-web/src/lib/api.ts` + calling pages, `test/integration/money.itest.ts`, `checkout.itest.ts`                                                     |
+| 3     | `app.module.ts` (throttler storage), `modules/clinic/auth/*`, `modules/platform/auth/*`, a new migration for login-attempt state, `core/oauth/{oauth-state,oauth.controller}.ts`, both `AuthCallbackPage.tsx`, `core/database/database.service.ts`, a migration revoking `INSERT` on `tenants`, `api-throttle.itest.ts`, `privileges.itest.ts` |
+| 4     | `packages/shared/src/permissions.ts` (+ spec), possibly `finance/payments.controller.ts` for approval, `route-coverage.spec.ts`                                                                                                                                                                                                                |
+| 5     | `modules/clinic/fiscalization/*`, `packages/shared/src/vat.ts`, a new migration (corrective invoice linkage), `InvoiceDetailPage.tsx`, `FiscalQueuePage.tsx`, `FiscalReceiptPage.tsx`, fiscal integration tests                                                                                                                                |
+| 6     | `apps/*/wrangler.jsonc`, `apps/api/worker/*`, `docs/DEPLOYMENT.md`, `.env.production.example`                                                                                                                                                                                                                                                  |
+| 7     | `tenant-web/src/lib/strings.ts` (and possibly restoring `lib/i18n/*`), `DashboardPage.tsx`, `AppLayout.tsx`, `ReservationsPage.tsx`, `PatientProfilePage.tsx`                                                                                                                                                                                  |
+| 8     | `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_AUDIT.md`, `docs/RELEASE_CHECKLIST.md`, `docs/CHANGELOG.md`                                                                                                                                                                                                                                |

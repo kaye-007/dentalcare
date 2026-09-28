@@ -69,7 +69,10 @@ export class StorageService implements OnModuleInit {
     // Local download links are HMAC-signed. A dedicated secret if given,
     // otherwise one derived from JWT_SECRET so a fresh install needs nothing.
     const explicit = this.config.get<string>('STORAGE_SIGNING_SECRET');
-    this.urlSecret = createHmac('sha256', explicit || this.config.get<string>('JWT_SECRET') || 'dev')
+    this.urlSecret = createHmac(
+      'sha256',
+      explicit || this.config.get<string>('JWT_SECRET') || 'dev',
+    )
       .update('dentalcare:storage-url:v1')
       .digest();
     this.signedUrlTtl = Number(this.config.get('S3_SIGNED_URL_TTL') ?? 300);
@@ -121,8 +124,12 @@ export class StorageService implements OnModuleInit {
    * again here: tenant-prefixed, no dot segments, and inside the root.
    */
   private localPath(key: string): string {
-    if (!this.localRoot) throw new ServiceUnavailableException('Local storage is not enabled');
-    if (!/^tenants\/[0-9a-f-]{36}\/[A-Za-z0-9._/-]+$/.test(key) || key.split('/').includes('..')) {
+    if (!this.localRoot)
+      throw new ServiceUnavailableException('Local storage is not enabled');
+    if (
+      !/^tenants\/[0-9a-f-]{36}\/[A-Za-z0-9._/-]+$/.test(key) ||
+      key.split('/').includes('..')
+    ) {
       throw new ServiceUnavailableException('Invalid storage key');
     }
     const full = resolve(this.localRoot, key);
@@ -246,7 +253,8 @@ export class StorageService implements OnModuleInit {
     if (this.localRoot) {
       try {
         const body = new Uint8Array(await readFile(this.localPath(key)));
-        if (body.byteLength > maxBytes) throw new Error(`object is ${body.byteLength} bytes`);
+        if (body.byteLength > maxBytes)
+          throw new Error(`object is ${body.byteLength} bytes`);
         return body;
       } catch (err) {
         this.log.warn(`Could not read ${key}: ${String(err)}`);
@@ -259,7 +267,8 @@ export class StorageService implements OnModuleInit {
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = new Uint8Array(await res.arrayBuffer());
-      if (body.byteLength > maxBytes) throw new Error(`object is ${body.byteLength} bytes`);
+      if (body.byteLength > maxBytes)
+        throw new Error(`object is ${body.byteLength} bytes`);
       return body;
     } catch (err) {
       this.log.warn(`Could not read ${key}: ${String(err)}`);
@@ -395,7 +404,9 @@ export class StorageService implements OnModuleInit {
         await rm(full, { force: true });
         await rm(`${full}.meta.json`, { force: true });
       } catch (err) {
-        this.log.warn(`Orphaned file — row deleted but ${key} remains on disk: ${String(err)}`);
+        this.log.warn(
+          `Orphaned file — row deleted but ${key} remains on disk: ${String(err)}`,
+        );
       }
       return;
     }
@@ -430,7 +441,8 @@ export class StorageService implements OnModuleInit {
     diskFreeBytes: number | null;
     diskTotalBytes: number | null;
   }> {
-    if (!this.localRoot) return { driver: this.driver, diskFreeBytes: null, diskTotalBytes: null };
+    if (!this.localRoot)
+      return { driver: this.driver, diskFreeBytes: null, diskTotalBytes: null };
     try {
       const st = await statfs(this.localRoot);
       return {
@@ -461,16 +473,20 @@ export class StorageService implements OnModuleInit {
   ): Promise<{ body: Buffer; contentType: string; disposition: string } | null> {
     if (!this.localRoot) return null;
     const expires = Number(exp);
-    if (!Number.isInteger(expires) || expires < Math.floor(Date.now() / 1000)) return null;
+    if (!Number.isInteger(expires) || expires < Math.floor(Date.now() / 1000))
+      return null;
     const expected = Buffer.from(this.signLocal(key, expires, disposition));
     const given = Buffer.from(sig);
-    if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+    if (expected.length !== given.length || !timingSafeEqual(expected, given))
+      return null;
     try {
       const full = this.localPath(key);
       const body = await readFile(full);
       let contentType = 'application/octet-stream';
       try {
-        contentType = JSON.parse(await readFile(`${full}.meta.json`, 'utf8')).contentType ?? contentType;
+        contentType =
+          JSON.parse(await readFile(`${full}.meta.json`, 'utf8')).contentType ??
+          contentType;
       } catch {
         /* a file without its sidecar is still served, as bytes */
       }

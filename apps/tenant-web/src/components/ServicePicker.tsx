@@ -49,8 +49,8 @@ export default function ServicePicker({
 
       {treatments.length === 0 ? (
         <p className="svcpick__empty">
-          No services in the catalogue yet. <Link to="/treatments">Add them under Treatments</Link>, or use a
-          custom line.
+          No services in the catalogue yet.{' '}
+          <Link to="/treatments">Add them under Treatments</Link>, or use a custom line.
         </p>
       ) : matches.length === 0 ? (
         <p className="svcpick__empty">No service matches “{q.trim()}”.</p>

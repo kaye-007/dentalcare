@@ -49,7 +49,9 @@ const mapOperatory = (r: OperatoryRow) => ({
 
 /** A retired room is nobody's home room: their bookings start with none. */
 const releaseHomeRoom = (client: PoolClient, id: string) =>
-  client.query('UPDATE users SET home_operatory_id = NULL WHERE home_operatory_id = $1', [id]);
+  client.query('UPDATE users SET home_operatory_id = NULL WHERE home_operatory_id = $1', [
+    id,
+  ]);
 
 const OP_COLS = 'id, name, description, sort_order, color, is_active, created_at';
 

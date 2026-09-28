@@ -40,10 +40,14 @@ export class ChannelRegistry {
    * skipping any that cannot carry this kind of message, such as WhatsApp
    * without an approved template for it.
    */
-  resolve(purpose: MessagePurpose, ...preferences: (string | null | undefined)[]): ReminderChannel {
+  resolve(
+    purpose: MessagePurpose,
+    ...preferences: (string | null | undefined)[]
+  ): ReminderChannel {
     for (const id of preferences) {
       const channel = id ? this.byId(id) : null;
-      if (channel && channel !== this.log && this.carries(channel, purpose)) return channel;
+      if (channel && channel !== this.log && this.carries(channel, purpose))
+        return channel;
     }
     return this.active();
   }

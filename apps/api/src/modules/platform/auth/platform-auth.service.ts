@@ -79,7 +79,11 @@ export class PlatformAuthService {
     private readonly mfa: MfaService,
   ) {}
 
-  async login(email: string, password: string, meta: RequestMeta): Promise<PlatformLoginResult> {
+  async login(
+    email: string,
+    password: string,
+    meta: RequestMeta,
+  ): Promise<PlatformLoginResult> {
     const { rows } = await this.db.adminQuery<AdminRow>(
       `SELECT id, email, password_hash, full_name, status
          FROM platform_admins
@@ -108,7 +112,10 @@ export class PlatformAuthService {
     return rows[0] ?? null;
   }
 
-  private async continueSignIn(admin: AdminRow, meta: RequestMeta): Promise<PlatformLoginResult> {
+  private async continueSignIn(
+    admin: AdminRow,
+    meta: RequestMeta,
+  ): Promise<PlatformLoginResult> {
     const { enrolled } = await this.db.withAdminTransaction((c) =>
       this.mfa.status(c, 'platform', admin.id),
     );
@@ -149,7 +156,8 @@ export class PlatformAuthService {
       throw new UnauthorizedException(EXPIRED_CHALLENGE);
     }
     const admin = await this.findById(claims.sub);
-    if (!admin || admin.status !== 'active') throw new UnauthorizedException(EXPIRED_CHALLENGE);
+    if (!admin || admin.status !== 'active')
+      throw new UnauthorizedException(EXPIRED_CHALLENGE);
     return admin;
   }
 
@@ -159,7 +167,9 @@ export class PlatformAuthService {
     meta: RequestMeta,
   ): Promise<PlatformAuthenticated> {
     if (Boolean(input.code) === Boolean(input.recoveryCode)) {
-      throw new BadRequestException('Enter the code from your authenticator app, or one recovery code.');
+      throw new BadRequestException(
+        'Enter the code from your authenticator app, or one recovery code.',
+      );
     }
     const admin = await this.readChallenge(challengeToken, 'verify');
     const verdict = await this.db.withAdminTransaction((c) =>

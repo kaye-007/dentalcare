@@ -67,15 +67,61 @@ const HEADER_ALIASES: Readonly<Record<ImportField, readonly string[]>> = {
     'emër mbiemër',
     'emri i plotë',
   ],
-  phone: ['phone', 'mobile', 'telephone', 'tel', 'cell', 'phone number', 'telefon', 'telefoni', 'celular', 'nr. telefoni'],
+  phone: [
+    'phone',
+    'mobile',
+    'telephone',
+    'tel',
+    'cell',
+    'phone number',
+    'telefon',
+    'telefoni',
+    'celular',
+    'nr. telefoni',
+  ],
   email: ['email', 'e-mail', 'mail', 'email address'],
-  birthDate: ['date of birth', 'dob', 'birth date', 'birthdate', 'birthday', 'datelindja', 'data e lindjes', 'ditëlindja'],
-  nationalId: ['national id', 'nid', 'id number', 'personal number', 'personal id', 'numri personal', 'nr. personal', 'id'],
+  birthDate: [
+    'date of birth',
+    'dob',
+    'birth date',
+    'birthdate',
+    'birthday',
+    'datelindja',
+    'data e lindjes',
+    'ditëlindja',
+  ],
+  nationalId: [
+    'national id',
+    'nid',
+    'id number',
+    'personal number',
+    'personal id',
+    'numri personal',
+    'nr. personal',
+    'id',
+  ],
   gender: ['gender', 'sex', 'gjinia'],
   address: ['address', 'street', 'adresa', 'adresë'],
   city: ['city', 'town', 'qyteti', 'qytet'],
-  medicalConditions: ['medical conditions', 'conditions', 'medical history', 'diagnoses', 'sëmundje', 'semundje', 'gjendja shëndetësore'],
-  balance: ['balance', 'opening balance', 'amount owed', 'debt', 'outstanding', 'balanca', 'detyrim', 'borxh'],
+  medicalConditions: [
+    'medical conditions',
+    'conditions',
+    'medical history',
+    'diagnoses',
+    'sëmundje',
+    'semundje',
+    'gjendja shëndetësore',
+  ],
+  balance: [
+    'balance',
+    'opening balance',
+    'amount owed',
+    'debt',
+    'outstanding',
+    'balanca',
+    'detyrim',
+    'borxh',
+  ],
 };
 
 /**
@@ -165,14 +211,30 @@ export function normalizeNationalId(raw: string): string {
  * (31/02), are in the future, or are before 1900 — each of which, in a legacy
  * export, is a sign the column was mapped wrong rather than a real birthday.
  */
-export function parseImportDate(raw: string, format: ImportDateFormat, today = new Date()): string | null {
-  const parts = raw.trim().split(/[./\-\s]+/).filter(Boolean);
+export function parseImportDate(
+  raw: string,
+  format: ImportDateFormat,
+  today = new Date(),
+): string | null {
+  const parts = raw
+    .trim()
+    .split(/[./\-\s]+/)
+    .filter(Boolean);
   if (parts.length !== 3 || parts.some((p) => !/^\d+$/.test(p))) return null;
   const [a, b, c] = parts.map(Number) as [number, number, number];
-  const [written, m, d] = format === 'YMD' ? [a, b, c] : format === 'DMY' ? [c, b, a] : [c, a, b];
-  const y = written < 100 ? written + (written > today.getFullYear() % 100 ? 1900 : 2000) : written;
+  const [written, m, d] =
+    format === 'YMD' ? [a, b, c] : format === 'DMY' ? [c, b, a] : [c, a, b];
+  const y =
+    written < 100
+      ? written + (written > today.getFullYear() % 100 ? 1900 : 2000)
+      : written;
   const date = new Date(Date.UTC(y, m - 1, d));
-  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
+  if (
+    date.getUTCFullYear() !== y ||
+    date.getUTCMonth() !== m - 1 ||
+    date.getUTCDate() !== d
+  )
+    return null;
   if (y < 1900 || date.getTime() > today.getTime()) return null;
   return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
@@ -207,43 +269,60 @@ export function normalizeImportRow(
   const errors: ImportIssue[] = [];
   const text = (f: ImportField, max: number) => {
     const v = (raw[f] ?? '').trim().replace(/\s+/g, ' ');
-    if (v.length > max) errors.push({ field: f, message: `Longer than ${max} characters` });
+    if (v.length > max)
+      errors.push({ field: f, message: `Longer than ${max} characters` });
     return v === '' ? null : v.slice(0, max);
   };
 
   // A whole name fills whichever half the file does not give separately.
   const whole = text('fullName', 200);
   const split = whole ? splitFullName(whole) : null;
-  const firstName = text('firstName', 100) ?? (split?.firstName ? split.firstName.slice(0, 100) : null);
-  const lastName = text('lastName', 100) ?? (split?.lastName ? split.lastName.slice(0, 100) : null);
+  const firstName =
+    text('firstName', 100) ?? (split?.firstName ? split.firstName.slice(0, 100) : null);
+  const lastName =
+    text('lastName', 100) ?? (split?.lastName ? split.lastName.slice(0, 100) : null);
   if (!firstName) errors.push({ field: 'firstName', message: 'First name is missing' });
   if (!lastName) errors.push({ field: 'lastName', message: 'Last name is missing' });
 
   const phone = text('phone', 40);
   const phoneE164 = phone ? toE164(phone, opts.countryCode) : null;
-  if (phone && !phoneE164) errors.push({ field: 'phone', message: `"${phone}" is not a usable phone number` });
+  if (phone && !phoneE164)
+    errors.push({ field: 'phone', message: `"${phone}" is not a usable phone number` });
 
   const email = text('email', 254);
-  if (email && !EMAIL.test(email)) errors.push({ field: 'email', message: `"${email}" is not a valid email address` });
+  if (email && !EMAIL.test(email))
+    errors.push({ field: 'email', message: `"${email}" is not a valid email address` });
 
   const birthRaw = text('birthDate', 40);
   const birthDate = birthRaw ? parseImportDate(birthRaw, opts.dateFormat) : null;
   if (birthRaw && !birthDate) {
-    errors.push({ field: 'birthDate', message: `"${birthRaw}" is not a date of birth in the chosen format` });
+    errors.push({
+      field: 'birthDate',
+      message: `"${birthRaw}" is not a date of birth in the chosen format`,
+    });
   }
 
   const idRaw = text('nationalId', 40);
   const nationalId = idRaw ? normalizeNationalId(idRaw) : null;
   if (nationalId && !/^[A-Z0-9-]{4,20}$/.test(nationalId)) {
-    errors.push({ field: 'nationalId', message: `"${idRaw}" is not a national ID number` });
+    errors.push({
+      field: 'nationalId',
+      message: `"${idRaw}" is not a national ID number`,
+    });
   }
 
   const gender = parseGender(raw.gender ?? '');
-  if (gender === undefined) errors.push({ field: 'gender', message: `"${raw.gender}" is not a gender this system records` });
+  if (gender === undefined)
+    errors.push({
+      field: 'gender',
+      message: `"${raw.gender}" is not a gender this system records`,
+    });
 
   const balance = parseBalance(raw.balance ?? '');
-  if (balance === null) errors.push({ field: 'balance', message: `"${raw.balance}" is not an amount` });
-  else if (Math.abs(balance) > MAX_BALANCE) errors.push({ field: 'balance', message: 'The balance is implausibly large' });
+  if (balance === null)
+    errors.push({ field: 'balance', message: `"${raw.balance}" is not an amount` });
+  else if (Math.abs(balance) > MAX_BALANCE)
+    errors.push({ field: 'balance', message: 'The balance is implausibly large' });
 
   const conditions = (raw.medicalConditions ?? '')
     .split(/[;|\n]+/)

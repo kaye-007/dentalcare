@@ -7,10 +7,18 @@ import {
   type PaymentMethod,
 } from '../../lib/api';
 import { SaveButton, useSave } from '../../pages/SettingsPage';
-import { ALBANIA_STANDARD_VAT_BP, CURRENCIES, type CurrencyCode } from '@dentalcare/shared';
+import {
+  ALBANIA_STANDARD_VAT_BP,
+  CURRENCIES,
+  type CurrencyCode,
+} from '@dentalcare/shared';
 import { forgetClinicVatRate } from '../../lib/vat';
 
-const KIND_LABEL: Record<PaymentMethod, string> = { cash: 'Cash', card: 'Card', bank: 'Bank transfer' };
+const KIND_LABEL: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  bank: 'Bank transfer',
+};
 const BUILT_IN = new Set(['cash', 'card', 'bank']);
 
 function slug(label: string, taken: Set<string>): string {
@@ -47,11 +55,17 @@ export default function FinanceCard({
   const [methods, setMethods] = useState<ClinicPaymentMethod[]>(settings.paymentMethods);
   const [newLabel, setNewLabel] = useState('');
   const [newKind, setNewKind] = useState<PaymentMethod>('card');
-  const [quoteCurrency, setQuoteCurrency] = useState<CurrencyCode | ''>(settings.quoteCurrency ?? '');
+  const [quoteCurrency, setQuoteCurrency] = useState<CurrencyCode | ''>(
+    settings.quoteCurrency ?? '',
+  );
   const [fxSource, setFxSource] = useState<'live' | 'fixed'>(settings.fxRateSource);
-  const [fxRate, setFxRate] = useState(settings.fxFixedRate ? String(settings.fxFixedRate) : '');
+  const [fxRate, setFxRate] = useState(
+    settings.fxFixedRate ? String(settings.fxFixedRate) : '',
+  );
   const [checkoutMode, setCheckoutMode] = useState(settings.defaultCheckoutMode);
-  const [internalReceipts, setInternalReceipts] = useState(settings.internalReceiptsEnabled);
+  const [internalReceipts, setInternalReceipts] = useState(
+    settings.internalReceiptsEnabled,
+  );
   const save = useSave();
   const touch = () => save.setSaved(false);
 
@@ -59,13 +73,22 @@ export default function FinanceCard({
   const vatValid = Number.isFinite(vatBp) && vatBp >= 0 && vatBp <= 10000;
   const prefixValid = /^[A-Za-z0-9/_.-]{0,12}$/.test(prefix);
   const fxRateNumber = Number(fxRate.replace(',', '.'));
-  const fxRateValid = fxSource === 'live' || (Number.isFinite(fxRateNumber) && fxRateNumber > 0);
+  const fxRateValid =
+    fxSource === 'live' || (Number.isFinite(fxRateNumber) && fxRateNumber > 0);
 
   function addMethod() {
     const label = newLabel.trim();
     if (!label) return;
     touch();
-    setMethods((m) => [...m, { id: slug(label, new Set(m.map((x) => x.id))), label, kind: newKind, active: true }]);
+    setMethods((m) => [
+      ...m,
+      {
+        id: slug(label, new Set(m.map((x) => x.id))),
+        label,
+        kind: newKind,
+        active: true,
+      },
+    ]);
     setNewLabel('');
   }
 
@@ -139,13 +162,15 @@ export default function FinanceCard({
               onChange={(e) => {
                 touch();
                 setInternalReceipts(e.target.checked);
-                if (!e.target.checked && checkoutMode === 'internal') setCheckoutMode('fiscal');
+                if (!e.target.checked && checkoutMode === 'internal')
+                  setCheckoutMode('fiscal');
               }}
             />
             <span>
-              <strong>Allow internal receipts.</strong> Off means every payment is registered with the tax
-              authority. A cash or card taking is expected to be fiscalized when the money is taken, so leaving
-              this on is a decision to check with your accountant.
+              <strong>Allow internal receipts.</strong> Off means every payment is
+              registered with the tax authority. A cash or card taking is expected to be
+              fiscalized when the money is taken, so leaving this on is a decision to
+              check with your accountant.
             </span>
           </label>
         </fieldset>
@@ -162,9 +187,9 @@ export default function FinanceCard({
               aria-invalid={!vatValid}
             />
             <span className="field-hint">
-              Medical treatment is exempt (0%). This rate applies to treatments marked Cosmetic in the
-              catalogue. The Albanian standard rate is {ALBANIA_STANDARD_VAT_BP / 100}%; a clinic not
-              registered for VAT enters 0.{' '}
+              Medical treatment is exempt (0%). This rate applies to treatments marked
+              Cosmetic in the catalogue. The Albanian standard rate is{' '}
+              {ALBANIA_STANDARD_VAT_BP / 100}%; a clinic not registered for VAT enters 0.{' '}
               {vatBp !== ALBANIA_STANDARD_VAT_BP && (
                 <button
                   type="button"
@@ -213,8 +238,9 @@ export default function FinanceCard({
               ))}
             </select>
             <span className="field-hint">
-              For patients from abroad: printed estimates show {settings.currency} and this currency side by side.
-              Invoices and payments stay in {settings.currency}.
+              For patients from abroad: printed estimates show {settings.currency} and
+              this currency side by side. Invoices and payments stay in{' '}
+              {settings.currency}.
             </span>
           </label>
           {quoteCurrency && (
@@ -265,7 +291,8 @@ export default function FinanceCard({
             aria-invalid={!prefixValid}
           />
           <span className="field-hint">
-            Next invoices read like <strong>{prefix}0042</strong>. Letters, digits and / _ . - only.
+            Next invoices read like <strong>{prefix}0042</strong>. Letters, digits and / _
+            . - only.
           </span>
         </label>
 
@@ -284,13 +311,19 @@ export default function FinanceCard({
               {methods.map((m) => (
                 <tr key={m.id}>
                   <td>
-                    <input value={m.label} maxLength={60} onChange={(e) => update(m.id, { label: e.target.value })} />
+                    <input
+                      value={m.label}
+                      maxLength={60}
+                      onChange={(e) => update(m.id, { label: e.target.value })}
+                    />
                   </td>
                   <td>
                     <select
                       value={m.kind}
                       disabled={BUILT_IN.has(m.id)}
-                      onChange={(e) => update(m.id, { kind: e.target.value as PaymentMethod })}
+                      onChange={(e) =>
+                        update(m.id, { kind: e.target.value as PaymentMethod })
+                      }
                     >
                       {(Object.keys(KIND_LABEL) as PaymentMethod[]).map((k) => (
                         <option key={k} value={k}>
@@ -300,7 +333,11 @@ export default function FinanceCard({
                     </select>
                   </td>
                   <td>
-                    <input type="checkbox" checked={m.active} onChange={(e) => update(m.id, { active: e.target.checked })} />
+                    <input
+                      type="checkbox"
+                      checked={m.active}
+                      onChange={(e) => update(m.id, { active: e.target.checked })}
+                    />
                   </td>
                   <td>
                     {!BUILT_IN.has(m.id) && (
@@ -329,20 +366,29 @@ export default function FinanceCard({
               maxLength={60}
               style={{ flex: 1, minWidth: 180 }}
             />
-            <select value={newKind} onChange={(e) => setNewKind(e.target.value as PaymentMethod)}>
+            <select
+              value={newKind}
+              onChange={(e) => setNewKind(e.target.value as PaymentMethod)}
+            >
               {(Object.keys(KIND_LABEL) as PaymentMethod[]).map((k) => (
                 <option key={k} value={k}>
                   {KIND_LABEL[k]}
                 </option>
               ))}
             </select>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={addMethod} disabled={!newLabel.trim()}>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={addMethod}
+              disabled={!newLabel.trim()}
+            >
               <Plus size={14} aria-hidden /> Add
             </button>
           </div>
           <span className="field-hint">
-            "Counts as" is what reports and the tax authority see: a card terminal is a card payment, a transfer
-            is a bank payment. A method in use on past payments is hidden, not deleted, when switched off.
+            "Counts as" is what reports and the tax authority see: a card terminal is a
+            card payment, a transfer is a bank payment. A method in use on past payments
+            is hidden, not deleted, when switched off.
           </span>
         </div>
 

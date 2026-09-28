@@ -38,7 +38,13 @@ import { t } from '../lib/strings';
 type Tint = keyof typeof ENCODING_PALETTE;
 
 /** Which finding colours a tooth when it has several: disease first. */
-const TINT_RANK: Record<Tint, number> = { crimson: 5, amber: 4, emerald: 3, blue: 2, grey: 1 };
+const TINT_RANK: Record<Tint, number> = {
+  crimson: 5,
+  amber: 4,
+  emerald: 3,
+  blue: 2,
+  grey: 1,
+};
 
 /** Light → dark gradient stops for each family colour, lit from the top left. */
 const TINT_STOPS: Record<Tint, readonly [string, string, string]> = {
@@ -122,7 +128,10 @@ interface Seat {
 function seatArch(teeth: readonly number[], upper: boolean, depthBoost: number): Seat[] {
   const cy = upper ? -GAP / 2 : GAP / 2;
   const sign = upper ? -1 : 1;
-  const point = (th: number) => ({ x: RX * Math.cos(th), y: cy + sign * RY * Math.sin(th) });
+  const point = (th: number) => ({
+    x: RX * Math.cos(th),
+    y: cy + sign * RY * Math.sin(th),
+  });
 
   // Arc length along the half ellipse, from the viewer's left (θ = π) to right.
   const table: { th: number; len: number }[] = [];
@@ -195,7 +204,8 @@ function crownPaths(seat: Seat): { crown: string; grooves: string } {
   const a = seat.w / 2;
   const b = seat.d / 2;
   // How square each outline is: 0.55 is an ellipse, 0.9 nearly a rectangle.
-  const k = type === 'molar' ? 0.84 : type === 'premolar' ? 0.72 : type === 'canine' ? 0.6 : 0.86;
+  const k =
+    type === 'molar' ? 0.84 : type === 'premolar' ? 0.72 : type === 'canine' ? 0.6 : 0.86;
   // A canine comes to a point on its cheek side.
   const bOut = type === 'canine' ? b * 1.16 : b;
 
@@ -232,7 +242,13 @@ interface Props {
   onSelectTooth: (tooth: number) => void;
 }
 
-export default function ArchView({ dentition, notation, teeth, selected, onSelectTooth }: Props) {
+export default function ArchView({
+  dentition,
+  notation,
+  teeth,
+  selected,
+  onSelectTooth,
+}: Props) {
   const rawId = useId();
   const prefix = useMemo(() => `arch${rawId.replace(/[^a-zA-Z0-9]/g, '')}`, [rawId]);
 
@@ -252,7 +268,10 @@ export default function ArchView({ dentition, notation, teeth, selected, onSelec
 
   // The selected tooth is drawn last so its ring sits over its neighbours.
   const ordered = useMemo(
-    () => [...seats].sort((x, y) => Number(x.tooth === selected) - Number(y.tooth === selected)),
+    () =>
+      [...seats].sort(
+        (x, y) => Number(x.tooth === selected) - Number(y.tooth === selected),
+      ),
     [seats, selected],
   );
 
@@ -270,7 +289,9 @@ export default function ArchView({ dentition, notation, teeth, selected, onSelec
         className="arch__svg"
         viewBox="-140 -164 280 328"
         role="group"
-        aria-label={t(dentition === 'primary' ? 'tooth.chart.primary' : 'tooth.chart.permanent')}
+        aria-label={t(
+          dentition === 'primary' ? 'tooth.chart.primary' : 'tooth.chart.permanent',
+        )}
       >
         <defs>
           {gradient(`${prefix}-enamel`, ENAMEL_STOPS)}
@@ -279,7 +300,13 @@ export default function ArchView({ dentition, notation, teeth, selected, onSelec
             <g key={tint}>{gradient(`${prefix}-${tint}`, TINT_STOPS[tint])}</g>
           ))}
           <filter id={`${prefix}-lift`} x="-40%" y="-40%" width="180%" height="180%">
-            <feDropShadow dx="0" dy="1" stdDeviation="1" floodColor="#1e2360" floodOpacity="0.2" />
+            <feDropShadow
+              dx="0"
+              dy="1"
+              stdDeviation="1"
+              floodColor="#1e2360"
+              floodOpacity="0.2"
+            />
           </filter>
         </defs>
 
@@ -404,7 +431,13 @@ function ArchTooth({
 /** What the arch's colours mean. Selection is listed because it is the one
  *  colour on the arch that is not a finding. */
 export function ArchLegend() {
-  const items: { key: string; label: string; background: string; border: string; dashed?: boolean }[] = [
+  const items: {
+    key: string;
+    label: string;
+    background: string;
+    border: string;
+    dashed?: boolean;
+  }[] = [
     {
       key: 'pathology',
       label: t(FAMILY_KEYS.pathology),
@@ -436,7 +469,12 @@ export function ArchLegend() {
       border: ENCODING_PALETTE.grey,
       dashed: true,
     },
-    { key: 'selected', label: 'Selected', background: SELECTED_STOPS[1], border: '#2b3288' },
+    {
+      key: 'selected',
+      label: 'Selected',
+      background: SELECTED_STOPS[1],
+      border: '#2b3288',
+    },
   ];
   return (
     <ul className="archlegend" aria-label="What the colours mean">

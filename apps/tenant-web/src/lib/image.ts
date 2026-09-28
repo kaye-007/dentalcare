@@ -25,7 +25,11 @@ export function loadImage(file: Blob): Promise<HTMLImageElement> {
 
 function toJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not encode the image.'))), 'image/jpeg', quality),
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('Could not encode the image.'))),
+      'image/jpeg',
+      quality,
+    ),
   );
 }
 
@@ -63,7 +67,11 @@ export function cropRect(width: number, height: number, crop: SquareCrop) {
 }
 
 /** A square profile picture, 512 px. */
-export async function cropSquare(img: HTMLImageElement, crop: SquareCrop, output = 512): Promise<Blob> {
+export async function cropSquare(
+  img: HTMLImageElement,
+  crop: SquareCrop,
+  output = 512,
+): Promise<Blob> {
   const { x, y, side } = cropRect(img.naturalWidth, img.naturalHeight, crop);
   const canvas = document.createElement('canvas');
   canvas.width = output;

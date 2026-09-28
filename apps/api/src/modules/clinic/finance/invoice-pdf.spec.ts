@@ -34,8 +34,22 @@ function data(over: Partial<InvoicePdfData> = {}): InvoicePdfData {
     },
     patient: { name: 'Ana Hoxha', address: null, city: 'Durres', phone: null },
     items: [
-      { description: 'Composite filling', quantity: 2, unitPrice: 500_000, discount: 0, taxRateBp: 0, amount: 1_000_000 },
-      { description: 'Scaling', quantity: 1, unitPrice: 250_000, discount: 50_000, taxRateBp: 0, amount: 200_000 },
+      {
+        description: 'Composite filling',
+        quantity: 2,
+        unitPrice: 500_000,
+        discount: 0,
+        taxRateBp: 0,
+        amount: 1_000_000,
+      },
+      {
+        description: 'Scaling',
+        quantity: 1,
+        unitPrice: 250_000,
+        discount: 50_000,
+        taxRateBp: 0,
+        amount: 200_000,
+      },
     ],
     payments: [{ paidAt: '2026-09-15T09:00:00Z', method: 'Cash', amount: 1_200_000 }],
     fiscal: null,
@@ -46,7 +60,13 @@ function data(over: Partial<InvoicePdfData> = {}): InvoicePdfData {
 describe('renderInvoicePdf', () => {
   it('prints the clinic, the NIPT, the patient, the lines and the total', () => {
     const pdf = text(renderInvoicePdf(data()));
-    for (const s of ['Klinika Dentare Test', 'NIPT L12345678A', 'Ana Hoxha', 'Composite filling', 'TD-0042']) {
+    for (const s of [
+      'Klinika Dentare Test',
+      'NIPT L12345678A',
+      'Ana Hoxha',
+      'Composite filling',
+      'TD-0042',
+    ]) {
       expect(pdf).toContain(s);
     }
     expect(pdf).not.toContain('NSLF');
@@ -54,7 +74,11 @@ describe('renderInvoicePdf', () => {
   });
 
   it('marks an internal copy as not fiscal once the clinic fiscalizes', () => {
-    const pdf = text(renderInvoicePdf(data({ clinic: { ...data().clinic, fiscalizationEnabled: true } })));
+    const pdf = text(
+      renderInvoicePdf(
+        data({ clinic: { ...data().clinic, fiscalizationEnabled: true } }),
+      ),
+    );
     expect(pdf).toContain('NOT a fiscal invoice');
   });
 
@@ -87,10 +111,32 @@ describe('renderInvoicePdf', () => {
     const pdf = text(
       renderInvoicePdf(
         data({
-          invoice: { ...data().invoice, subtotal: 150_000, discount: 0, tax: 20_000, total: 170_000, paid: 0, status: 'unpaid' },
+          invoice: {
+            ...data().invoice,
+            subtotal: 150_000,
+            discount: 0,
+            tax: 20_000,
+            total: 170_000,
+            paid: 0,
+            status: 'unpaid',
+          },
           items: [
-            { description: 'Root canal', quantity: 1, unitPrice: 50_000, discount: 0, taxRateBp: 0, amount: 50_000 },
-            { description: 'Whitening', quantity: 1, unitPrice: 100_000, discount: 0, taxRateBp: 2000, amount: 120_000 },
+            {
+              description: 'Root canal',
+              quantity: 1,
+              unitPrice: 50_000,
+              discount: 0,
+              taxRateBp: 0,
+              amount: 50_000,
+            },
+            {
+              description: 'Whitening',
+              quantity: 1,
+              unitPrice: 100_000,
+              discount: 0,
+              taxRateBp: 2000,
+              amount: 120_000,
+            },
           ],
         }),
       ),
@@ -107,7 +153,21 @@ describe('renderInvoicePdf', () => {
       taxRateBp: 0,
       amount: 1000,
     }));
-    const pdf = text(renderInvoicePdf(data({ items, invoice: { ...data().invoice, total: 60_000, paid: 0, subtotal: 60_000, discount: 0, status: 'unpaid' } })));
+    const pdf = text(
+      renderInvoicePdf(
+        data({
+          items,
+          invoice: {
+            ...data().invoice,
+            total: 60_000,
+            paid: 0,
+            subtotal: 60_000,
+            discount: 0,
+            status: 'unpaid',
+          },
+        }),
+      ),
+    );
     const count = Number(/\/Count (\d+)/.exec(pdf)![1]);
     expect(count).toBeGreaterThan(1);
     expect(pdf).toContain(`Faqe ${count} / ${count}`);
@@ -117,7 +177,9 @@ describe('renderInvoicePdf', () => {
 
 describe('qrModules', () => {
   it('produces a square matrix with the finder pattern in the corner', () => {
-    const m = qrModules('https://efiskalizimi-app.tatime.gov.al/invoice-check/#/verify?iic=X');
+    const m = qrModules(
+      'https://efiskalizimi-app.tatime.gov.al/invoice-check/#/verify?iic=X',
+    );
     expect(m.length).toBeGreaterThanOrEqual(21);
     expect(m.every((row) => row.length === m.length)).toBe(true);
     expect(m[0]!.slice(0, 7).every(Boolean)).toBe(true);

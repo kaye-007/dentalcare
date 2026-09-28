@@ -24,13 +24,16 @@ export const REMINDER_LOCALES = ['en', 'sq'] as const;
 export type ReminderLocale = (typeof REMINDER_LOCALES)[number];
 
 export function isReminderLocale(value: unknown): value is ReminderLocale {
-  return typeof value === 'string' && (REMINDER_LOCALES as readonly string[]).includes(value);
+  return (
+    typeof value === 'string' && (REMINDER_LOCALES as readonly string[]).includes(value)
+  );
 }
 
-export const REMINDER_LOCALE_NAMES: Readonly<Record<ReminderLocale, string>> = Object.freeze({
-  en: 'English',
-  sq: 'Shqip',
-});
+export const REMINDER_LOCALE_NAMES: Readonly<Record<ReminderLocale, string>> =
+  Object.freeze({
+    en: 'English',
+    sq: 'Shqip',
+  });
 
 /**
  * Everything a reminder may say. Nothing clinical is on this list, on purpose.
@@ -65,21 +68,26 @@ export type ReminderValues = Record<ReminderPlaceholder, string>;
 export const REMINDER_CHANNELS = ['sms', 'whatsapp_business', 'viber'] as const;
 export type ReminderChannelId = (typeof REMINDER_CHANNELS)[number];
 
-export const REMINDER_CHANNEL_NAMES: Readonly<Record<ReminderChannelId, string>> = Object.freeze({
-  sms: 'SMS',
-  whatsapp_business: 'WhatsApp',
-  viber: 'Viber',
-});
+export const REMINDER_CHANNEL_NAMES: Readonly<Record<ReminderChannelId, string>> =
+  Object.freeze({
+    sms: 'SMS',
+    whatsapp_business: 'WhatsApp',
+    viber: 'Viber',
+  });
 
 export function isReminderChannel(value: unknown): value is ReminderChannelId {
-  return typeof value === 'string' && (REMINDER_CHANNELS as readonly string[]).includes(value);
+  return (
+    typeof value === 'string' && (REMINDER_CHANNELS as readonly string[]).includes(value)
+  );
 }
 
 /** When an automatic reminder goes out: 12 or 24 hours before. */
 export const REMINDER_HOURS_OPTIONS = [12, 24] as const;
 export type ReminderHours = (typeof REMINDER_HOURS_OPTIONS)[number];
 
-const DEFAULTS: Readonly<Record<ReminderLocale, { withPhone: string; withoutPhone: string }>> = {
+const DEFAULTS: Readonly<
+  Record<ReminderLocale, { withPhone: string; withoutPhone: string }>
+> = {
   en: {
     withPhone:
       'Hi {first_name}, this is a reminder of your appointment at {clinic} on {date} at {time}. To reschedule, call {clinic_phone}.',
@@ -99,7 +107,10 @@ const DEFAULTS: Readonly<Record<ReminderLocale, { withPhone: string; withoutPhon
  * with no phone on file renders as "call ." — a sentence that is worse than
  * saying nothing.
  */
-export function defaultReminderTemplate(locale: ReminderLocale, clinicHasPhone: boolean): string {
+export function defaultReminderTemplate(
+  locale: ReminderLocale,
+  clinicHasPhone: boolean,
+): string {
   const set = DEFAULTS[locale];
   return clinicHasPhone ? set.withPhone : set.withoutPhone;
 }
@@ -128,7 +139,10 @@ export function renderReminder(template: string, values: ReminderValues): string
     .trim();
 }
 
-const LOCALE_TAGS: Readonly<Record<ReminderLocale, string>> = { en: 'en-GB', sq: 'sq-AL' };
+const LOCALE_TAGS: Readonly<Record<ReminderLocale, string>> = {
+  en: 'en-GB',
+  sq: 'sq-AL',
+};
 
 /** An IANA zone this runtime can format in, e.g. "Europe/Tirane". */
 export function isTimeZone(value: unknown): value is string {
@@ -179,7 +193,10 @@ export function formatAppointmentTime(
  * than guessed at: an SMS to a wrong number is a message about someone's
  * health delivered to a stranger.
  */
-export function toE164(raw: string | null | undefined, countryCode: string): string | null {
+export function toE164(
+  raw: string | null | undefined,
+  countryCode: string,
+): string | null {
   if (!raw) return null;
   const written = raw.trim();
   if (written === '' || /[a-z]/i.test(written)) return null;
@@ -192,7 +209,10 @@ export function toE164(raw: string | null | undefined, countryCode: string): str
     international = compact.slice(2);
   } else if (compact.startsWith('0')) {
     international = countryCode + compact.slice(1);
-  } else if (compact.startsWith(countryCode) && compact.length - countryCode.length >= 8) {
+  } else if (
+    compact.startsWith(countryCode) &&
+    compact.length - countryCode.length >= 8
+  ) {
     international = compact;
   } else {
     international = countryCode + compact;
@@ -234,8 +254,16 @@ export function smsSegments(text: string): {
     }
   }
   if (gsm) {
-    return { encoding: 'gsm7', characters: septets, segments: septets <= 160 ? 1 : Math.ceil(septets / 153) };
+    return {
+      encoding: 'gsm7',
+      characters: septets,
+      segments: septets <= 160 ? 1 : Math.ceil(septets / 153),
+    };
   }
   const units = text.length; // UTF-16 code units, which is what UCS-2 counts
-  return { encoding: 'ucs2', characters: units, segments: units <= 70 ? 1 : Math.ceil(units / 67) };
+  return {
+    encoding: 'ucs2',
+    characters: units,
+    segments: units <= 70 ? 1 : Math.ceil(units / 67),
+  };
 }

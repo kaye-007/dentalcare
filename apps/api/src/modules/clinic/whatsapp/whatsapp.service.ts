@@ -6,13 +6,22 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PoolClient } from 'pg';
-import { WHATSAPP_REMINDER_VARIABLES, templateVariables, unknownWhatsAppVariables } from '@dentalcare/shared';
+import {
+  WHATSAPP_REMINDER_VARIABLES,
+  templateVariables,
+  unknownWhatsAppVariables,
+} from '@dentalcare/shared';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
 import { GraphError, WhatsAppGraphClient, type GraphTemplate } from './graph-client';
 import { WhatsAppTokenBox } from './token-box';
-import { ConnectionDto, TemplateDto, TestConnectionDto, UpdateTemplateDto } from './dto/whatsapp.dto';
+import {
+  ConnectionDto,
+  TemplateDto,
+  TestConnectionDto,
+  UpdateTemplateDto,
+} from './dto/whatsapp.dto';
 
 interface ConnectionRow {
   waba_id: string;
@@ -57,8 +66,18 @@ const TEMPLATE_COLUMNS = `id, display_name, meta_template_name, language_code, p
   meta_status, meta_category, meta_parameters, meta_checked_at, meta_check_error, updated_at`;
 
 /** Approved, a Utility template, and every variable one a reminder can fill. */
-export function templateReady(t: Pick<TemplateRow, 'is_active' | 'meta_status' | 'meta_check_error' | 'meta_checked_at'>) {
-  return t.is_active && t.meta_checked_at !== null && t.meta_status === 'APPROVED' && t.meta_check_error === null;
+export function templateReady(
+  t: Pick<
+    TemplateRow,
+    'is_active' | 'meta_status' | 'meta_check_error' | 'meta_checked_at'
+  >,
+) {
+  return (
+    t.is_active &&
+    t.meta_checked_at !== null &&
+    t.meta_status === 'APPROVED' &&
+    t.meta_check_error === null
+  );
 }
 
 export function mapTemplate(t: TemplateRow) {
@@ -86,15 +105,24 @@ export function mapTemplate(t: TemplateRow) {
  * Judge a template as Meta holds it. Returns the problem in words, or null
  * when it can carry a reminder. Exported for the spec.
  */
-export function judgeMetaTemplate(found: GraphTemplate | undefined, languageCode: string): {
+export function judgeMetaTemplate(
+  found: GraphTemplate | undefined,
+  languageCode: string,
+): {
   problem: string | null;
   parameters: string[];
 } {
   if (!found) {
-    return { problem: `There is no template with this name in language "${languageCode}" on the WhatsApp account.`, parameters: [] };
+    return {
+      problem: `There is no template with this name in language "${languageCode}" on the WhatsApp account.`,
+      parameters: [],
+    };
   }
   if (found.status !== 'APPROVED') {
-    return { problem: `Meta has not approved this template (status: ${found.status.toLowerCase()}).`, parameters: [] };
+    return {
+      problem: `Meta has not approved this template (status: ${found.status.toLowerCase()}).`,
+      parameters: [],
+    };
   }
   if (found.category && found.category !== 'UTILITY') {
     return {
@@ -110,11 +138,18 @@ export function judgeMetaTemplate(found: GraphTemplate | undefined, languageCode
       (c.buttons ?? []).some((b) => typeof b.url === 'string' && /\{\{/.test(b.url)),
   );
   if (hasOtherVariables) {
-    return { problem: 'Only the message body may have variables: no header media, header variables or button links.', parameters: [] };
+    return {
+      problem:
+        'Only the message body may have variables: no header media, header variables or button links.',
+      parameters: [],
+    };
   }
   const bodyText = components.find((c) => c.type === 'BODY')?.text ?? '';
   const parameters = templateVariables(bodyText);
-  if (parameters.some((p) => /^\d+$/.test(p)) || (found.parameter_format && found.parameter_format !== 'NAMED' && parameters.length)) {
+  if (
+    parameters.some((p) => /^\d+$/.test(p)) ||
+    (found.parameter_format && found.parameter_format !== 'NAMED' && parameters.length)
+  ) {
     return {
       problem: `Use named variables in the template, such as {{patient_name}}, not numbered ones like {{1}}.`,
       parameters,
@@ -167,7 +202,9 @@ export class WhatsAppService {
   getConnection() {
     return this.tx(async (client) => {
       const r = await this.row(client);
-      const tz = await client.query<{ timezone: string }>('SELECT timezone FROM clinic_settings LIMIT 1');
+      const tz = await client.query<{ timezone: string }>(
+        'SELECT timezone FROM clinic_settings LIMIT 1',
+      );
       return {
         connected: r !== null && r.connection_status === 'connected',
         saved: r !== null,
@@ -194,7 +231,8 @@ export class WhatsAppService {
       if (!number) {
         return {
           ok: false as const,
-          message: 'This Phone Number ID does not belong to that WhatsApp Business Account.',
+          message:
+            'This Phone Number ID does not belong to that WhatsApp Business Account.',
         };
       }
       return {
@@ -204,7 +242,10 @@ export class WhatsAppService {
         message: 'Connected.',
       };
     } catch (err) {
-      return { ok: false as const, message: err instanceof GraphError ? err.message : 'The connection test failed.' };
+      return {
+        ok: false as const,
+        message: err instanceof GraphError ? err.message : 'The connection test failed.',
+      };
     }
   }
 
@@ -219,13 +260,18 @@ export class WhatsAppService {
     const wabaId = dto.wabaId ?? saved?.waba_id;
     const phoneNumberId = dto.phoneNumberId ?? saved?.phone_number_id;
     if (!token || !wabaId || !phoneNumberId) {
-      throw new BadRequestException('Enter the access token, Phone Number ID and Business Account ID to test.');
+      throw new BadRequestException(
+        'Enter the access token, Phone Number ID and Business Account ID to test.',
+      );
     }
     const result = await this.probe(token, wabaId, phoneNumberId);
     const testedAt = new Date().toISOString();
 
     const usesSaved =
-      saved !== null && !dto.accessToken && wabaId === saved.waba_id && phoneNumberId === saved.phone_number_id;
+      saved !== null &&
+      !dto.accessToken &&
+      wabaId === saved.waba_id &&
+      phoneNumberId === saved.phone_number_id;
     if (usesSaved) {
       await this.tx((client) =>
         client.query(
@@ -236,7 +282,13 @@ export class WhatsAppService {
                   display_phone_number = coalesce($4, display_phone_number),
                   verified_name = coalesce($5, verified_name),
                   updated_at = now()`,
-          [testedAt, result.ok, result.message, result.ok ? result.displayPhoneNumber : null, result.ok ? result.verifiedName : null],
+          [
+            testedAt,
+            result.ok,
+            result.message,
+            result.ok ? result.displayPhoneNumber : null,
+            result.ok ? result.verifiedName : null,
+          ],
         ),
       );
     }
@@ -258,7 +310,10 @@ export class WhatsAppService {
 
     const result = await this.probe(token, dto.wabaId, dto.phoneNumberId);
     if (!result.ok) {
-      throw new UnprocessableEntityException({ code: 'whatsapp_test_failed', message: result.message });
+      throw new UnprocessableEntityException({
+        code: 'whatsapp_test_failed',
+        message: result.message,
+      });
     }
     const sealed = this.box.seal(tenantId, token);
     await this.tx(async (client) => {
@@ -277,8 +332,17 @@ export class WhatsAppService {
            connected_at = CASE WHEN clinic_whatsapp_connections.phone_number_id = EXCLUDED.phone_number_id
                                THEN clinic_whatsapp_connections.connected_at ELSE now() END,
            connected_by = EXCLUDED.connected_by, updated_at = now()`,
-        [tenantId, dto.wabaId, dto.phoneNumberId, result.displayPhoneNumber, result.verifiedName,
-         sealed.ciphertext, sealed.keyId, result.message, actor.userId],
+        [
+          tenantId,
+          dto.wabaId,
+          dto.phoneNumberId,
+          result.displayPhoneNumber,
+          result.verifiedName,
+          sealed.ciphertext,
+          sealed.keyId,
+          result.message,
+          actor.userId,
+        ],
       );
       await this.audit.record(client, actor, {
         action: 'whatsapp.connected',
@@ -286,7 +350,11 @@ export class WhatsAppService {
         entityId: null,
         summary: `Connected WhatsApp ${result.displayPhoneNumber ?? dto.phoneNumberId}${dto.accessToken ? ' with a new access token' : ''}`,
         // Identifiers only. Never the token.
-        metadata: { wabaId: dto.wabaId, phoneNumberId: dto.phoneNumberId, tokenReplaced: Boolean(dto.accessToken) },
+        metadata: {
+          wabaId: dto.wabaId,
+          phoneNumberId: dto.phoneNumberId,
+          tokenReplaced: Boolean(dto.accessToken),
+        },
       });
     });
     return this.getConnection();
@@ -295,7 +363,10 @@ export class WhatsAppService {
   /** Forget the connection, and with it the token. History stays. */
   async disconnect(actor: ClinicAuditActor) {
     await this.tx(async (client) => {
-      const { rows } = await client.query<{ display_phone_number: string | null; phone_number_id: string }>(
+      const { rows } = await client.query<{
+        display_phone_number: string | null;
+        phone_number_id: string;
+      }>(
         'DELETE FROM clinic_whatsapp_connections RETURNING display_phone_number, phone_number_id',
       );
       if (!rows[0]) throw new NotFoundException('WhatsApp is not connected.');
@@ -311,12 +382,16 @@ export class WhatsAppService {
 
   private openRow(tenantId: string, r: ConnectionRow): string {
     try {
-      return this.box.open(tenantId, { ciphertext: r.encrypted_access_token, keyId: r.token_key_id });
+      return this.box.open(tenantId, {
+        ciphertext: r.encrypted_access_token,
+        keyId: r.token_key_id,
+      });
     } catch {
       // A rotated-away key or a tampered row: the clinic has to paste the token again.
       throw new ConflictException({
         code: 'whatsapp_token_unreadable',
-        message: 'The saved WhatsApp access token can no longer be read. Paste it again in WhatsApp Settings.',
+        message:
+          'The saved WhatsApp access token can no longer be read. Paste it again in WhatsApp Settings.',
       });
     }
   }
@@ -377,7 +452,9 @@ export class WhatsAppService {
 
   private rethrowDuplicate(err: unknown): never {
     if ((err as { code?: string }).code === '23505') {
-      throw new ConflictException('There is already a template with this Meta name and language.');
+      throw new ConflictException(
+        'There is already a template with this Meta name and language.',
+      );
     }
     throw err;
   }
@@ -386,17 +463,30 @@ export class WhatsAppService {
     this.checkPreview(dto.previewBody);
     const tenantId = this.tenant.getRequiredTenantId();
     const id = await this.tx(async (client) => {
-      const count = await client.query<{ n: number }>('SELECT count(*)::int AS n FROM whatsapp_message_templates');
+      const count = await client.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM whatsapp_message_templates',
+      );
       const isActive = dto.isActive ?? true;
       // The first template is the default: there is nothing to choose between.
       const isDefault = isActive && (dto.isDefault ?? count.rows[0]!.n === 0);
-      if (isDefault) await client.query('UPDATE whatsapp_message_templates SET is_default = false WHERE is_default');
+      if (isDefault)
+        await client.query(
+          'UPDATE whatsapp_message_templates SET is_default = false WHERE is_default',
+        );
       const { rows } = await client
         .query<{ id: string }>(
           `INSERT INTO whatsapp_message_templates
              (tenant_id, display_name, meta_template_name, language_code, preview_body, is_active, is_default)
            VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-          [tenantId, dto.displayName.trim(), dto.metaTemplateName, dto.languageCode, dto.previewBody.trim(), isActive, isDefault],
+          [
+            tenantId,
+            dto.displayName.trim(),
+            dto.metaTemplateName,
+            dto.languageCode,
+            dto.previewBody.trim(),
+            isActive,
+            isDefault,
+          ],
         )
         .catch((e: unknown) => this.rethrowDuplicate(e));
       await this.audit.record(client, actor, {
@@ -421,10 +511,13 @@ export class WhatsAppService {
       const isActive = dto.isActive ?? cur.is_active;
       const isDefault = isActive && (dto.isDefault ?? cur.is_default);
       if (isDefault && !cur.is_default) {
-        await client.query('UPDATE whatsapp_message_templates SET is_default = false WHERE is_default');
+        await client.query(
+          'UPDATE whatsapp_message_templates SET is_default = false WHERE is_default',
+        );
       }
       const metaChanged =
-        (dto.metaTemplateName !== undefined && dto.metaTemplateName !== cur.meta_template_name) ||
+        (dto.metaTemplateName !== undefined &&
+          dto.metaTemplateName !== cur.meta_template_name) ||
         (dto.languageCode !== undefined && dto.languageCode !== cur.language_code);
       await client
         .query(
@@ -452,7 +545,9 @@ export class WhatsAppService {
       });
       return metaChanged;
     });
-    return recheck ? this.checkTemplate(id).catch(() => this.getTemplate(id)) : this.getTemplate(id);
+    return recheck
+      ? this.checkTemplate(id).catch(() => this.getTemplate(id))
+      : this.getTemplate(id);
   }
 
   async deleteTemplate(id: string, actor: ClinicAuditActor) {
@@ -477,18 +572,29 @@ export class WhatsAppService {
   async checkTemplate(id: string) {
     const conn = await this.openConnection();
     if (!conn) {
-      throw new ConflictException({ code: 'whatsapp_not_connected', message: 'Connect WhatsApp before checking templates.' });
+      throw new ConflictException({
+        code: 'whatsapp_not_connected',
+        message: 'Connect WhatsApp before checking templates.',
+      });
     }
     const t = await this.tx((client) => this.templateRow(client, id));
     let judged: { problem: string | null; parameters: string[] };
     let found: GraphTemplate | undefined;
     try {
-      const all = await this.graph.templates(conn.token, conn.wabaId, t.meta_template_name);
+      const all = await this.graph.templates(
+        conn.token,
+        conn.wabaId,
+        t.meta_template_name,
+      );
       found = all.find((x) => x.language === t.language_code);
       judged = judgeMetaTemplate(found, t.language_code);
     } catch (err) {
-      if (err instanceof GraphError && err.kind === 'auth') await this.markConnectionFailed(err.message);
-      judged = { problem: err instanceof GraphError ? err.message : 'Could not reach WhatsApp.', parameters: [] };
+      if (err instanceof GraphError && err.kind === 'auth')
+        await this.markConnectionFailed(err.message);
+      judged = {
+        problem: err instanceof GraphError ? err.message : 'Could not reach WhatsApp.',
+        parameters: [],
+      };
     }
     await this.tx((client) =>
       client.query(
@@ -496,7 +602,13 @@ export class WhatsAppService {
             SET meta_status = $2, meta_category = $3, meta_parameters = $4, meta_checked_at = now(),
                 meta_check_error = $5, updated_at = now()
           WHERE id = $1`,
-        [id, found?.status ?? null, found?.category ?? null, JSON.stringify(judged.parameters), judged.problem],
+        [
+          id,
+          found?.status ?? null,
+          found?.category ?? null,
+          JSON.stringify(judged.parameters),
+          judged.problem,
+        ],
       ),
     );
     return this.getTemplate(id);

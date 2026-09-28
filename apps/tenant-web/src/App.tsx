@@ -46,72 +46,72 @@ export default function App() {
   return (
     <AuthProvider>
       <FeaturesProvider>
-      <ToastProvider>
-      <ConfirmProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          {/* Documents to print: signed in, but without the app's chrome. */}
-          <Route
-            path="/invoices/:id/receipt"
-            element={
-              <RequireAuth>
-                <Suspense fallback={<PageLoading />}>
-                  <FiscalReceiptPage />
-                </Suspense>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/treatment-plans/:id/estimate"
-            element={
-              <RequireAuth>
-                <Suspense fallback={<PageLoading />}>
-                  <EstimatePage />
-                </Suspense>
-              </RequireAuth>
-            }
-          />
-          <Route
-            element={
-              <RequireAuth>
-                <AppLayout />
-              </RequireAuth>
-            }
-          >
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/reservations" element={<ReservationsPage />} />
-            <Route path="/messages" element={<MessagesPage />} />
-            <Route path="/messages/:tab" element={<MessagesPage />} />
-            <Route path="/patients" element={<PatientsListPage />} />
-            <Route path="/patients/new" element={<PatientFormPage />} />
-            <Route path="/patients/import" element={<PatientImportPage />} />
-            <Route path="/patients/recall" element={<RecallPage />} />
-            <Route path="/patients/:id" element={<PatientProfilePage />} />
-            <Route path="/patients/:id/edit" element={<PatientFormPage />} />
-            <Route path="/clinical" element={<ClinicalPage />} />
-            <Route path="/treatments" element={<TreatmentsPage />} />
-            <Route path="/staff" element={<StaffPage />} />
-            <Route path="/invoices" element={<InvoicesPage />} />
-            <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
-            <Route path="/payments" element={<PaymentsPage />} />
-            <Route path="/drawer" element={<CashDrawerPage />} />
-            <Route path="/fiscal-queue" element={<FiscalQueuePage />} />
-            <Route path="/expenses" element={<ExpensesPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/rooms" element={<RoomsPage />} />
-            <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/lab" element={<LabPage />} />
-            <Route path="/financials" element={<FinancialsPage />} />
-            <Route path="/activity" element={<ActivityPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-      </ConfirmProvider>
-      </ToastProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/auth/callback" element={<AuthCallbackPage />} />
+                {/* Documents to print: signed in, but without the app's chrome. */}
+                <Route
+                  path="/invoices/:id/receipt"
+                  element={
+                    <RequireAuth>
+                      <Suspense fallback={<PageLoading />}>
+                        <FiscalReceiptPage />
+                      </Suspense>
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/treatment-plans/:id/estimate"
+                  element={
+                    <RequireAuth>
+                      <Suspense fallback={<PageLoading />}>
+                        <EstimatePage />
+                      </Suspense>
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  element={
+                    <RequireAuth>
+                      <AppLayout />
+                    </RequireAuth>
+                  }
+                >
+                  <Route path="/" element={<DashboardPage />} />
+                  <Route path="/reservations" element={<ReservationsPage />} />
+                  <Route path="/messages" element={<MessagesPage />} />
+                  <Route path="/messages/:tab" element={<MessagesPage />} />
+                  <Route path="/patients" element={<PatientsListPage />} />
+                  <Route path="/patients/new" element={<PatientFormPage />} />
+                  <Route path="/patients/import" element={<PatientImportPage />} />
+                  <Route path="/patients/recall" element={<RecallPage />} />
+                  <Route path="/patients/:id" element={<PatientProfilePage />} />
+                  <Route path="/patients/:id/edit" element={<PatientFormPage />} />
+                  <Route path="/clinical" element={<ClinicalPage />} />
+                  <Route path="/treatments" element={<TreatmentsPage />} />
+                  <Route path="/staff" element={<StaffPage />} />
+                  <Route path="/invoices" element={<InvoicesPage />} />
+                  <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+                  <Route path="/payments" element={<PaymentsPage />} />
+                  <Route path="/drawer" element={<CashDrawerPage />} />
+                  <Route path="/fiscal-queue" element={<FiscalQueuePage />} />
+                  <Route path="/expenses" element={<ExpensesPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/rooms" element={<RoomsPage />} />
+                  <Route path="/inventory" element={<InventoryPage />} />
+                  <Route path="/lab" element={<LabPage />} />
+                  <Route path="/financials" element={<FinancialsPage />} />
+                  <Route path="/activity" element={<ActivityPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </ConfirmProvider>
+        </ToastProvider>
       </FeaturesProvider>
     </AuthProvider>
   );

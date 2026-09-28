@@ -40,7 +40,10 @@ export function pemBlocks(text: string): PemBlock[] {
   const out: PemBlock[] = [];
   const re = /-----BEGIN ([A-Z0-9 ]+)-----([\s\S]*?)-----END \1-----/g;
   for (const m of text.matchAll(re)) {
-    out.push({ label: m[1]!, der: Buffer.from(m[2]!.replace(/[^A-Za-z0-9+/=]/g, ''), 'base64') });
+    out.push({
+      label: m[1]!,
+      der: Buffer.from(m[2]!.replace(/[^A-Za-z0-9+/=]/g, ''), 'base64'),
+    });
   }
   return out;
 }
@@ -58,25 +61,28 @@ interface Tlv {
 }
 
 function readTlv(buf: Buffer, offset: number): Tlv {
-  if (offset + 2 > buf.length) throw new FiscalCertificateError('The certificate data is truncated.');
+  if (offset + 2 > buf.length)
+    throw new FiscalCertificateError('The certificate data is truncated.');
   const tag = buf[offset]!;
   let len = buf[offset + 1]!;
   let start = offset + 2;
   if (len & 0x80) {
     const bytes = len & 0x7f;
-    if (bytes === 0 || bytes > 4) throw new FiscalCertificateError('The certificate data is malformed.');
+    if (bytes === 0 || bytes > 4)
+      throw new FiscalCertificateError('The certificate data is malformed.');
     len = 0;
     for (let i = 0; i < bytes; i++) len = len * 256 + buf[start + i]!;
     start += bytes;
   }
   const end = start + len;
-  if (end > buf.length) throw new FiscalCertificateError('The certificate data is truncated.');
+  if (end > buf.length)
+    throw new FiscalCertificateError('The certificate data is truncated.');
   return { tag, start, end, offset };
 }
 
 function children(buf: Buffer, parent: Tlv): Tlv[] {
   const out: Tlv[] = [];
-  for (let at = parent.start; at < parent.end; ) {
+  for (let at = parent.start; at < parent.end;) {
     const child = readTlv(buf, at);
     out.push(child);
     at = child.end;
@@ -107,7 +113,10 @@ const RSA_ALGORITHM = Buffer.from('300d06092a864886f70d0101010500', 'hex');
 export function toPkcs8(block: PemBlock): Buffer {
   if (block.label === 'PRIVATE KEY') return block.der;
   if (block.label === 'RSA PRIVATE KEY') {
-    return der(0x30, Buffer.concat([Buffer.from('020100', 'hex'), RSA_ALGORITHM, der(0x04, block.der)]));
+    return der(
+      0x30,
+      Buffer.concat([Buffer.from('020100', 'hex'), RSA_ALGORITHM, der(0x04, block.der)]),
+    );
   }
   if (block.label === 'ENCRYPTED PRIVATE KEY') {
     throw new FiscalCertificateError(
@@ -123,10 +132,22 @@ function parseTime(buf: Buffer, t: Tlv): Date {
     t.tag === 0x17
       ? /^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z$/.exec(s)
       : /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z$/.exec(s);
-  if (!m) throw new FiscalCertificateError('The certificate has a validity date this system cannot read.');
+  if (!m)
+    throw new FiscalCertificateError(
+      'The certificate has a validity date this system cannot read.',
+    );
   let year = Number(m[1]);
   if (t.tag === 0x17) year += year < 50 ? 2000 : 1900;
-  return new Date(Date.UTC(year, Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])));
+  return new Date(
+    Date.UTC(
+      year,
+      Number(m[2]) - 1,
+      Number(m[3]),
+      Number(m[4]),
+      Number(m[5]),
+      Number(m[6]),
+    ),
+  );
 }
 
 const NAME_OIDS: Readonly<Record<string, string>> = {
@@ -168,9 +189,11 @@ export function parseCertificate(certDer: Buffer): CertificateInfo {
   // [0] version is optional; everything after it is positional.
   const f = fields[0]?.tag === 0xa0 ? fields.slice(1) : fields;
   const [, , , validity, subject, spki] = f;
-  if (!validity || !subject || !spki) throw new FiscalCertificateError('That is not an X.509 certificate.');
+  if (!validity || !subject || !spki)
+    throw new FiscalCertificateError('That is not an X.509 certificate.');
   const [notBefore, notAfter] = children(certDer, validity);
-  if (!notBefore || !notAfter) throw new FiscalCertificateError('The certificate has no validity period.');
+  if (!notBefore || !notAfter)
+    throw new FiscalCertificateError('The certificate has no validity period.');
   return {
     subject: parseName(certDer, subject),
     notBefore: parseTime(certDer, notBefore),
@@ -187,7 +210,9 @@ export async function importSigningKey(pkcs8: Buffer): Promise<CryptoKey> {
   try {
     return await subtle.importKey('pkcs8', pkcs8, RSA_SHA256, false, ['sign']);
   } catch {
-    throw new FiscalCertificateError('The private key is not an RSA key this system can sign with.');
+    throw new FiscalCertificateError(
+      'The private key is not an RSA key this system can sign with.',
+    );
   }
 }
 
@@ -210,7 +235,10 @@ export interface SigningMaterial {
  * A mismatched pair would sign every invoice with a signature the authority
  * rejects, so it is refused here, once, rather than at the first sale.
  */
-export async function parseSigningMaterial(pem: string, now = new Date()): Promise<SigningMaterial> {
+export async function parseSigningMaterial(
+  pem: string,
+  now = new Date(),
+): Promise<SigningMaterial> {
   const blocks = pemBlocks(pem);
   const keys = blocks.filter((b) => /PRIVATE KEY$/.test(b.label));
   const certs = blocks.filter((b) => b.label === 'CERTIFICATE');
@@ -221,7 +249,8 @@ export async function parseSigningMaterial(pem: string, now = new Date()): Promi
         : 'More than one private key was found. Upload one certificate at a time.',
     );
   }
-  if (certs.length === 0) throw new FiscalCertificateError('No certificate was found in the file.');
+  if (certs.length === 0)
+    throw new FiscalCertificateError('No certificate was found in the file.');
 
   const pkcs8 = toPkcs8(keys[0]!);
   const signingKey = await importSigningKey(pkcs8);
@@ -234,19 +263,33 @@ export async function parseSigningMaterial(pem: string, now = new Date()): Promi
     const info = parseCertificate(cert.der);
     let matches = false;
     try {
-      const pub = await subtle.importKey('spki', info.spki, RSA_SHA256, false, ['verify']);
-      matches = await subtle.verify(RSA_SHA256.name, pub, signature, Buffer.from(challenge, 'utf8'));
+      const pub = await subtle.importKey('spki', info.spki, RSA_SHA256, false, [
+        'verify',
+      ]);
+      matches = await subtle.verify(
+        RSA_SHA256.name,
+        pub,
+        signature,
+        Buffer.from(challenge, 'utf8'),
+      );
     } catch {
       matches = false;
     }
     if (!matches) continue;
     if (info.notAfter.getTime() <= now.getTime()) {
-      throw new FiscalCertificateError(`The certificate expired on ${info.notAfter.toISOString().slice(0, 10)}.`);
+      throw new FiscalCertificateError(
+        `The certificate expired on ${info.notAfter.toISOString().slice(0, 10)}.`,
+      );
     }
     if (info.notBefore.getTime() > now.getTime()) {
-      throw new FiscalCertificateError(`The certificate is not valid until ${info.notBefore.toISOString().slice(0, 10)}.`);
+      throw new FiscalCertificateError(
+        `The certificate is not valid until ${info.notBefore.toISOString().slice(0, 10)}.`,
+      );
     }
-    const base64 = cert.der.toString('base64').replace(/(.{64})/g, '$1\n').trim();
+    const base64 = cert.der
+      .toString('base64')
+      .replace(/(.{64})/g, '$1\n')
+      .trim();
     return {
       pkcs8,
       certificateDer: cert.der,
@@ -254,7 +297,9 @@ export async function parseSigningMaterial(pem: string, now = new Date()): Promi
       info,
     };
   }
-  throw new FiscalCertificateError('The private key does not belong to any certificate in the file.');
+  throw new FiscalCertificateError(
+    'The private key does not belong to any certificate in the file.',
+  );
 }
 
 /** "CN=Klinika Test, O=Test Clinic" for the settings screen. */

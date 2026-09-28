@@ -38,9 +38,15 @@ beforeAll(async () => {
   s = await createScenario();
   const receptionEmail = await addUser('receptionist');
   const dentistEmail = await addUser('dentist');
-  tokens.admin = (await login(api, s.a.subdomain, s.a.adminEmail, s.password)).accessToken;
-  tokens.reception = (await login(api, s.a.subdomain, receptionEmail, s.password)).accessToken;
-  tokens.dentist = (await login(api, s.a.subdomain, dentistEmail, s.password)).accessToken;
+  tokens.admin = (
+    await login(api, s.a.subdomain, s.a.adminEmail, s.password)
+  ).accessToken;
+  tokens.reception = (
+    await login(api, s.a.subdomain, receptionEmail, s.password)
+  ).accessToken;
+  tokens.dentist = (
+    await login(api, s.a.subdomain, dentistEmail, s.password)
+  ).accessToken;
 });
 
 afterAll(async () => {
@@ -94,9 +100,16 @@ describe('reception and the clinical record', () => {
    * the odontogram, a perio exam or a treatment plan (0009).
    */
   it('reads the chart but cannot chart, log a procedure, start a perio exam or plan', async () => {
-    expect((await call(api, 'GET', `/api/patients/${s.a.patientId}/chart`, as('reception'))).status).toBe(200);
+    expect(
+      (await call(api, 'GET', `/api/patients/${s.a.patientId}/chart`, as('reception')))
+        .status,
+    ).toBe(200);
     const refused = [
-      ['POST', `/api/patients/${s.a.patientId}/chart/conditions`, { tooth: 16, condition: 'caries' }],
+      [
+        'POST',
+        `/api/patients/${s.a.patientId}/chart/conditions`,
+        { tooth: 16, condition: 'caries' },
+      ],
       ['POST', `/api/patients/${s.a.patientId}/procedures`, { description: 'Filling' }],
       ['POST', `/api/patients/${s.a.patientId}/perio-exams`, {}],
       ['POST', `/api/patients/${s.a.patientId}/treatment-plans`, { title: 'Plan' }],
@@ -121,7 +134,12 @@ describe('reception and the clinical record', () => {
 describe('withdrawing a finding', () => {
   it('needs a reason', async () => {
     const id = await chartFinding(46);
-    const res = await call(api, 'POST', `/api/tooth-conditions/${id}/entered-in-error`, as('dentist', {}));
+    const res = await call(
+      api,
+      'POST',
+      `/api/tooth-conditions/${id}/entered-in-error`,
+      as('dentist', {}),
+    );
     expect(res.status).toBe(400);
   });
 
@@ -158,8 +176,18 @@ describe('withdrawing a finding', () => {
   it('cannot be done twice', async () => {
     const id = await chartFinding(45);
     const body = { reason: 'Recorded twice' };
-    await call(api, 'POST', `/api/tooth-conditions/${id}/entered-in-error`, as('dentist', body));
-    const again = await call(api, 'POST', `/api/tooth-conditions/${id}/entered-in-error`, as('dentist', body));
+    await call(
+      api,
+      'POST',
+      `/api/tooth-conditions/${id}/entered-in-error`,
+      as('dentist', body),
+    );
+    const again = await call(
+      api,
+      'POST',
+      `/api/tooth-conditions/${id}/entered-in-error`,
+      as('dentist', body),
+    );
     expect(again.status).toBe(409);
   });
 
@@ -179,7 +207,12 @@ describe('signing a procedure', () => {
   });
 
   it('is refused to reception', async () => {
-    const res = await call(api, 'POST', `/api/procedures/${procedureId}/sign`, as('reception'));
+    const res = await call(
+      api,
+      'POST',
+      `/api/procedures/${procedureId}/sign`,
+      as('reception'),
+    );
     expect(res.status).toBe(403);
   });
 
@@ -242,7 +275,10 @@ describe('withdrawing a procedure', () => {
   /** If the filling never happened, the caries it treated is still there. */
   it('reopens the finding it had marked as treated', async () => {
     const findingId = await chartFinding(37);
-    const procedureId = await logProcedure({ tooth: 37, resolvesConditionIds: [findingId] });
+    const procedureId = await logProcedure({
+      tooth: 37,
+      resolvesConditionIds: [findingId],
+    });
     expect((await chart()).find((c) => c.id === findingId)?.status).toBe('treated');
 
     const res = await call(
@@ -291,7 +327,12 @@ describe('a periodontal exam', () => {
     expect(signed.status).toBe(201);
     expect(signed.body.signedAt).toEqual(expect.any(String));
 
-    const after = await call(api, 'POST', `/api/perio-exams/${examId}/measurements`, as('dentist', reading));
+    const after = await call(
+      api,
+      'POST',
+      `/api/perio-exams/${examId}/measurements`,
+      as('dentist', reading),
+    );
     expect(after.status).toBe(409);
   });
 });
@@ -306,7 +347,12 @@ describe('notes', () => {
     );
     expect(added.status).toBe(201);
 
-    const gone = await call(api, 'DELETE', `/api/patients/notes/${added.body.id}`, as('admin'));
+    const gone = await call(
+      api,
+      'DELETE',
+      `/api/patients/notes/${added.body.id}`,
+      as('admin'),
+    );
     expect(gone.status).toBe(404);
 
     const withdrawn = await call(
@@ -329,7 +375,12 @@ describe('notes', () => {
 
 describe('record access', () => {
   it('records a read, where the administrator can see it', async () => {
-    const read = await call(api, 'GET', `/api/patients/${s.a.patientId}`, as('reception'));
+    const read = await call(
+      api,
+      'GET',
+      `/api/patients/${s.a.patientId}`,
+      as('reception'),
+    );
     expect(read.status).toBe(200);
 
     const log = await call<{ resource: string; actor: { role: string } }[]>(
@@ -358,7 +409,12 @@ describe('record access', () => {
 
   it('is not readable by anyone but the administrator', async () => {
     for (const who of ['reception', 'dentist'] as const) {
-      const res = await call(api, 'GET', `/api/patients/${s.a.patientId}/access-log`, as(who));
+      const res = await call(
+        api,
+        'GET',
+        `/api/patients/${s.a.patientId}/access-log`,
+        as(who),
+      );
       expect(res.status).toBe(403);
     }
   });

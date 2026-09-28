@@ -64,9 +64,8 @@ function boot(): Promise<NestExpressApplication> {
     // Imported dynamically, after the environment above is in place: the
     // OAuth module reads process.env while its @Module decorator evaluates,
     // which happens at import time.
-    const { NestFactory, AppModule, configureApp } = await import(
-      'dentalcare-app-bundle'
-    );
+    const { NestFactory, AppModule, configureApp } =
+      await import('dentalcare-app-bundle');
 
     const app = await NestFactory.create<NestExpressApplication>(AppModule, {
       bufferLogs: true,
@@ -94,7 +93,7 @@ const server = createServer((req, res) => {
       // The container never came up — a bad binding, an unreachable database,
       // or invalid configuration. Say so in the log and answer honestly.
       console.error(
-        `API failed to start: ${err instanceof Error ? err.stack ?? err.message : String(err)}`,
+        `API failed to start: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
       if (!res.headersSent) {
         res.writeHead(503, { 'content-type': 'application/json' });
@@ -128,9 +127,8 @@ export default {
   ): Promise<void> {
     const run = (async () => {
       const app = await boot();
-      const { ReminderSchedulerService, FiscalSchedulerService } = await import(
-        'dentalcare-app-bundle'
-      );
+      const { ReminderSchedulerService, FiscalSchedulerService } =
+        await import('dentalcare-app-bundle');
       // Independent passes: one clinic's reminder trouble must not delay a
       // fiscal invoice the law wants delivered within 48 hours, or the reverse.
       await Promise.allSettled([

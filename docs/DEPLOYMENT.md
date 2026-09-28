@@ -229,14 +229,14 @@ config rather than running unsafely:
 
 Added with migrations 0005–0008:
 
-| Variable | Failure if wrong |
-| --- | --- |
-| `MFA_ENFORCEMENT` | Anything but `required` in production → boot refused. |
-| `MFA_ENCRYPTION_KEYS` | Missing or malformed in production → boot refused. Lost entirely → every enrolled user needs a two-step reset by an administrator. |
-| `PLATFORM_JWT_SECRET` | Missing, under 32 chars, or equal to `JWT_SECRET` in production → boot refused. |
-| `SMS_PROVIDER` | `log` (default) sends nothing. `twilio` without `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and a sender (`TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`) → boot refused. |
-| `PUBLIC_API_URL` | Required in production with `twilio`. Must be the exact origin Twilio calls, with no path: receipt signatures are checked against it, so a wrong value makes every receipt a 403. |
-| `REMINDER_SCAN_BUDGET_MS` | How long one reminder pass may run (default 45s). Keep it under the cron interval. |
+| Variable                  | Failure if wrong                                                                                                                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MFA_ENFORCEMENT`         | Anything but `required` in production → boot refused.                                                                                                                             |
+| `MFA_ENCRYPTION_KEYS`     | Missing or malformed in production → boot refused. Lost entirely → every enrolled user needs a two-step reset by an administrator.                                                |
+| `PLATFORM_JWT_SECRET`     | Missing, under 32 chars, or equal to `JWT_SECRET` in production → boot refused.                                                                                                   |
+| `SMS_PROVIDER`            | `log` (default) sends nothing. `twilio` without `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and a sender (`TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`) → boot refused.          |
+| `PUBLIC_API_URL`          | Required in production with `twilio`. Must be the exact origin Twilio calls, with no path: receipt signatures are checked against it, so a wrong value makes every receipt a 403. |
+| `REMINDER_SCAN_BUDGET_MS` | How long one reminder pass may run (default 45s). Keep it under the cron interval.                                                                                                |
 
 ## 4. Deploy
 
@@ -317,14 +317,14 @@ never the treatment.
 
 **How delivery behaves**, so the reminder log reads correctly:
 
-| Status | Meaning |
-| --- | --- |
-| `sent` | Twilio accepted it. Not proof it arrived. |
-| `delivered` | The carrier confirmed it (needs `PUBLIC_API_URL`). |
-| `pending` with a retry time | Twilio answered 429 or 503. Tried again after 5, then 30 minutes; three attempts in all. |
-| `failed` | Refused, out of attempts, or no clear answer. Timeouts and other 5xx are **not** retried — the message may have gone, and a patient texted twice is worse than a failure staff can see. |
-| `skipped` | Not sent on purpose: opted out, no usable mobile number, or the appointment stopped being upcoming. |
-| `sending` | An attempt was interrupted between the provider call and recording it. Never retried automatically. Check Twilio's message log for that number and time. |
+| Status                      | Meaning                                                                                                                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sent`                      | Twilio accepted it. Not proof it arrived.                                                                                                                                               |
+| `delivered`                 | The carrier confirmed it (needs `PUBLIC_API_URL`).                                                                                                                                      |
+| `pending` with a retry time | Twilio answered 429 or 503. Tried again after 5, then 30 minutes; three attempts in all.                                                                                                |
+| `failed`                    | Refused, out of attempts, or no clear answer. Timeouts and other 5xx are **not** retried — the message may have gone, and a patient texted twice is worse than a failure staff can see. |
+| `skipped`                   | Not sent on purpose: opted out, no usable mobile number, or the appointment stopped being upcoming.                                                                                     |
+| `sending`                   | An attempt was interrupted between the provider call and recording it. Never retried automatically. Check Twilio's message log for that number and time.                                |
 
 A patient who replies STOP is marked as opted out when the receipt (or the next
 send) reports Twilio error 21610; staff can also untick them on the patient
@@ -335,14 +335,14 @@ Reminders, and a patient can pick their own on the patient form. A channel
 this deployment cannot send on falls back to SMS, then to the log; the reminder
 row records the channel actually used.
 
-- *WhatsApp (Twilio).* WhatsApp only lets a business open a conversation with
+- _WhatsApp (Twilio)._ WhatsApp only lets a business open a conversation with
   wording Meta has approved, so the clinic's own text is not used. Register a
   WhatsApp sender in Twilio, create one Content template per language with five
   variables in this order — first name, date, time, dentist, clinic — and get
   them approved. Then set `WHATSAPP_PROVIDER=twilio`, `TWILIO_WHATSAPP_FROM`
   and `TWILIO_WHATSAPP_CONTENT_SIDS="en:HX…,sq:HX…"`. Receipts arrive at the
   same signed Twilio endpoint as SMS.
-- *Viber (Vonage).* Create a Viber Service Message sender with Vonage and set
+- _Viber (Vonage)._ Create a Viber Service Message sender with Vonage and set
   `VIBER_PROVIDER=vonage`, `VONAGE_API_KEY`, `VONAGE_VIBER_SENDER`, and
   `VONAGE_API_SECRET` as a secret. The clinic's own wording is sent. Delivery
   status is not received yet, so the log shows Viber reminders as sent only.
@@ -377,11 +377,11 @@ that, end to end, before any clinic turns on the production environment.
 
 How a registration behaves:
 
-| Status | Meaning |
-| --- | --- |
-| `pending` | Signed and numbered. The NSLF and QR are valid and print now. The Cron Trigger resends it as a subsequent delivery (1, 2, 4 … 60 minutes apart) until CIS answers. The law allows 48 hours. |
-| `fiscalized` | CIS returned the NIVF. |
-| `rejected` | CIS answered with a fault. The request and response XML are kept on the row for support. |
+| Status       | Meaning                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pending`    | Signed and numbered. The NSLF and QR are valid and print now. The Cron Trigger resends it as a subsequent delivery (1, 2, 4 … 60 minutes apart) until CIS answers. The law allows 48 hours. |
+| `fiscalized` | CIS returned the NIVF.                                                                                                                                                                      |
+| `rejected`   | CIS answered with a fault. The request and response XML are kept on the row for support.                                                                                                    |
 
 Receipts print from the invoice screen (**Fiscal receipt**), sized for an
 80 mm printer. Set the printer's paper to 80 mm roll; the page declares it.

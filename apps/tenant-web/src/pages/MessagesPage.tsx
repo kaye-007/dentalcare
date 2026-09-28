@@ -34,7 +34,10 @@ export default function MessagesPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Messages" meta="WhatsApp appointment reminders from the clinic’s own number" />
+      <PageHeader
+        title="Messages"
+        meta="WhatsApp appointment reminders from the clinic’s own number"
+      />
       <nav className="tabs wa-tabs" aria-label="Messages">
         {visible.map((t) => (
           <NavLink

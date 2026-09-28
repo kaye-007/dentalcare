@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import QrCode from '../components/QrCode';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { Check, ChevronLeft, Wallet, Undo2, FileDown, Landmark, MessageCircle, RefreshCw, Printer, XCircle } from 'lucide-react';
+import {
+  Check,
+  ChevronLeft,
+  Wallet,
+  Undo2,
+  FileDown,
+  Landmark,
+  MessageCircle,
+  RefreshCw,
+  Printer,
+  XCircle,
+} from 'lucide-react';
 import { formatRate, vatSummary } from '@dentalcare/shared';
 import {
   drawerApi,
@@ -168,7 +179,9 @@ export default function InvoiceDetailPage() {
       setFiscal(await fiscalApi.fiscalize(inv.id));
       setConfirmFiscal(false);
     } catch (err) {
-      setError(humanError(err, 'The invoice could not be registered with the tax authority.'));
+      setError(
+        humanError(err, 'The invoice could not be registered with the tax authority.'),
+      );
       setConfirmFiscal(false);
     } finally {
       setBusy(null);
@@ -193,7 +206,11 @@ export default function InvoiceDetailPage() {
 
   const open = inv.status === 'unpaid' || inv.status === 'partially_paid';
   const canFiscalize =
-    fiscalEnabled && !fiscal && inv.status !== 'cancelled' && can('invoices:fiscalize') && !readOnly;
+    fiscalEnabled &&
+    !fiscal &&
+    inv.status !== 'cancelled' &&
+    can('invoices:fiscalize') &&
+    !readOnly;
   const partlyPaid = inv.status === 'partially_paid';
 
   return (
@@ -206,14 +223,21 @@ export default function InvoiceDetailPage() {
         <div className="page__head-main">
           <h1 className="section-title">{inv.invoiceNumber}</h1>
           <p className="page__meta">
-            <Link to={`/patients/${inv.patientId}`} className="link" style={{ fontSize: 13 }}>
+            <Link
+              to={`/patients/${inv.patientId}`}
+              className="link"
+              style={{ fontSize: 13 }}
+            >
               {inv.patientName}
             </Link>{' '}
             · issued {fmtDate(inv.issuedAt)}
           </p>
         </div>
         <div className="page__actions">
-          <StatusPill status={inv.status} label={inv.status === 'partially_paid' ? 'Partial' : undefined} />
+          <StatusPill
+            status={inv.status}
+            label={inv.status === 'partially_paid' ? 'Partial' : undefined}
+          />
           {/* What the clinic meant to issue, and whether the authority has it. */}
           {inv.documentKind === 'fiscal' ? (
             <StatusPill {...fiscalState(fiscal)} />
@@ -300,7 +324,9 @@ export default function InvoiceDetailPage() {
         </div>
         <div>
           <span>Balance</span>
-          <strong className={inv.balance > 0 ? 'sumstrip__due' : ''}>{formatMoney(inv.balance)}</strong>
+          <strong className={inv.balance > 0 ? 'sumstrip__due' : ''}>
+            {formatMoney(inv.balance)}
+          </strong>
         </div>
       </div>
 
@@ -308,7 +334,11 @@ export default function InvoiceDetailPage() {
         <FiscalPanel
           record={fiscal}
           busy={busy === 'fiscal'}
-          onSendNow={can('invoices:fiscalize') && fiscal.status === 'pending' ? fiscalize : undefined}
+          onSendNow={
+            can('invoices:fiscalize') && fiscal.status === 'pending'
+              ? fiscalize
+              : undefined
+          }
         />
       )}
 
@@ -342,9 +372,13 @@ export default function InvoiceDetailPage() {
                   <td className="muted">{it.quantity}</td>
                   <td className="muted hide-sm">{formatMoney(it.unitPrice)}</td>
                   <td className="muted hide-sm">
-                    {it.taxRateBp > 0 ? `${formatRate(it.taxRateBp)} · ${formatMoney(it.taxAmount)}` : 'Exempt'}
+                    {it.taxRateBp > 0
+                      ? `${formatRate(it.taxRateBp)} · ${formatMoney(it.taxAmount)}`
+                      : 'Exempt'}
                   </td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatMoney(it.amount)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                    {formatMoney(it.amount)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -359,7 +393,8 @@ export default function InvoiceDetailPage() {
                 ).map((g) => (
                   <tr key={g.taxRateBp} className="muted">
                     <td colSpan={3}>
-                      {g.exempt ? 'Exempt from TVSH' : `TVSH ${formatRate(g.taxRateBp)}`} on {formatMoney(g.net)}
+                      {g.exempt ? 'Exempt from TVSH' : `TVSH ${formatRate(g.taxRateBp)}`}{' '}
+                      on {formatMoney(g.net)}
                     </td>
                     <td colSpan={2} style={{ textAlign: 'right' }}>
                       {g.exempt ? '—' : formatMoney(g.taxAmount)}
@@ -390,7 +425,13 @@ export default function InvoiceDetailPage() {
                       {p.recordedBy ? ` · ${p.recordedBy}` : ''}
                       {p.note ? ` · ${p.note}` : ''}
                     </span>
-                    {p.voidedAt && <VoidedNote at={p.voidedAt} by={p.voidedByName} reason={p.voidReason} />}
+                    {p.voidedAt && (
+                      <VoidedNote
+                        at={p.voidedAt}
+                        by={p.voidedByName}
+                        reason={p.voidReason}
+                      />
+                    )}
                   </span>
                   <StatusPill status="neutral" label={methodName(p)} />
                   {!p.voidedAt && !fiscal && can('payments:void') && (
@@ -435,12 +476,16 @@ export default function InvoiceDetailPage() {
         >
           <div className="modal__body">
             <p className="modal__text">
-              Nothing has been paid on it. The invoice stays in the list, marked cancelled, so the numbering
-              has no gaps.
+              Nothing has been paid on it. The invoice stays in the list, marked
+              cancelled, so the numbering has no gaps.
             </p>
             <div className="modal__foot">
               <div className="modal__foot-right">
-                <button type="button" className="btn btn--ghost" onClick={() => setConfirmCancel(false)}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setConfirmCancel(false)}
+                >
                   Keep it
                 </button>
                 <button
@@ -470,15 +515,25 @@ export default function InvoiceDetailPage() {
               {inv.paid === 0
                 ? 'Nothing has been paid, so it is registered as a non-cash invoice to be paid by bank transfer.'
                 : 'It is registered with the payments recorded against it.'}{' '}
-              Once registered with the tax authority it cannot be cancelled or have a payment voided — mistakes
-              are corrected with a corrective invoice.
+              Once registered with the tax authority it cannot be cancelled or have a
+              payment voided — mistakes are corrected with a corrective invoice.
             </p>
             <div className="modal__foot">
               <div className="modal__foot-right">
-                <button type="button" className="btn btn--ghost" onClick={() => setConfirmFiscal(false)} disabled={busy === 'fiscal'}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setConfirmFiscal(false)}
+                  disabled={busy === 'fiscal'}
+                >
                   Cancel
                 </button>
-                <button type="button" className="btn btn--primary" onClick={fiscalize} disabled={busy === 'fiscal'}>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={fiscalize}
+                  disabled={busy === 'fiscal'}
+                >
                   {busy === 'fiscal' ? 'Registering…' : 'Register invoice'}
                 </button>
               </div>
@@ -511,8 +566,10 @@ export default function InvoiceDetailPage() {
  * under "Fiscal details".
  */
 function fiscalState(record: FiscalRecord | null): { status: string; label: string } {
-  if (record?.status === 'fiscalized' && record.nivf) return { status: 'ok', label: 'Fiscalized' };
-  if (record?.status === 'pending') return { status: 'warn', label: 'Fiscalization pending' };
+  if (record?.status === 'fiscalized' && record.nivf)
+    return { status: 'ok', label: 'Fiscalized' };
+  if (record?.status === 'pending')
+    return { status: 'warn', label: 'Fiscalization pending' };
   return { status: 'danger', label: 'Fiscalization needs attention' };
 }
 
@@ -534,7 +591,9 @@ function FiscalPanel({
             <Landmark size={16} aria-hidden /> Fiscal invoice {record.invNum}
           </h2>
           <p className="card__sub">
-            {record.environment === 'test' ? 'TEST environment — not a legally valid fiscal invoice. ' : ''}
+            {record.environment === 'test'
+              ? 'TEST environment — not a legally valid fiscal invoice. '
+              : ''}
             {record.status === 'pending'
               ? 'Valid to print now. DentalCare keeps sending it to the tax authority until it is confirmed.'
               : record.status === 'rejected'
@@ -545,49 +604,59 @@ function FiscalPanel({
         <div className="inline-row">
           <StatusPill status={s.status} label={s.label} />
           {onSendNow && (
-            <button className="btn btn--ghost btn--sm" onClick={onSendNow} disabled={busy}>
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={onSendNow}
+              disabled={busy}
+            >
               <RefreshCw size={14} aria-hidden /> {busy ? 'Sending…' : 'Send now'}
             </button>
           )}
         </div>
       </div>
       <div className="fiscal-panel">
-        <a className="fiscal-panel__qr" href={record.qrUrl} target="_blank" rel="noreferrer" title="Verify on the tax authority's portal">
+        <a
+          className="fiscal-panel__qr"
+          href={record.qrUrl}
+          target="_blank"
+          rel="noreferrer"
+          title="Verify on the tax authority's portal"
+        >
           <QrCode text={record.qrUrl} />
         </a>
         <Disclosure summary="Fiscal details" hint="NIVF, NSLF, register">
-        <dl className="fiscal-codes">
-          <dt>NIVF</dt>
-          <dd>{record.nivf ?? 'pending'}</dd>
-          <dt>NSLF</dt>
-          <dd>{record.nslf}</dd>
-          <dt>Issued</dt>
-          <dd>{record.issueDateTime.replace('T', ' ')}</dd>
-          <dt>Type</dt>
-          <dd>{record.typeOfInvoice === 'CASH' ? 'Cash' : 'Non-cash'}</dd>
-          <dt>Business unit · register</dt>
-          <dd>
-            {record.businessUnitCode} · {record.tcrCode}
-          </dd>
-          <dt>Operator</dt>
-          <dd>{record.operatorCode}</dd>
-          {record.lastError && (
-            <>
-              <dt>Last answer</dt>
-              <dd style={{ fontFamily: 'var(--font-body)', color: 'var(--danger-fg)' }}>
-                {record.lastError}
-                {record.lastErrorCode ? ` (code ${record.lastErrorCode})` : ''}
-                {record.attempts > 1 ? ` · ${plural(record.attempts, 'attempt')}` : ''}
-              </dd>
-            </>
-          )}
-          {record.status === 'pending' && record.nextAttemptAt && (
-            <>
-              <dt>Next attempt</dt>
-              <dd>{fmtDateTime(record.nextAttemptAt)}</dd>
-            </>
-          )}
-        </dl>
+          <dl className="fiscal-codes">
+            <dt>NIVF</dt>
+            <dd>{record.nivf ?? 'pending'}</dd>
+            <dt>NSLF</dt>
+            <dd>{record.nslf}</dd>
+            <dt>Issued</dt>
+            <dd>{record.issueDateTime.replace('T', ' ')}</dd>
+            <dt>Type</dt>
+            <dd>{record.typeOfInvoice === 'CASH' ? 'Cash' : 'Non-cash'}</dd>
+            <dt>Business unit · register</dt>
+            <dd>
+              {record.businessUnitCode} · {record.tcrCode}
+            </dd>
+            <dt>Operator</dt>
+            <dd>{record.operatorCode}</dd>
+            {record.lastError && (
+              <>
+                <dt>Last answer</dt>
+                <dd style={{ fontFamily: 'var(--font-body)', color: 'var(--danger-fg)' }}>
+                  {record.lastError}
+                  {record.lastErrorCode ? ` (code ${record.lastErrorCode})` : ''}
+                  {record.attempts > 1 ? ` · ${plural(record.attempts, 'attempt')}` : ''}
+                </dd>
+              </>
+            )}
+            {record.status === 'pending' && record.nextAttemptAt && (
+              <>
+                <dt>Next attempt</dt>
+                <dd>{fmtDateTime(record.nextAttemptAt)}</dd>
+              </>
+            )}
+          </dl>
         </Disclosure>
       </div>
     </section>
@@ -595,7 +664,8 @@ function FiscalPanel({
 }
 
 /** The method's icon-free, one-word name for the segmented control. */
-const shortMethod = (m: ClinicPaymentMethod) => (m.label.length > 14 ? m.label.slice(0, 13) + '…' : m.label);
+const shortMethod = (m: ClinicPaymentMethod) =>
+  m.label.length > 14 ? m.label.slice(0, 13) + '…' : m.label;
 
 /**
  * Taking a payment: the amount, how it was paid, one button. Which document
@@ -665,7 +735,9 @@ function PaymentModal({
         const last = lastPaidRef.current;
         const same =
           last &&
-          (active.find((m) => last.methodLabel !== null && m.label === last.methodLabel) ??
+          (active.find(
+            (m) => last.methodLabel !== null && m.label === last.methodLabel,
+          ) ??
             active.find((m) => m.kind === last.method));
         const start = same ?? active[0];
         if (start) setMethodId(start.id);
@@ -746,8 +818,16 @@ function PaymentModal({
           return;
         }
       }
-      setError(humanError(err, 'The payment could not be recorded. Nothing was taken — try again.'));
-      setDrawerIssue(err instanceof ApiError && (err.code === 'drawer_not_open' || err.code === 'drawer_counting'));
+      setError(
+        humanError(
+          err,
+          'The payment could not be recorded. Nothing was taken — try again.',
+        ),
+      );
+      setDrawerIssue(
+        err instanceof ApiError &&
+          (err.code === 'drawer_not_open' || err.code === 'drawer_counting'),
+      );
     } finally {
       setBusy(false);
     }
@@ -756,7 +836,11 @@ function PaymentModal({
   if (done) {
     const paid = amount ?? 0;
     return (
-      <Modal title="Paid" subtitle={`${patientName} · ${invoiceNumber}`} onClose={onClose}>
+      <Modal
+        title="Paid"
+        subtitle={`${patientName} · ${invoiceNumber}`}
+        onClose={onClose}
+      >
         <div className="modal__body paydone">
           <span className="paydone__check" aria-hidden>
             <Check size={28} strokeWidth={2.4} />
@@ -770,14 +854,18 @@ function PaymentModal({
                 ? '✓ Fiscalized'
                 : 'Fiscalization pending'}
           </p>
-          <p className={`paydone__left${done.balance > 0 ? ' paydone__left--owing' : ''}`}>
-            {done.balance > 0 ? `${formatMoney(done.balance)} still to pay` : 'Paid in full'}
+          <p
+            className={`paydone__left${done.balance > 0 ? ' paydone__left--owing' : ''}`}
+          >
+            {done.balance > 0
+              ? `${formatMoney(done.balance)} still to pay`
+              : 'Paid in full'}
           </p>
           {done.fiscalError && (
             <p className="formwarn" role="status">
               <span>
-                The payment is recorded. {done.fiscalError} The invoice is in the fiscal queue and will be sent
-                again automatically.
+                The payment is recorded. {done.fiscalError} The invoice is in the fiscal
+                queue and will be sent again automatically.
               </span>
             </p>
           )}
@@ -792,7 +880,12 @@ function PaymentModal({
               </button>
             )}
             <div className="modal__foot-right">
-              <button type="button" className="btn btn--primary" onClick={onClose} autoFocus>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={onClose}
+                autoFocus
+              >
                 Done
               </button>
             </div>
@@ -802,10 +895,17 @@ function PaymentModal({
     );
   }
 
-  const docLabel = docKind === 'fiscal' ? 'Fiscal invoice (faturë e fiskalizuar)' : 'Internal receipt (faturë fiktive)';
+  const docLabel =
+    docKind === 'fiscal'
+      ? 'Fiscal invoice (faturë e fiskalizuar)'
+      : 'Internal receipt (faturë fiktive)';
 
   return (
-    <Modal title="Payment" subtitle={`${patientName} · ${formatMoney(balance)} owed`} onClose={onClose}>
+    <Modal
+      title="Payment"
+      subtitle={`${patientName} · ${formatMoney(balance)} owed`}
+      onClose={onClose}
+    >
       <form className="modal__body paysheet" onSubmit={submit} noValidate>
         <label className="paysheet__amount">
           <span className="sr-only">Amount received ({currencySymbol()})</span>
@@ -864,7 +964,9 @@ function PaymentModal({
         {askDoc ? (
           <fieldset className="docswitch">
             <legend>What this payment issues</legend>
-            <label className={`docswitch__opt${docKind === 'fiscal' ? ' is-picked' : ''}`}>
+            <label
+              className={`docswitch__opt${docKind === 'fiscal' ? ' is-picked' : ''}`}
+            >
               <input
                 type="radio"
                 name="document"
@@ -874,7 +976,9 @@ function PaymentModal({
               />
               <span className="docswitch__text">
                 <strong>Fiscal invoice</strong>
-                <span className="small muted">Registered with the tax authority (faturë e fiskalizuar).</span>
+                <span className="small muted">
+                  Registered with the tax authority (faturë e fiskalizuar).
+                </span>
               </span>
             </label>
             <label
@@ -900,7 +1004,8 @@ function PaymentModal({
           </fieldset>
         ) : (
           <p className="paysheet__doc">
-            Issues {/^[aeiou]/i.test(docLabel) ? 'an' : 'a'} {docLabel.split(' (')[0]!.toLowerCase()}.{' '}
+            Issues {/^[aeiou]/i.test(docLabel) ? 'an' : 'a'}{' '}
+            {docLabel.split(' (')[0]!.toLowerCase()}.{' '}
             {internalAllowed && fiscalReady && (
               <button type="button" className="linkbtn" onClick={() => setAskDoc(true)}>
                 Change
@@ -912,7 +1017,12 @@ function PaymentModal({
         <Disclosure summary="Add a note" hint={note ? note : undefined}>
           <label className="field">
             <span className="sr-only">Note</span>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" maxLength={300} />
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional"
+              maxLength={300}
+            />
           </label>
         </Disclosure>
 
@@ -950,8 +1060,12 @@ function PaymentModal({
 
 /* ════════ Payments history page ════════ */
 export function PaymentsPage() {
-  const [items, setItems] = useState<import('../lib/api').PaymentHistoryRow[] | null>(null);
-  const [voiding, setVoiding] = useState<import('../lib/api').PaymentHistoryRow | null>(null);
+  const [items, setItems] = useState<import('../lib/api').PaymentHistoryRow[] | null>(
+    null,
+  );
+  const [voiding, setVoiding] = useState<import('../lib/api').PaymentHistoryRow | null>(
+    null,
+  );
   const { can } = useAuth();
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1026,7 +1140,13 @@ export function PaymentsPage() {
                       <Avatar name={p.patientName} size={26} />
                       <span>{p.patientName}</span>
                     </div>
-                    {p.voidedAt && <VoidedNote at={p.voidedAt} by={p.voidedByName} reason={p.voidReason} />}
+                    {p.voidedAt && (
+                      <VoidedNote
+                        at={p.voidedAt}
+                        by={p.voidedByName}
+                        reason={p.voidReason}
+                      />
+                    )}
                   </td>
                   <td className="hide-sm">
                     <StatusPill status="neutral" label={methodName(p)} />

@@ -85,7 +85,10 @@ const PER_TENANT = `
 
 @Injectable()
 export class PlatformUsageService {
-  constructor(private readonly db: DatabaseService, private readonly storage: StorageService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly storage: StorageService,
+  ) {}
 
   /** Every clinic's consumption, heaviest first. */
   async fleet() {
@@ -104,7 +107,15 @@ export class PlatformUsageService {
         documents: acc.documents + t.documents,
         storageBytes: acc.storageBytes + t.storageBytes,
       }),
-      { clinics: 0, users: 0, patients: 0, appointments: 0, invoices: 0, documents: 0, storageBytes: 0 },
+      {
+        clinics: 0,
+        users: 0,
+        patients: 0,
+        appointments: 0,
+        invoices: 0,
+        documents: 0,
+        storageBytes: 0,
+      },
     );
 
     const { rows: kinds } = await this.db.adminQuery<{
@@ -129,17 +140,20 @@ export class PlatformUsageService {
     return {
       totals,
       tenants,
-      storageByKind: kinds.map((k) => ({ kind: k.kind, files: k.files, bytes: Number(k.bytes) })),
+      storageByKind: kinds.map((k) => ({
+        kind: k.kind,
+        files: k.files,
+        bytes: Number(k.bytes),
+      })),
       reclaimable: { files: reclaim[0]!.files, bytes: Number(reclaim[0]!.bytes) },
       backend: await this.storage.status(),
     };
   }
 
   async forTenant(tenantId: string) {
-    const { rows } = await this.db.adminQuery<UsageRow>(
-      `${PER_TENANT} AND t.id = $1`,
-      [tenantId],
-    );
+    const { rows } = await this.db.adminQuery<UsageRow>(`${PER_TENANT} AND t.id = $1`, [
+      tenantId,
+    ]);
     const row = rows[0];
     if (!row) throw new NotFoundException('No such clinic.');
 
@@ -183,7 +197,11 @@ export class PlatformUsageService {
 
     return {
       ...mapUsage(row),
-      storageByKind: kinds.map((k) => ({ kind: k.kind, files: k.files, bytes: Number(k.bytes) })),
+      storageByKind: kinds.map((k) => ({
+        kind: k.kind,
+        files: k.files,
+        bytes: Number(k.bytes),
+      })),
       months: months.map((x) => ({
         month: x.month,
         appointments: x.appointments,

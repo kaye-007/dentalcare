@@ -55,7 +55,12 @@ const signIn = (email: string) =>
   post('/api/auth/login', { email, password: s.password });
 
 /** Shared across the admin tests: enrollment feeds sign-in, sign-in feeds lockout. */
-const admin = { secret: '', recoveryCodes: [] as string[], challenge: '', accessToken: '' };
+const admin = {
+  secret: '',
+  recoveryCodes: [] as string[],
+  challenge: '',
+  accessToken: '',
+};
 
 describe('an administrator without MFA', () => {
   it('gets no session from a password alone', async () => {

@@ -269,7 +269,9 @@ export class PerioService {
     const exam = rows[0];
     if (!exam) throw new NotFoundException('Perio exam not found');
     if (exam.signed_at) {
-      throw new ConflictException('This periodontal exam is signed and can no longer change.');
+      throw new ConflictException(
+        'This periodontal exam is signed and can no longer change.',
+      );
     }
     return exam;
   }
@@ -289,7 +291,10 @@ export class PerioService {
     return this.tx(async (client) => {
       const exam = await this.openExamForWrite(client, examId);
       try {
-        await client.query(`UPDATE perio_exams SET ${sets.join(', ')} WHERE id = $1`, params);
+        await client.query(
+          `UPDATE perio_exams SET ${sets.join(', ')} WHERE id = $1`,
+          params,
+        );
       } catch (err) {
         rethrowRecordLocked(err);
       }
@@ -314,7 +319,11 @@ export class PerioService {
    * clinician can correct a number and re-save without creating duplicates,
    * and so an interrupted save can simply be repeated.
    */
-  async saveMeasurements(examId: string, dto: SaveMeasurementsDto, actor: ClinicAuditActor) {
+  async saveMeasurements(
+    examId: string,
+    dto: SaveMeasurementsDto,
+    actor: ClinicAuditActor,
+  ) {
     if (!dto.measurements.length && !dto.findings?.length) {
       throw new BadRequestException('Nothing to save');
     }
@@ -415,7 +424,9 @@ export class PerioService {
         [examId],
       );
       if (!rows[0]?.n) {
-        throw new ConflictException('Record at least one reading before signing the exam.');
+        throw new ConflictException(
+          'Record at least one reading before signing the exam.',
+        );
       }
       await signEntry<ExamLockRow>(client, this.audit, actor, {
         table: 'perio_exams',

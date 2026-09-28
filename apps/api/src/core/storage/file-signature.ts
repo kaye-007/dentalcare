@@ -27,7 +27,11 @@ interface Signature {
 
 const SIGNATURES: readonly Signature[] = [
   { type: 'image/jpeg', offset: 0, bytes: [0xff, 0xd8, 0xff] },
-  { type: 'image/png', offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  {
+    type: 'image/png',
+    offset: 0,
+    bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  },
   { type: 'application/pdf', offset: 0, bytes: [0x25, 0x50, 0x44, 0x46, 0x2d] }, // %PDF-
   // DICOM: 128-byte preamble, then the literal 'DICM'. This is the format an
   // intraoral or panoramic sensor actually writes.

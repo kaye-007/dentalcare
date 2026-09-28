@@ -160,11 +160,17 @@ export class AuthService {
     return this.requireRole(user);
   }
 
-  private async continueSignIn(user: AuthUserRow, meta: RequestMeta): Promise<LoginResult> {
-    const { enrolled, required } = await this.db.withTenant(user.tenant_id, async (c) => ({
-      enrolled: (await this.mfa.status(c, 'clinic', user.id)).enrolled,
-      required: await this.mfaRequired(c, user),
-    }));
+  private async continueSignIn(
+    user: AuthUserRow,
+    meta: RequestMeta,
+  ): Promise<LoginResult> {
+    const { enrolled, required } = await this.db.withTenant(
+      user.tenant_id,
+      async (c) => ({
+        enrolled: (await this.mfa.status(c, 'clinic', user.id)).enrolled,
+        required: await this.mfaRequired(c, user),
+      }),
+    );
 
     if (enrolled) {
       return {
@@ -207,7 +213,10 @@ export class AuthService {
   }
 
   /** Spend a challenge token: verify it, and re-check the account behind it. */
-  private async readChallenge(token: string, stage: ChallengeStage): Promise<AuthUserRow> {
+  private async readChallenge(
+    token: string,
+    stage: ChallengeStage,
+  ): Promise<AuthUserRow> {
     let claims: ChallengeClaims;
     try {
       claims = await this.jwt.verifyAsync<ChallengeClaims>(token, {
@@ -217,7 +226,11 @@ export class AuthService {
       throw new UnauthorizedException(EXPIRED_CHALLENGE);
     }
     const tenantId = this.tenant.getRequiredTenantId();
-    if (claims.type !== 'mfa_challenge' || claims.stage !== stage || claims.tenantId !== tenantId) {
+    if (
+      claims.type !== 'mfa_challenge' ||
+      claims.stage !== stage ||
+      claims.tenantId !== tenantId
+    ) {
       throw new UnauthorizedException(EXPIRED_CHALLENGE);
     }
     const user = await this.users.findForAuthById(tenantId, claims.sub);
@@ -233,7 +246,9 @@ export class AuthService {
     meta: RequestMeta,
   ): Promise<AuthenticatedResult> {
     if (Boolean(input.code) === Boolean(input.recoveryCode)) {
-      throw new BadRequestException('Enter the code from your authenticator app, or one recovery code.');
+      throw new BadRequestException(
+        'Enter the code from your authenticator app, or one recovery code.',
+      );
     }
     const user = await this.readChallenge(challengeToken, 'verify');
 
@@ -373,7 +388,13 @@ export class AuthService {
   async revokeOtherSessions(current: AccessTokenPayload) {
     return this.db.withTenant(current.tenantId, async (c) => {
       const keep = await familyOf(c, 'user_sessions', current.sid, current.sub);
-      const revoked = await revokeAllFor(c, 'user_sessions', current.sub, 'revoked_by_user', keep);
+      const revoked = await revokeAllFor(
+        c,
+        'user_sessions',
+        current.sub,
+        'revoked_by_user',
+        keep,
+      );
       return { revoked };
     });
   }
@@ -406,10 +427,10 @@ export class AuthService {
 
     const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await this.db.withTenant(tenantId, async (c) => {
-      await c.query('UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1', [
-        user.id,
-        hash,
-      ]);
+      await c.query(
+        'UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1',
+        [user.id, hash],
+      );
       const keep = await familyOf(c, 'user_sessions', current.sid, user.id);
       await revokeAllFor(c, 'user_sessions', user.id, 'password_changed', keep);
     });
@@ -500,7 +521,8 @@ export class AuthService {
     }
 
     const outcome = await this.db.withTenant(user.tenant_id, async (c) => {
-      if (await this.mfaRequired(c, user)) return { ok: false as const, required: true as const };
+      if (await this.mfaRequired(c, user))
+        return { ok: false as const, required: true as const };
       const verdict = await this.mfa.verify(c, 'clinic', {
         ownerId: user.id,
         code,
@@ -521,7 +543,9 @@ export class AuthService {
 
     if (!outcome.ok) {
       if ('required' in outcome) {
-        throw new ForbiddenException('Two-step sign-in is required for your role at this clinic.');
+        throw new ForbiddenException(
+          'Two-step sign-in is required for your role at this clinic.',
+        );
       }
       throw new UnauthorizedException(mfaFailureMessage(outcome.reason));
     }
@@ -533,18 +557,24 @@ export class AuthService {
     const user = await this.currentUser(current);
     const role = this.requireRole(user);
     const ctx = this.tenant.get();
-    const { mfa, currency, timezone } = await this.db.withTenant(user.tenant_id, async (c) => ({
-      mfa: {
-        enrolled: (await this.mfa.status(c, 'clinic', user.id)).enrolled,
-        required: await this.mfaRequired(c, user),
-      },
-      currency: await clinicCurrency(c),
-      // Appointment times are the clinic's wall clock, whatever zone the
-      // browser happens to be in. The SPA shows and books in this zone.
-      timezone:
-        (await c.query<{ timezone: string }>('SELECT timezone FROM clinic_settings LIMIT 1')).rows[0]?.timezone ??
-        'Europe/Tirane',
-    }));
+    const { mfa, currency, timezone } = await this.db.withTenant(
+      user.tenant_id,
+      async (c) => ({
+        mfa: {
+          enrolled: (await this.mfa.status(c, 'clinic', user.id)).enrolled,
+          required: await this.mfaRequired(c, user),
+        },
+        currency: await clinicCurrency(c),
+        // Appointment times are the clinic's wall clock, whatever zone the
+        // browser happens to be in. The SPA shows and books in this zone.
+        timezone:
+          (
+            await c.query<{ timezone: string }>(
+              'SELECT timezone FROM clinic_settings LIMIT 1',
+            )
+          ).rows[0]?.timezone ?? 'Europe/Tirane',
+      }),
+    );
     return {
       id: user.id,
       email: user.email,
@@ -569,7 +599,10 @@ export class AuthService {
   /* ─────────────────────────── internals ─────────────────────────── */
 
   private async currentUser(current: AccessTokenPayload): Promise<AuthUserRow> {
-    const user = await this.users.findForAuthById(this.tenant.getRequiredTenantId(), current.sub);
+    const user = await this.users.findForAuthById(
+      this.tenant.getRequiredTenantId(),
+      current.sub,
+    );
     if (!user || user.user_status !== 'active') throw new UnauthorizedException();
     return user;
   }

@@ -58,7 +58,9 @@ import { readFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const DEFAULT_CONFIG = fileURLToPath(new URL('../wrangler.jsonc', import.meta.url));
+export const DEFAULT_CONFIG = fileURLToPath(
+  new URL('../wrangler.jsonc', import.meta.url),
+);
 
 /** The two bindings the Worker reads, and what each must connect as. */
 export const REQUIRED_BINDINGS = [
@@ -160,7 +162,8 @@ export function parseJsoncTree(text) {
         i++;
         members.push({ key, value: value() });
         skip();
-        if (text[i] === ',') i++; // a trailing comma is legal JSONC
+        if (text[i] === ',')
+          i++; // a trailing comma is legal JSONC
         else if (text[i] !== '}') fail('expected "," or "}"');
       }
       i++;
@@ -260,7 +263,11 @@ export function findProblems(tree) {
   for (const { binding } of REQUIRED_BINDINGS) {
     const matches = entries.filter((e) => e.binding === binding);
     if (matches.length === 0) {
-      problems.push({ binding, message: 'is not declared in "hyperdrive"', create: true });
+      problems.push({
+        binding,
+        message: 'is not declared in "hyperdrive"',
+        create: true,
+      });
     } else if (matches.length > 1) {
       problems.push({
         binding,
@@ -308,7 +315,8 @@ const dim = paint('2');
 function report(problems, shownPath) {
   const lines = [];
   const width = Math.max(...problems.map((p) => p.binding.length));
-  for (const p of problems) lines.push(`  ${bold(p.binding.padEnd(width))}  ${p.message}`);
+  for (const p of problems)
+    lines.push(`  ${bold(p.binding.padEnd(width))}  ${p.message}`);
 
   const needCreate = REQUIRED_BINDINGS.filter((r) =>
     problems.some((p) => p.create && (p.both || p.binding === r.binding)),
@@ -320,7 +328,7 @@ function report(problems, shownPath) {
     lines.push(
       `  ${step++}. Create the Hyperdrive config${needCreate.length > 1 ? 's' : ''}. ` +
         'Caching must stay disabled: its cache is keyed on the query, not',
-      "     on the clinic, so a cached row from one clinic can be served to another.",
+      '     on the clinic, so a cached row from one clinic can be served to another.',
       "     Use Supabase's direct host on port 5432. If you created them already,",
       '     `npx wrangler hyperdrive list` shows the ids again.',
       '',
@@ -384,7 +392,9 @@ function main() {
   }
 
   if (problems.length === 0) {
-    console.log(`Hyperdrive bindings in ${shownPath}: both set, and distinct. Deployable.`);
+    console.log(
+      `Hyperdrive bindings in ${shownPath}: both set, and distinct. Deployable.`,
+    );
     return;
   }
 

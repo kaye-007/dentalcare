@@ -137,7 +137,10 @@ export type RotationResult =
       mfaVerifiedAt: Date | null;
       next: NewSession;
     }
-  | { ok: false; reason: 'invalid' | 'expired' | 'revoked' | 'reused' | 'owner_inactive' };
+  | {
+      ok: false;
+      reason: 'invalid' | 'expired' | 'revoked' | 'reused' | 'owner_inactive';
+    };
 
 /**
  * Exchange a refresh token for its successor.
@@ -177,7 +180,8 @@ export async function rotateSession(
     return { ok: false, reason: 'invalid' };
   }
   if (row.revoked_at) return { ok: false, reason: 'revoked' };
-  if (row.expires_at.getTime() <= row.now.getTime()) return { ok: false, reason: 'expired' };
+  if (row.expires_at.getTime() <= row.now.getTime())
+    return { ok: false, reason: 'expired' };
 
   const verdict = reuseVerdict(row.rotated_at, row.now);
   if (verdict === 'replayed') {

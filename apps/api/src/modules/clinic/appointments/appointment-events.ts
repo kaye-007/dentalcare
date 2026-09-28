@@ -58,7 +58,10 @@ export type AppointmentListener = (event: AppointmentEvent) => void | Promise<vo
 @Injectable()
 export class AppointmentEvents {
   private readonly log = new Logger(AppointmentEvents.name);
-  private readonly listeners = new Map<AppointmentEventType | '*', AppointmentListener[]>();
+  private readonly listeners = new Map<
+    AppointmentEventType | '*',
+    AppointmentListener[]
+  >();
 
   /** Subscribe to one event type, or '*' for all of them. */
   on(type: AppointmentEventType | '*', listener: AppointmentListener): void {

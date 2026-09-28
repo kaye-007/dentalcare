@@ -10,12 +10,12 @@ import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
 import { withdrawEntry } from '@/core/audit/clinical-record';
 import { StorageService } from '@/core/storage/storage.service';
-import { normalizeNationalId, toE164, WHATSAPP_OPT_IN_SOURCE_LABELS } from '@dentalcare/shared';
 import {
-  ArchivePatientDto,
-  CreatePatientDto,
-  UpdatePatientDto,
-} from './dto/patient.dto';
+  normalizeNationalId,
+  toE164,
+  WHATSAPP_OPT_IN_SOURCE_LABELS,
+} from '@dentalcare/shared';
+import { ArchivePatientDto, CreatePatientDto, UpdatePatientDto } from './dto/patient.dto';
 
 interface PatientRow {
   id: string;
@@ -61,16 +61,15 @@ const FOLD = (col: string) => `lower(translate(${col}, '${ACCENTED}', '${PLAIN}'
 
 /** What was typed, without accents and in lowercase. */
 function fold(text: string) {
-  return text
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase();
+  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
 /** A unique-index refusal on the national ID, in words. */
 function rethrowNationalId(err: unknown): never {
   if ((err as { code?: string; constraint?: string }).code === '23505') {
-    throw new ConflictException('Another patient in this clinic already has this national ID');
+    throw new ConflictException(
+      'Another patient in this clinic already has this national ID',
+    );
   }
   throw err;
 }
@@ -371,7 +370,10 @@ export class PatientsService {
           'SELECT storage_key FROM patient_documents WHERE id = $1 AND deleted_at IS NULL',
           [rows[0].photo_document_id],
         );
-        if (photo[0]) photoUrl = await this.storage.signedViewUrl(photo[0].storage_key).catch(() => null);
+        if (photo[0])
+          photoUrl = await this.storage
+            .signedViewUrl(photo[0].storage_key)
+            .catch(() => null);
       }
       return {
         ...mapPatient(rows[0]),
@@ -393,36 +395,38 @@ export class PatientsService {
     const opt = (v: string | undefined) => (v && v.trim() !== '' ? v : null);
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const { rows } = await client.query<PatientRow>(
-        `INSERT INTO patients
+      const { rows } = await client
+        .query<PatientRow>(
+          `INSERT INTO patients
            (tenant_id, first_name, last_name, phone, email, gender, birth_date,
             address, city, postal_code, status, created_by,
             emergency_contact_name, emergency_contact_relationship,
             emergency_contact_phone, national_id, preferred_channel)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING ${FULL}`,
-        [
-          tenantId,
-          dto.firstName,
-          dto.lastName,
-          opt(dto.phone),
-          opt(dto.email),
-          dto.gender && (dto.gender as string) !== '' ? dto.gender : null,
-          opt(dto.birthDate),
-          opt(dto.address),
-          opt(dto.city),
-          opt(dto.postalCode),
-          // A patient cannot be created straight into the archive; archiving
-          // is an explicit, attributed action.
-          dto.status === 'archived' ? 'active' : dto.status ?? 'active',
-          actor.userId,
-          opt(dto.emergencyContactName),
-          opt(dto.emergencyContactRelationship),
-          opt(dto.emergencyContactPhone),
-          dto.nationalId ? normalizeNationalId(dto.nationalId) : null,
-          dto.preferredChannel || null,
-        ],
-      ).catch(rethrowNationalId);
+          [
+            tenantId,
+            dto.firstName,
+            dto.lastName,
+            opt(dto.phone),
+            opt(dto.email),
+            dto.gender && (dto.gender as string) !== '' ? dto.gender : null,
+            opt(dto.birthDate),
+            opt(dto.address),
+            opt(dto.city),
+            opt(dto.postalCode),
+            // A patient cannot be created straight into the archive; archiving
+            // is an explicit, attributed action.
+            dto.status === 'archived' ? 'active' : (dto.status ?? 'active'),
+            actor.userId,
+            opt(dto.emergencyContactName),
+            opt(dto.emergencyContactRelationship),
+            opt(dto.emergencyContactPhone),
+            dto.nationalId ? normalizeNationalId(dto.nationalId) : null,
+            dto.preferredChannel || null,
+          ],
+        )
+        .catch(rethrowNationalId);
       const row = rows[0]!;
       await this.audit.record(client, actor, {
         action: 'patient.created',
@@ -446,7 +450,11 @@ export class PatientsService {
     dto: CreatePatientDto,
     actor: ClinicAuditActor,
   ): Promise<PatientRow | null> {
-    if (dto.whatsappPhone === undefined && dto.whatsappOptIn === undefined && dto.whatsappOptInSource === undefined) {
+    if (
+      dto.whatsappPhone === undefined &&
+      dto.whatsappOptIn === undefined &&
+      dto.whatsappOptInSource === undefined
+    ) {
       return null;
     }
     const sets: string[] = [];
@@ -454,9 +462,14 @@ export class PatientsService {
     if (dto.whatsappPhone !== undefined) {
       let e164: string | null = null;
       if (dto.whatsappPhone && dto.whatsappPhone.trim() !== '') {
-        const cc = await client.query<{ phone_country_code: string }>('SELECT phone_country_code FROM clinic_settings LIMIT 1');
+        const cc = await client.query<{ phone_country_code: string }>(
+          'SELECT phone_country_code FROM clinic_settings LIMIT 1',
+        );
         e164 = toE164(dto.whatsappPhone, cc.rows[0]?.phone_country_code ?? '355');
-        if (!e164) throw new BadRequestException(`"${dto.whatsappPhone}" is not a usable WhatsApp number`);
+        if (!e164)
+          throw new BadRequestException(
+            `"${dto.whatsappPhone}" is not a usable WhatsApp number`,
+          );
       }
       params.push(e164);
       sets.push(`whatsapp_phone_e164 = $${params.length}`);
@@ -476,7 +489,9 @@ export class PatientsService {
       );
     } else if (dto.whatsappOptInSource !== undefined) {
       params.push(dto.whatsappOptInSource);
-      sets.push(`whatsapp_opt_in_source = CASE WHEN whatsapp_opt_in THEN $${params.length} END`);
+      sets.push(
+        `whatsapp_opt_in_source = CASE WHEN whatsapp_opt_in THEN $${params.length} END`,
+      );
     }
     const before = await client.query<{ whatsapp_opt_in: boolean }>(
       'SELECT whatsapp_opt_in FROM patients WHERE id = $1 FOR UPDATE',
@@ -488,8 +503,12 @@ export class PatientsService {
       params,
     );
     const row = rows[0]!;
-    if (dto.whatsappOptIn !== undefined && dto.whatsappOptIn !== before.rows[0].whatsapp_opt_in) {
-      const how = row.whatsapp_opt_in_source as keyof typeof WHATSAPP_OPT_IN_SOURCE_LABELS | null;
+    if (
+      dto.whatsappOptIn !== undefined &&
+      dto.whatsappOptIn !== before.rows[0].whatsapp_opt_in
+    ) {
+      const how = row.whatsapp_opt_in_source as
+        keyof typeof WHATSAPP_OPT_IN_SOURCE_LABELS | null;
       await this.audit.record(client, actor, {
         action: 'patient.whatsapp_consent',
         entityType: 'patient',
@@ -527,9 +546,7 @@ export class PatientsService {
     // Archiving carries a reason and an actor, so it has its own endpoint.
     // Allowing it through the generic PATCH would bypass both.
     if (dto.status === 'archived') {
-      throw new BadRequestException(
-        'Use DELETE /patients/:id to archive a patient',
-      );
+      throw new BadRequestException('Use DELETE /patients/:id to archive a patient');
     }
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -670,7 +687,11 @@ export class PatientsService {
         [patientId],
       );
       if (!patient[0]) throw new NotFoundException('Patient not found');
-      const { rows } = await client.query<{ id: string; body: string; created_at: string }>(
+      const { rows } = await client.query<{
+        id: string;
+        body: string;
+        created_at: string;
+      }>(
         `INSERT INTO patient_notes (tenant_id, patient_id, body, author_id)
          VALUES ($1,$2,$3,$4)
          RETURNING id, body, created_at`,

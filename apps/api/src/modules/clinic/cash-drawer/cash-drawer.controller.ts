@@ -90,7 +90,10 @@ export class CashDrawerController {
 
   @Put('approval-pin')
   @RequirePermissions('drawer:approve')
-  setApprovalPin(@Body() dto: SetApprovalPinDto, @CurrentUser() user?: AccessTokenPayload) {
+  setApprovalPin(
+    @Body() dto: SetApprovalPinDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.drawer.setApprovalPin(dto, auditActor(user));
   }
 
@@ -112,7 +115,11 @@ export class CashDrawerController {
   @Post('sessions/:id/drops')
   @Idempotent()
   @RequirePermissions('drawer:operate')
-  drop(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DropDto, @CurrentUser() user?: AccessTokenPayload) {
+  drop(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DropDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.drawer.drop(id, dto, auditActor(user));
   }
 
@@ -140,19 +147,29 @@ export class CashDrawerController {
 
   @Post('sessions/:id/no-sale')
   @RequirePermissions('drawer:operate')
-  noSale(@Param('id', ParseUUIDPipe) id: string, @Body() dto: NoSaleDto, @CurrentUser() user?: AccessTokenPayload) {
+  noSale(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: NoSaleDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.drawer.noSale(id, dto.reason, auditActor(user));
   }
 
   @Post('sessions/:id/count/start')
   @RequirePermissions('drawer:operate')
-  startCount(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: AccessTokenPayload) {
+  startCount(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.drawer.startCount(id, auditActor(user));
   }
 
   @Post('sessions/:id/count/cancel')
   @RequirePermissions('drawer:operate')
-  resumeOpen(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: AccessTokenPayload) {
+  resumeOpen(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.drawer.resumeOpen(id, auditActor(user));
   }
 
@@ -182,7 +199,11 @@ export class CashDrawerController {
 
   @Post('sessions/:id/approve')
   @RequirePermissions('drawer:approve')
-  approve(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveDto, @CurrentUser() user?: AccessTokenPayload) {
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApproveDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.drawer.approve(id, dto.reason, auditActor(user));
   }
 

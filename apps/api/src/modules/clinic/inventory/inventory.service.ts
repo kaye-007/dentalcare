@@ -165,7 +165,9 @@ function mapItem(r: ItemRow, today: string) {
     // resolved here for the same reason "low" is.
     nextExpiry,
     expiry:
-      r.status === 'active' ? expiryState(nextExpiry, today, r.expiry_warning_days) : 'none',
+      r.status === 'active'
+        ? expiryState(nextExpiry, today, r.expiry_warning_days)
+        : 'none',
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -254,7 +256,9 @@ export class InventoryService {
    * whatever clock the browser has.
    */
   private async today(client: PoolClient): Promise<string> {
-    const { rows } = await client.query<{ today: string }>('SELECT CURRENT_DATE::text AS today');
+    const { rows } = await client.query<{ today: string }>(
+      'SELECT CURRENT_DATE::text AS today',
+    );
     return rows[0]!.today;
   }
 
@@ -423,7 +427,9 @@ export class InventoryService {
   lotUsage(lotId: string) {
     return this.tx(async (client) => {
       const today = await this.today(client);
-      const { rows } = await client.query<LotRow>(`${LOT_SELECT} WHERE l.id = $1`, [lotId]);
+      const { rows } = await client.query<LotRow>(`${LOT_SELECT} WHERE l.id = $1`, [
+        lotId,
+      ]);
       const lot = rows[0];
       if (!lot) throw new NotFoundException('Lot not found');
 
@@ -455,7 +461,8 @@ export class InventoryService {
       return {
         lot: mapLot(lot, today),
         uses,
-        patientCount: new Set(uses.flatMap((u) => (u.patientId ? [u.patientId] : []))).size,
+        patientCount: new Set(uses.flatMap((u) => (u.patientId ? [u.patientId] : [])))
+          .size,
         unattributedQuantity:
           uses
             .filter((u) => !u.patientId)
@@ -648,7 +655,13 @@ export class InventoryService {
         await client.query(
           `INSERT INTO inventory_lots (tenant_id, item_id, lot_number, quantity, created_by)
            VALUES ($1,$2,$3,$4,$5)`,
-          [this.tenant.getRequiredTenantId(), id, PRE_TRACKING_LOT, carried, actor.userId],
+          [
+            this.tenant.getRequiredTenantId(),
+            id,
+            PRE_TRACKING_LOT,
+            carried,
+            actor.userId,
+          ],
         );
       }
 
@@ -729,7 +742,9 @@ export class InventoryService {
       );
     }
     if ((dto.patientId || dto.procedureId) && dto.kind !== 'usage') {
-      throw new BadRequestException('Only stock used in treatment is recorded against a patient');
+      throw new BadRequestException(
+        'Only stock used in treatment is recorded against a patient',
+      );
     }
 
     return this.db.withTenant(tenantId, async (client) => {
@@ -921,9 +936,10 @@ export class InventoryService {
         },
       });
 
-      const { rows: fresh } = await client.query<LotRow>(`${LOT_SELECT} WHERE l.id = $1`, [
-        lotId,
-      ]);
+      const { rows: fresh } = await client.query<LotRow>(
+        `${LOT_SELECT} WHERE l.id = $1`,
+        [lotId],
+      );
       return { lot: mapLot(fresh[0]!, today), patientsAffected };
     });
   }
@@ -1048,7 +1064,11 @@ export class InventoryService {
     );
   }
 
-  private async lockLot(client: PoolClient, itemId: string, lotId: string): Promise<LotRow> {
+  private async lockLot(
+    client: PoolClient,
+    itemId: string,
+    lotId: string,
+  ): Promise<LotRow> {
     const { rows } = await client.query<LotRow>(
       `${LOT_SELECT} WHERE l.id = $1 AND l.item_id = $2 FOR UPDATE OF l`,
       [lotId, itemId],
@@ -1099,7 +1119,11 @@ export class InventoryService {
    * answer as an id that does not exist, which is the answer that leaks
    * nothing.
    */
-  private async requireItem(client: PoolClient, id: string, lock = false): Promise<ItemRow> {
+  private async requireItem(
+    client: PoolClient,
+    id: string,
+    lock = false,
+  ): Promise<ItemRow> {
     const { rows } = await client.query<ItemRow>(
       `SELECT ${ITEM_READ} FROM inventory_items WHERE id = $1${lock ? ' FOR UPDATE' : ''}`,
       [id],

@@ -43,7 +43,10 @@ export class FiscalSettingsController {
   /** The key is sealed before it is stored and never returned by any route. */
   @Post('certificate')
   @RequirePermissions('settings:manage')
-  certificate(@Body() dto: InstallCertificateDto, @CurrentUser() user?: AccessTokenPayload) {
+  certificate(
+    @Body() dto: InstallCertificateDto,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.fiscal.installCertificate(dto, auditActor(user));
   }
 
@@ -112,7 +115,10 @@ export class InvoiceFiscalController {
    */
   @Post()
   @RequirePermissions('invoices:fiscalize')
-  fiscalize(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: AccessTokenPayload) {
+  fiscalize(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.fiscal.fiscalize(id, auditActor(user));
   }
 }

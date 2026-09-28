@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
-import { open, parseKeyring, seal, type Keyring, type Sealed } from '@/core/mfa/secret-box';
+import {
+  open,
+  parseKeyring,
+  seal,
+  type Keyring,
+  type Sealed,
+} from '@/core/mfa/secret-box';
 
 /**
  * Seals and opens a clinic's WhatsApp access token (0017).
@@ -18,7 +24,9 @@ export class WhatsAppTokenBox {
     const spec = config.get<string>('WHATSAPP_ENCRYPTION_KEYS');
     // env.validation refuses production without keys; this derived key is
     // for development and tests only, and differs from the MFA one.
-    this.keyring = spec ? parseKeyring(spec) : developmentKeyring(config.get<string>('JWT_SECRET')!);
+    this.keyring = spec
+      ? parseKeyring(spec)
+      : developmentKeyring(config.get<string>('JWT_SECRET')!);
   }
 
   private aad(tenantId: string) {
@@ -35,6 +43,8 @@ export class WhatsAppTokenBox {
 }
 
 function developmentKeyring(jwtSecret: string): Keyring {
-  const key = createHmac('sha256', jwtSecret).update('dentalcare/whatsapp/development-key').digest();
+  const key = createHmac('sha256', jwtSecret)
+    .update('dentalcare/whatsapp/development-key')
+    .digest();
   return { currentId: 'dev', keys: new Map([['dev', key]]) };
 }

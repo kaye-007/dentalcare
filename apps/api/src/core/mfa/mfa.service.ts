@@ -2,7 +2,14 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'node:crypto';
 import { PoolClient } from 'pg';
-import { Keyring, developmentKeyring, keyedHash, open, parseKeyring, seal } from './secret-box';
+import {
+  Keyring,
+  developmentKeyring,
+  keyedHash,
+  open,
+  parseKeyring,
+  seal,
+} from './secret-box';
 import { generateTotpSecret, otpauthUri, verifyTotp } from './totp';
 import { generateRecoveryCodes, normalizeRecoveryCode } from './recovery-codes';
 
@@ -26,7 +33,11 @@ import { generateRecoveryCodes, normalizeRecoveryCode } from './recovery-codes';
 export type MfaPlane = 'clinic' | 'platform';
 
 const PLANES = {
-  clinic: { factors: 'user_mfa_factors', codes: 'user_mfa_recovery_codes', owner: 'user_id' },
+  clinic: {
+    factors: 'user_mfa_factors',
+    codes: 'user_mfa_recovery_codes',
+    owner: 'user_id',
+  },
   platform: {
     factors: 'platform_mfa_factors',
     codes: 'platform_mfa_recovery_codes',
@@ -72,7 +83,12 @@ export class MfaService {
     return `${PLANES[plane].factors}:${ownerId}`;
   }
 
-  private tenantColumns(plane: MfaPlane, owner: Owner, columns: string[], values: unknown[]) {
+  private tenantColumns(
+    plane: MfaPlane,
+    owner: Owner,
+    columns: string[],
+    values: unknown[],
+  ) {
     if (plane !== 'clinic') return;
     if (!owner.tenantId) throw new Error('clinic MFA rows require a tenant');
     columns.unshift('tenant_id');
@@ -81,7 +97,10 @@ export class MfaService {
 
   async status(client: PoolClient, plane: MfaPlane, ownerId: string): Promise<MfaStatus> {
     const p = PLANES[plane];
-    const { rows } = await client.query<{ confirmed_at: Date; locked_until: Date | null }>(
+    const { rows } = await client.query<{
+      confirmed_at: Date;
+      locked_until: Date | null;
+    }>(
       `SELECT confirmed_at, locked_until FROM ${p.factors}
         WHERE ${p.owner} = $1 AND disabled_at IS NULL AND confirmed_at IS NOT NULL`,
       [ownerId],
@@ -94,7 +113,9 @@ export class MfaService {
         factor?.locked_until && factor.locked_until.getTime() > Date.now()
           ? factor.locked_until.toISOString()
           : null,
-      recoveryCodesRemaining: factor ? await this.remainingCodes(client, plane, ownerId) : 0,
+      recoveryCodesRemaining: factor
+        ? await this.remainingCodes(client, plane, ownerId)
+        : 0,
     };
   }
 
@@ -161,7 +182,11 @@ export class MfaService {
     owner: Owner & { code: string; nowMs: number },
   ): Promise<{ recoveryCodes: string[] }> {
     const p = PLANES[plane];
-    const { rows } = await client.query<{ id: string; secret_ciphertext: string; key_id: string }>(
+    const { rows } = await client.query<{
+      id: string;
+      secret_ciphertext: string;
+      key_id: string;
+    }>(
       `SELECT id, secret_ciphertext, key_id FROM ${p.factors}
         WHERE ${p.owner} = $1 AND disabled_at IS NULL AND confirmed_at IS NULL
         FOR UPDATE`,
@@ -192,7 +217,11 @@ export class MfaService {
   }
 
   /** Revoke any unused codes and issue ten new ones, shown once. */
-  async replaceRecoveryCodes(client: PoolClient, plane: MfaPlane, owner: Owner): Promise<string[]> {
+  async replaceRecoveryCodes(
+    client: PoolClient,
+    plane: MfaPlane,
+    owner: Owner,
+  ): Promise<string[]> {
     const p = PLANES[plane];
     await client.query(
       `UPDATE ${p.codes} SET revoked_at = now()
@@ -202,7 +231,9 @@ export class MfaService {
 
     const codes = generateRecoveryCodes();
     const keyId = this.keyring.currentId;
-    const hashes = codes.map((c) => keyedHash(this.keyring, keyId, normalizeRecoveryCode(c)!));
+    const hashes = codes.map((c) =>
+      keyedHash(this.keyring, keyId, normalizeRecoveryCode(c)!),
+    );
 
     const columns = [p.owner, 'key_id'];
     const values: unknown[] = [owner.ownerId, keyId];
@@ -270,13 +301,18 @@ export class MfaService {
         for (const c of codes) {
           if (!this.keyring.keys.has(c.key_id)) continue;
           const stored = Buffer.from(c.code_hash, 'hex');
-          const presented = Buffer.from(keyedHash(this.keyring, c.key_id, normalized), 'hex');
+          const presented = Buffer.from(
+            keyedHash(this.keyring, c.key_id, normalized),
+            'hex',
+          );
           if (stored.length === presented.length && timingSafeEqual(stored, presented)) {
             matched = c.id;
           }
         }
         if (matched) {
-          await client.query(`UPDATE ${p.codes} SET used_at = now() WHERE id = $1`, [matched]);
+          await client.query(`UPDATE ${p.codes} SET used_at = now() WHERE id = $1`, [
+            matched,
+          ]);
           method = 'recovery';
         }
       }
@@ -288,7 +324,8 @@ export class MfaService {
       );
       const step = verifyTotp(secret, opts.code, {
         nowMs: opts.nowMs,
-        lastUsedStep: factor.last_used_step === null ? null : Number(factor.last_used_step),
+        lastUsedStep:
+          factor.last_used_step === null ? null : Number(factor.last_used_step),
       });
       if (step !== null) {
         await client.query(`UPDATE ${p.factors} SET last_used_step = $2 WHERE id = $1`, [

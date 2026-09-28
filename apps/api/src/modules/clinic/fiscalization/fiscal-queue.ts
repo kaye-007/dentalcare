@@ -43,7 +43,13 @@ export function queueTiming(issueDateTime: string, now: Date = new Date()): Queu
   const hours = ageMs / 3_600_000;
 
   const urgency: QueueUrgency =
-    msLeft <= 0 ? 'overdue' : hours >= ESCALATION_HOURS[3] ? 'urgent' : hours >= ESCALATION_HOURS[1] ? 'watch' : 'routine';
+    msLeft <= 0
+      ? 'overdue'
+      : hours >= ESCALATION_HOURS[3]
+        ? 'urgent'
+        : hours >= ESCALATION_HOURS[1]
+          ? 'watch'
+          : 'routine';
 
   return {
     ageMs: Math.max(0, ageMs),

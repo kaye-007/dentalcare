@@ -42,7 +42,7 @@ rather than guessing.
 **Goal:** the working tree is in git, on the remote, and reviewable.
 
 1. **(you)** Confirm no persistent database (staging, the old Docker volume,
-   anyone's laptop that matters) ran the *committed* `0001_baseline.js` — the
+   anyone's laptop that matters) ran the _committed_ `0001_baseline.js` — the
    working copy edits it.
 2. Commit in reviewable slices, not one blob — for example: migrations
    0002–0016 + baseline edit; core (mfa, sessions, idempotency, money, pdf,
@@ -74,7 +74,7 @@ Any failure found here is fixed before Phase 2, in its own small commit.
    expense, ledger adjustment, invoice-from-plan, fiscal cash deposit. Where a
    double run would duplicate money, add the second guard in the same
    transaction (unique key column), as payments already do.
-2. **(you)** Decide whether the `Idempotency-Key` header becomes *required* on
+2. **(you)** Decide whether the `Idempotency-Key` header becomes _required_ on
    money routes (recommended: yes for the clinic SPA, 428 when missing).
 3. **(you)** Decide whether voiding a payment or expense needs manager approval
    (the drawer's approval/PIN mechanism already exists and could be reused).

@@ -165,9 +165,7 @@ export function planLinesToInvoiceLines(
     taxRateBp: Math.max(0, Math.round(l.taxRateBp)),
   }));
 
-  const nets = base.map((l) =>
-    Math.max(0, l.unitPrice * l.quantity - l.discountAmount),
-  );
+  const nets = base.map((l) => Math.max(0, l.unitPrice * l.quantity - l.discountAmount));
   const netTotal = nets.reduce((s, v) => s + v, 0);
   const planDiscount = Math.min(Math.max(0, Math.round(planDiscountAmount)), netTotal);
   if (planDiscount === 0) return base;
@@ -183,11 +181,11 @@ export function planLinesToInvoiceLines(
 /* ══════════════════════ balances and ledger ══════════════════════ */
 
 export const LEDGER_ENTRY_TYPES = [
-  'charge',      // an invoice was issued — the patient owes more
-  'payment',     // money received
-  'adjustment',  // a correction agreed with the patient
-  'refund',      // money returned
-  'write_off',   // the clinic gave up on collecting
+  'charge', // an invoice was issued — the patient owes more
+  'payment', // money received
+  'adjustment', // a correction agreed with the patient
+  'refund', // money returned
+  'write_off', // the clinic gave up on collecting
 ] as const;
 
 export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[number];
@@ -200,8 +198,8 @@ export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[number];
 export const LEDGER_SIGN: Readonly<Record<LedgerEntryType, 1 | -1>> = Object.freeze({
   charge: 1,
   payment: -1,
-  adjustment: 1,   // caller passes a negative amount to reduce a bill
-  refund: 1,       // money back to the patient increases what they owe again
+  adjustment: 1, // caller passes a negative amount to reduce a bill
+  refund: 1, // money back to the patient increases what they owe again
   write_off: -1,
 });
 

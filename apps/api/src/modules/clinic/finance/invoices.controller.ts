@@ -116,24 +116,33 @@ export class InvoicesController {
   ) {
     const actor = auditActor(user);
     const invoice = await this.finance.recordPayment(id, dto, actor);
-    if (invoice.documentKind !== 'fiscal') return { ...invoice, fiscal: null, fiscalError: null };
+    if (invoice.documentKind !== 'fiscal')
+      return { ...invoice, fiscal: null, fiscalError: null };
 
     if (!can(actor.role, 'invoices:fiscalize')) {
       return {
         ...invoice,
         fiscal: null,
-        fiscalError: 'This invoice is marked for fiscalization; someone who can issue fiscal invoices must register it.',
+        fiscalError:
+          'This invoice is marked for fiscalization; someone who can issue fiscal invoices must register it.',
       };
     }
     try {
-      return { ...invoice, fiscal: await this.fiscal.fiscalize(id, actor), fiscalError: null };
+      return {
+        ...invoice,
+        fiscal: await this.fiscal.fiscalize(id, actor),
+        fiscalError: null,
+      };
     } catch (e) {
       // The payment stands. The invoice keeps its fiscal intent and shows up
       // unregistered, which is what the queue is for.
       return {
         ...invoice,
         fiscal: null,
-        fiscalError: e instanceof HttpException ? messageOf(e) : 'The invoice could not be registered.',
+        fiscalError:
+          e instanceof HttpException
+            ? messageOf(e)
+            : 'The invoice could not be registered.',
       };
     }
   }

@@ -31,7 +31,9 @@ describe('Twilio request signatures', () => {
   it('accepts the right signature and nothing else', () => {
     const good = twilioSignature(token, url, params);
     expect(verifyTwilioSignature(token, url, params, good)).toBe(true);
-    expect(verifyTwilioSignature(token, url, { ...params, Digits: '9999' }, good)).toBe(false);
+    expect(verifyTwilioSignature(token, url, { ...params, Digits: '9999' }, good)).toBe(
+      false,
+    );
     expect(verifyTwilioSignature(token, `${url}&tenant=other`, params, good)).toBe(false);
     expect(verifyTwilioSignature('another-token', url, params, good)).toBe(false);
     expect(verifyTwilioSignature(token, url, params, '')).toBe(false);
@@ -77,7 +79,9 @@ describe('TwilioSmsChannel', () => {
       PUBLIC_API_URL: 'https://api.example.com',
       ...overrides,
     };
-    return new TwilioSmsChannel({ get: (k: string) => values[k] } as unknown as ConfigService);
+    return new TwilioSmsChannel({
+      get: (k: string) => values[k],
+    } as unknown as ConfigService);
   };
 
   const respond = (status: number, body: unknown) =>
@@ -88,7 +92,10 @@ describe('TwilioSmsChannel', () => {
     expect(channel({ SMS_PROVIDER: 'log' }).configured()).toBe(false);
     expect(channel({ TWILIO_FROM: undefined }).configured()).toBe(false);
     expect(
-      channel({ TWILIO_FROM: undefined, TWILIO_MESSAGING_SERVICE_SID: `MG${'b'.repeat(32)}` }).configured(),
+      channel({
+        TWILIO_FROM: undefined,
+        TWILIO_MESSAGING_SERVICE_SID: `MG${'b'.repeat(32)}`,
+      }).configured(),
     ).toBe(true);
   });
 
@@ -99,12 +106,15 @@ describe('TwilioSmsChannel', () => {
     const out = await channel().send({
       to: '+355691234567',
       message: 'Hi Ana',
-      statusCallbackUrl: 'https://api.example.com/api/reminders/delivery/twilio?tenant=t&reminder=r',
+      statusCallbackUrl:
+        'https://api.example.com/api/reminders/delivery/twilio?tenant=t&reminder=r',
     });
 
     expect(out).toEqual({ providerMessageId: 'SM123', providerStatus: 'queued' });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`https://twilio.test/2010-04-01/Accounts/AC${'a'.repeat(32)}/Messages.json`);
+    expect(url).toBe(
+      `https://twilio.test/2010-04-01/Accounts/AC${'a'.repeat(32)}/Messages.json`,
+    );
     const form = new URLSearchParams(String(init.body));
     expect(form.get('To')).toBe('+355691234567');
     expect(form.get('From')).toBe('+15005550006');
@@ -119,13 +129,17 @@ describe('TwilioSmsChannel', () => {
       message: 'x',
       statusCallbackUrl: null,
     });
-    const form = new URLSearchParams(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    const form = new URLSearchParams(
+      String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body),
+    );
     expect(form.get('MessagingServiceSid')).toBe(`MG${'b'.repeat(32)}`);
     expect(form.get('From')).toBeNull();
   });
 
   it('treats no response as ambiguous, never as retryable', async () => {
-    global.fetch = jest.fn().mockRejectedValue(new TypeError('network')) as unknown as typeof fetch;
+    global.fetch = jest
+      .fn()
+      .mockRejectedValue(new TypeError('network')) as unknown as typeof fetch;
     await expect(
       channel().send({ to: '+355691234567', message: 'x', statusCallbackUrl: null }),
     ).rejects.toMatchObject({ ambiguous: true, retryable: false });
@@ -141,7 +155,9 @@ describe('TwilioSmsChannel', () => {
     expect(channel().statusCallbackUrl('t1', 'r1')).toBe(
       'https://api.example.com/api/reminders/delivery/twilio?tenant=t1&reminder=r1',
     );
-    expect(channel({ PUBLIC_API_URL: undefined }).statusCallbackUrl('t1', 'r1')).toBeNull();
+    expect(
+      channel({ PUBLIC_API_URL: undefined }).statusCallbackUrl('t1', 'r1'),
+    ).toBeNull();
     expect(channel({ PUBLIC_API_URL: undefined }).receiptsEnabled()).toBe(false);
   });
 });

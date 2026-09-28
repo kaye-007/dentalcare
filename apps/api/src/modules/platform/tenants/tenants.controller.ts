@@ -21,7 +21,11 @@ import {
   SetTrialDto,
   UpdateTenantStatusDto,
 } from './dto/tenant.dto';
-import { CurrentAdmin, PlatformJwtGuard, PlatformTokenPayload } from '@/modules/platform/auth';
+import {
+  CurrentAdmin,
+  PlatformJwtGuard,
+  PlatformTokenPayload,
+} from '@/modules/platform/auth';
 import { PlatformAuditActor } from '../audit/audit.service';
 
 function actorOf(admin?: PlatformTokenPayload): PlatformAuditActor {
@@ -113,13 +117,19 @@ export class TenantsController {
   }
 
   @Post(':id/restore')
-  restore(@Param('id', ParseUUIDPipe) id: string, @CurrentAdmin() admin?: PlatformTokenPayload) {
+  restore(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAdmin() admin?: PlatformTokenPayload,
+  ) {
     return this.tenants.restore(id, actorOf(admin));
   }
 
   /** A JSON snapshot of the clinic's data, credentials redacted. Audited. */
   @Get(':id/export')
-  async export(@Param('id', ParseUUIDPipe) id: string, @CurrentAdmin() admin?: PlatformTokenPayload) {
+  async export(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAdmin() admin?: PlatformTokenPayload,
+  ) {
     const { snapshot, fileName } = await this.tenants.exportSnapshot(id, actorOf(admin));
     return new StreamableFile(Buffer.from(snapshot, 'utf8'), {
       type: 'application/json',

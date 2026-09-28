@@ -21,9 +21,7 @@ export class TenantMiddleware implements NestMiddleware {
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
     const subdomain = this.resolveSubdomain(req);
     if (!subdomain) {
-      throw new BadRequestException(
-        'Could not determine the clinic for this request.',
-      );
+      throw new BadRequestException('Could not determine the clinic for this request.');
     }
 
     const { rows } = await this.db.query<{

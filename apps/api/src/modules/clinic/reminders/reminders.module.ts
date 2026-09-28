@@ -14,7 +14,12 @@ import { MessagesService } from './messages.service';
 
 @Module({
   imports: [AuthModule],
-  controllers: [RemindersController, ReminderDeliveryController, MessagesController, PatientMessagesController],
+  controllers: [
+    RemindersController,
+    ReminderDeliveryController,
+    MessagesController,
+    PatientMessagesController,
+  ],
   providers: [
     RemindersService,
     MessagesService,

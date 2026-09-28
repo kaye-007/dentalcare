@@ -499,7 +499,10 @@ const LEGACY_ROLES: Readonly<Record<string, Role>> = Object.freeze({
  */
 export function normalizeRole(value: unknown): Role | null {
   if (isRole(value)) return value;
-  if (typeof value === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_ROLES, value)) {
+  if (
+    typeof value === 'string' &&
+    Object.prototype.hasOwnProperty.call(LEGACY_ROLES, value)
+  ) {
     return LEGACY_ROLES[value]!;
   }
   return null;

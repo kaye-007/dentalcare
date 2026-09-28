@@ -2,7 +2,8 @@
  * The rules a reminder's status follows, with no database in them.
  */
 
-export type ReminderStatus = 'pending' | 'sending' | 'sent' | 'delivered' | 'failed' | 'skipped';
+export type ReminderStatus =
+  'pending' | 'sending' | 'sent' | 'delivered' | 'failed' | 'skipped';
 
 /** First try plus two retries. */
 export const MAX_ATTEMPTS = 3;
@@ -23,7 +24,9 @@ export function retryDelayMinutes(attemptsMade: number): number | null {
  * A provider's message status as this system's. Unknown statuses change
  * nothing: a status Twilio adds next year must not be read as a failure.
  */
-export function providerStatusToReminder(status: string): 'sent' | 'delivered' | 'failed' | null {
+export function providerStatusToReminder(
+  status: string,
+): 'sent' | 'delivered' | 'failed' | null {
   switch (status.toLowerCase()) {
     case 'accepted':
     case 'scheduled':
@@ -59,7 +62,10 @@ const RANK: Readonly<Record<ReminderStatus, number>> = {
  * reminder only ever moves forward, and a reminder that was never sent is not
  * given a delivery status by a receipt that names it anyway.
  */
-export function applyReceipt(current: ReminderStatus, next: 'sent' | 'delivered' | 'failed'): boolean {
+export function applyReceipt(
+  current: ReminderStatus,
+  next: 'sent' | 'delivered' | 'failed',
+): boolean {
   if (current === 'skipped') return false;
   return RANK[next] > RANK[current];
 }

@@ -1,4 +1,12 @@
-import { IsIn, IsInt, IsISO8601, IsOptional, IsString, Length, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  Length,
+  Min,
+} from 'class-validator';
 
 export const PAYMENT_METHODS = ['bank_transfer', 'card', 'cash', 'other'] as const;
 

@@ -102,7 +102,9 @@ describe('one currency per clinic', () => {
   it('refuses to change the clinic currency once money exists', async () => {
     const code = await errorCodeOf(
       asTenant(s.b.id, (c) =>
-        c.query(`UPDATE clinic_settings SET currency = 'EUR' WHERE tenant_id = $1`, [s.b.id]),
+        c.query(`UPDATE clinic_settings SET currency = 'EUR' WHERE tenant_id = $1`, [
+          s.b.id,
+        ]),
       ),
     );
     expect(code).toBe(LOCKED);

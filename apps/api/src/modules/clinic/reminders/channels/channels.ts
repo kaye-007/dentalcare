@@ -92,7 +92,12 @@ export class DeliveryError extends Error {
 
   constructor(
     message: string,
-    opts: { retryable?: boolean; ambiguous?: boolean; optOut?: boolean; code?: string | null } = {},
+    opts: {
+      retryable?: boolean;
+      ambiguous?: boolean;
+      optOut?: boolean;
+      code?: string | null;
+    } = {},
   ) {
     super(message);
     this.name = 'DeliveryError';

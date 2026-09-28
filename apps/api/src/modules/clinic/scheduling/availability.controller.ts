@@ -20,7 +20,11 @@ import { PermissionsGuard } from '@/core/authz/permissions.guard';
 import { RequirePermissions } from '@/core/authz/permissions.decorator';
 import { can, normalizeRole } from '@dentalcare/shared';
 import { AvailabilityService } from './availability.service';
-import { CreateAvailabilityDto, SetHomeRoomDto, UpdateAvailabilityDto } from './dto/scheduling.dto';
+import {
+  CreateAvailabilityDto,
+  SetHomeRoomDto,
+  UpdateAvailabilityDto,
+} from './dto/scheduling.dto';
 
 @Controller('availability')
 @UseGuards(JwtAuthGuard, PermissionsGuard)

@@ -67,7 +67,11 @@ const MONEY = [
     columns: ['unit_price', 'amount', 'discount_amount', 'tax_amount'],
     rls: true,
   },
-  { table: 'invoices', columns: ['subtotal', 'discount_amount', 'tax_amount', 'total'], rls: true },
+  {
+    table: 'invoices',
+    columns: ['subtotal', 'discount_amount', 'tax_amount', 'total'],
+    rls: true,
+  },
   { table: 'ledger_entries', columns: ['amount'], rls: true },
   { table: 'payments', columns: ['amount'], rls: true },
   { table: 'plans', columns: ['price_monthly'], rls: false },
@@ -92,8 +96,10 @@ const GUARDED = [
   ['clinical_procedures', 'clinical_procedures_billing_guard'],
 ];
 
-const unforce = (tables) => tables.map((t) => `ALTER TABLE ${t} NO FORCE ROW LEVEL SECURITY;`).join('\n');
-const force = (tables) => tables.map((t) => `ALTER TABLE ${t} FORCE ROW LEVEL SECURITY;`).join('\n');
+const unforce = (tables) =>
+  tables.map((t) => `ALTER TABLE ${t} NO FORCE ROW LEVEL SECURITY;`).join('\n');
+const force = (tables) =>
+  tables.map((t) => `ALTER TABLE ${t} FORCE ROW LEVEL SECURITY;`).join('\n');
 
 const rlsTables = [...MONEY.filter((m) => m.rls).map((m) => m.table), ...ALSO_UNFORCED];
 

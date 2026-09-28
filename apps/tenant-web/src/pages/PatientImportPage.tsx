@@ -69,7 +69,11 @@ export default function PatientImportPage() {
   const [filter, setFilter] = useState<Filter>('all');
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ imported: number; skipped: number; balances: number } | null>(null);
+  const [result, setResult] = useState<{
+    imported: number;
+    skipped: number;
+    balances: number;
+  } | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   // Set when a new file's columns were recognised: it is checked at once,
@@ -118,7 +122,12 @@ export default function PatientImportPage() {
     return (
       <div className="page page--narrow">
         <PageHeader title="Import patients" />
-        <EmptyState framed icon={<Lock size={22} />} title="Administrator access only" body="Bulk import creates many records at once and can post opening balances, so it is restricted to administrators." />
+        <EmptyState
+          framed
+          icon={<Lock size={22} />}
+          title="Administrator access only"
+          body="Bulk import creates many records at once and can post opening balances, so it is restricted to administrators."
+        />
       </div>
     );
   }
@@ -130,13 +139,17 @@ export default function PatientImportPage() {
       try {
         rows = await readXlsx(file);
       } catch {
-        setError('This Excel file could not be read. Open it in Excel, save it again as .xlsx, and try once more.');
+        setError(
+          'This Excel file could not be read. Open it in Excel, save it again as .xlsx, and try once more.',
+        );
         return;
       }
     } else if (/\.(csv|txt)$/i.test(file.name)) {
       rows = parseCsv(await file.text()).rows;
     } else if (/\.xls$/i.test(file.name)) {
-      setError('This is the older Excel format (.xls). Open it in Excel and save it as .xlsx, then upload that.');
+      setError(
+        'This is the older Excel format (.xls). Open it in Excel and save it as .xlsx, then upload that.',
+      );
       return;
     } else {
       setError('Choose an Excel (.xlsx) or CSV file.');
@@ -147,7 +160,9 @@ export default function PatientImportPage() {
       return;
     }
     if (rows.length - 1 > MAX_ROWS) {
-      setError(`The file has ${rows.length - 1} rows; up to ${MAX_ROWS.toLocaleString()} can be imported at once.`);
+      setError(
+        `The file has ${rows.length - 1} rows; up to ${MAX_ROWS.toLocaleString()} can be imported at once.`,
+      );
       return;
     }
     const headers = rows[0]!.map((h) => h.trim());
@@ -198,7 +213,9 @@ export default function PatientImportPage() {
     try {
       const list = batches();
       for (const [i, batch] of list.entries()) {
-        setProgress(`Checking rows ${batch.rowOffset + 1}–${batch.rowOffset + batch.rows.length} (${i + 1} of ${list.length})…`);
+        setProgress(
+          `Checking rows ${batch.rowOffset + 1}–${batch.rowOffset + batch.rows.length} (${i + 1} of ${list.length})…`,
+        );
         const res = await patientImportApi.preview(batch);
         all.push(...res.rows);
       }
@@ -242,13 +259,21 @@ export default function PatientImportPage() {
       }
       const balances = (review ?? [])
         .filter((r) => r.status === 'valid')
-        .reduce((s, r) => s + normalizeImportRow(records[r.row - 1] ?? {}, { dateFormat, countryCode }).value.balance, 0);
+        .reduce(
+          (s, r) =>
+            s +
+            normalizeImportRow(records[r.row - 1] ?? {}, { dateFormat, countryCode })
+              .value.balance,
+          0,
+        );
       setResult({ imported, skipped, balances });
       setStep('done');
     } catch (err) {
       setError(
         (err instanceof ApiError ? err.message : 'The import stopped.') +
-          (imported > 0 ? ` ${plural(imported, 'patient')} from earlier batches were imported; run the review again before continuing.` : ''),
+          (imported > 0
+            ? ` ${plural(imported, 'patient')} from earlier batches were imported; run the review again before continuing.`
+            : ''),
       );
     } finally {
       setProgress(null);
@@ -260,11 +285,17 @@ export default function PatientImportPage() {
     invalid: review?.filter((r) => r.status === 'invalid').length ?? 0,
     duplicate: review?.filter((r) => r.status === 'duplicate').length ?? 0,
   };
-  const phoneDuplicates = review?.filter((r) => r.duplicateOf?.kind === 'patient' && r.duplicateOf.match === 'phone').length ?? 0;
-  const alreadyHere = review?.filter((r) => r.duplicateOf?.kind === 'patient').length ?? 0;
+  const phoneDuplicates =
+    review?.filter(
+      (r) => r.duplicateOf?.kind === 'patient' && r.duplicateOf.match === 'phone',
+    ).length ?? 0;
+  const alreadyHere =
+    review?.filter((r) => r.duplicateOf?.kind === 'patient').length ?? 0;
   const repeated = counts.duplicate - alreadyHere;
   const willImport = counts.valid + (skipDuplicates ? 0 : phoneDuplicates);
-  const visible = (review ?? []).filter((r) => filter === 'all' || r.status === filter).slice(0, 500);
+  const visible = (review ?? [])
+    .filter((r) => filter === 'all' || r.status === filter)
+    .slice(0, 500);
 
   return (
     <div className="page">
@@ -280,21 +311,36 @@ export default function PatientImportPage() {
       <ol className="import-steps" aria-label="Import steps">
         {(['upload', 'map', 'review', 'done'] as Step[]).map((s, i) => (
           <li key={s} aria-current={step === s ? 'step' : undefined}>
-            {i + 1}. {{ upload: 'Upload', map: 'Columns', review: 'Review', done: 'Done' }[s]}
+            {i + 1}.{' '}
+            {{ upload: 'Upload', map: 'Columns', review: 'Review', done: 'Done' }[s]}
           </li>
         ))}
       </ol>
 
-      {error && <p className="formerror" role="alert">{error}</p>}
-      {progress && <p className="muted" role="status">{progress}</p>}
+      {error && (
+        <p className="formerror" role="alert">
+          {error}
+        </p>
+      )}
+      {progress && (
+        <p className="muted" role="status">
+          {progress}
+        </p>
+      )}
 
       {step === 'upload' && (
         <section className="card pad">
-          <input ref={fileInput} type="file" accept=".xlsx,.csv,text/csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = '';
-            if (f) void readFile(f);
-          }} />
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".xlsx,.csv,text/csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) void readFile(f);
+            }}
+          />
           <div
             className={`dropzone${dragging ? ' dropzone--over' : ''}`}
             onClick={() => fileInput.current?.click()}
@@ -310,7 +356,10 @@ export default function PatientImportPage() {
           >
             <FileSpreadsheet size={28} aria-hidden />
             <strong>Drop an Excel or CSV file here, or click to choose one</strong>
-            <span>The first row should name the columns (Emri, Mbiemri, Telefoni…). DentalCare matches them for you.</span>
+            <span>
+              The first row should name the columns (Emri, Mbiemri, Telefoni…). DentalCare
+              matches them for you.
+            </span>
           </div>
         </section>
       )}
@@ -321,8 +370,8 @@ export default function PatientImportPage() {
           <div>
             <strong>Reading {parsed.fileName}</strong>
             <p className="muted">
-              Checking {plural(parsed.rows.length, 'row')}: names, phone numbers, dates, and who is
-              already in DentalCare.
+              Checking {plural(parsed.rows.length, 'row')}: names, phone numbers, dates,
+              and who is already in DentalCare.
             </p>
           </div>
         </section>
@@ -333,7 +382,9 @@ export default function PatientImportPage() {
           <div className="card__head">
             <div>
               <h2>{parsed.fileName}</h2>
-              <p className="card__sub">{plural(parsed.rows.length, 'row')} · match each column to what it holds</p>
+              <p className="card__sub">
+                {plural(parsed.rows.length, 'row')} · match each column to what it holds
+              </p>
             </div>
           </div>
           <div className="form" style={{ paddingTop: 16 }}>
@@ -348,40 +399,72 @@ export default function PatientImportPage() {
                   sample={parsed.rows.find((r) => r[i]?.trim())?.[i] ?? ''}
                   value={mapping[i] ?? null}
                   taken={mapped}
-                  onChange={(field) => setMapping((m) => m.map((v, j) => (j === i ? field : v === field && field ? null : v)))}
+                  onChange={(field) =>
+                    setMapping((m) =>
+                      m.map((v, j) =>
+                        j === i ? field : v === field && field ? null : v,
+                      ),
+                    )
+                  }
                 />
               ))}
             </div>
             <div className="grid2">
               <label className="field">
                 <span>Dates in the file are written</span>
-                <select value={dateFormat} onChange={(e) => setDateFormat(e.target.value as ImportDateFormat)}>
+                <select
+                  value={dateFormat}
+                  onChange={(e) => setDateFormat(e.target.value as ImportDateFormat)}
+                >
                   {IMPORT_DATE_FORMATS.map((f) => (
-                    <option key={f} value={f}>{DATE_FORMAT_LABEL[f]}</option>
+                    <option key={f} value={f}>
+                      {DATE_FORMAT_LABEL[f]}
+                    </option>
                   ))}
                 </select>
               </label>
               <label className="field">
                 <span>Where the data came from</span>
-                <input value={sourceLabel} onChange={(e) => setSourceLabel(e.target.value)} placeholder="e.g. Excel, previous practice software" maxLength={80} />
+                <input
+                  value={sourceLabel}
+                  onChange={(e) => setSourceLabel(e.target.value)}
+                  placeholder="e.g. Excel, previous practice software"
+                  maxLength={80}
+                />
               </label>
             </div>
             <label className="hours-row__closed" style={{ width: 'auto' }}>
-              <input type="checkbox" checked={skipDuplicates} onChange={(e) => setSkipDuplicates(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={skipDuplicates}
+                onChange={(e) => setSkipDuplicates(e.target.checked)}
+              />
               <span>Skip rows whose phone number matches an existing patient</span>
             </label>
             <span className="field-hint">
-              A matching national ID is always skipped. Phone matches can be families sharing one number, so they
-              can be imported deliberately.
+              A matching national ID is always skipped. Phone matches can be families
+              sharing one number, so they can be imported deliberately.
             </span>
             {missingNames && (
               <p className="formerror">
-                Say which column holds the names (first and last name, or one full-name column) to continue.
+                Say which column holds the names (first and last name, or one full-name
+                column) to continue.
               </p>
             )}
             <div className="form__foot">
-              <button type="button" className="btn btn--ghost" onClick={() => setStep('upload')}>Choose another file</button>
-              <button type="button" className="btn btn--primary" disabled={missingNames || Boolean(progress)} onClick={runReview}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setStep('upload')}
+              >
+                Choose another file
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={missingNames || Boolean(progress)}
+                onClick={runReview}
+              >
                 Check {plural(parsed.rows.length, 'row')}
               </button>
             </div>
@@ -411,30 +494,49 @@ export default function PatientImportPage() {
               <dt>Already in DentalCare</dt>
               <dd>
                 <strong>{alreadyHere}</strong>
-                {repeated > 0 && <span className="import-summary__sub">+{repeated} repeated in the file</span>}
+                {repeated > 0 && (
+                  <span className="import-summary__sub">
+                    +{repeated} repeated in the file
+                  </span>
+                )}
               </dd>
             </div>
             <div>
               <dt>Need a look</dt>
               <dd>
-                <strong className={counts.invalid ? 'sumstrip__due' : undefined}>{counts.invalid}</strong>
+                <strong className={counts.invalid ? 'sumstrip__due' : undefined}>
+                  {counts.invalid}
+                </strong>
               </dd>
             </div>
           </dl>
           {phoneDuplicates > 0 && (
             <label className="import-summary__opt">
-              <input type="checkbox" checked={!skipDuplicates} onChange={(e) => setSkipDuplicates(!e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={!skipDuplicates}
+                onChange={(e) => setSkipDuplicates(!e.target.checked)}
+              />
               <span>
-                Also import the {plural(phoneDuplicates, 'patient')} whose phone matches someone already here.
-                Families often share one number.
+                Also import the {plural(phoneDuplicates, 'patient')} whose phone matches
+                someone already here. Families often share one number.
               </span>
             </label>
           )}
           <div className="import-summary__do">
-            <button type="button" className="btn btn--primary" disabled={willImport === 0 || Boolean(progress)} onClick={runImport}>
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={willImport === 0 || Boolean(progress)}
+              onClick={runImport}
+            >
               <Upload size={15} aria-hidden /> Import {plural(willImport, 'patient')}
             </button>
-            <button type="button" className="btn btn--ghost" onClick={() => setStep('map')}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setStep('map')}
+            >
               Adjust columns
             </button>
           </div>
@@ -447,20 +549,36 @@ export default function PatientImportPage() {
             <div>
               <h2>Check the list</h2>
               <p className="card__sub">
-                Rows that need a look say why. Most are fixed with Adjust columns: the date format, or a
-                column read as the wrong thing.
+                Rows that need a look say why. Most are fixed with Adjust columns: the
+                date format, or a column read as the wrong thing.
               </p>
             </div>
           </div>
           <div className="tabs tabs--sm" style={{ padding: '10px var(--gutter) 0' }}>
             {(['all', 'valid', 'invalid', 'duplicate'] as Filter[]).map((f) => (
-              <button key={f} className={`tab${filter === f ? ' tab--active' : ''}`} onClick={() => setFilter(f)}>
-                {{ all: `All (${review.length})`, valid: `Ready (${counts.valid})`, invalid: `Problems (${counts.invalid})`, duplicate: `Duplicates (${counts.duplicate})` }[f]}
+              <button
+                key={f}
+                className={`tab${filter === f ? ' tab--active' : ''}`}
+                onClick={() => setFilter(f)}
+              >
+                {
+                  {
+                    all: `All (${review.length})`,
+                    valid: `Ready (${counts.valid})`,
+                    invalid: `Problems (${counts.invalid})`,
+                    duplicate: `Duplicates (${counts.duplicate})`,
+                  }[f]
+                }
               </button>
             ))}
           </div>
           {/* It scrolls sideways on a phone: a keyboard reaches it too. */}
-          <div className="import-table-wrap" role="region" aria-label="Rows in the file" tabIndex={0}>
+          <div
+            className="import-table-wrap"
+            role="region"
+            aria-label="Rows in the file"
+            tabIndex={0}
+          >
             <table className="table table--compact">
               <thead>
                 <tr>
@@ -477,19 +595,45 @@ export default function PatientImportPage() {
                     <td>{r.name || <span className="muted">—</span>}</td>
                     <td>
                       <StatusPill
-                        status={r.status === 'valid' ? 'ok' : r.status === 'invalid' ? 'danger' : 'warn'}
-                        label={r.status === 'valid' ? 'Ready' : r.status === 'invalid' ? 'Problem' : 'Duplicate'}
+                        status={
+                          r.status === 'valid'
+                            ? 'ok'
+                            : r.status === 'invalid'
+                              ? 'danger'
+                              : 'warn'
+                        }
+                        label={
+                          r.status === 'valid'
+                            ? 'Ready'
+                            : r.status === 'invalid'
+                              ? 'Problem'
+                              : 'Duplicate'
+                        }
                       />
                     </td>
                     <td>
                       {r.errors.map((e, i) => (
-                        <span className="row-issue" key={i}>{IMPORT_FIELD_LABELS[e.field]}: {e.message}</span>
+                        <span className="row-issue" key={i}>
+                          {IMPORT_FIELD_LABELS[e.field]}: {e.message}
+                        </span>
                       ))}
-                      {r.duplicateOf?.kind === 'file' && <span className="muted">Repeats row {r.duplicateOf.row + 1} of the file</span>}
+                      {r.duplicateOf?.kind === 'file' && (
+                        <span className="muted">
+                          Repeats row {r.duplicateOf.row + 1} of the file
+                        </span>
+                      )}
                       {r.duplicateOf?.kind === 'patient' && (
                         <span className="muted">
-                          Same {r.duplicateOf.match === 'nationalId' ? 'national ID' : 'phone'} as{' '}
-                          <Link className="link" to={`/patients/${r.duplicateOf.patientId}`} target="_blank">{r.duplicateOf.name}</Link>
+                          Same{' '}
+                          {r.duplicateOf.match === 'nationalId' ? 'national ID' : 'phone'}{' '}
+                          as{' '}
+                          <Link
+                            className="link"
+                            to={`/patients/${r.duplicateOf.patientId}`}
+                            target="_blank"
+                          >
+                            {r.duplicateOf.name}
+                          </Link>
                         </span>
                       )}
                     </td>
@@ -499,10 +643,23 @@ export default function PatientImportPage() {
             </table>
           </div>
           <div className="form" style={{ paddingTop: 12 }}>
-            {review.length > 500 && <span className="field-hint">Showing the first 500 matching rows.</span>}
+            {review.length > 500 && (
+              <span className="field-hint">Showing the first 500 matching rows.</span>
+            )}
             <div className="form__foot">
-              <button type="button" className="btn btn--ghost" onClick={() => setStep('map')}>Adjust columns</button>
-              <button type="button" className="btn btn--primary" disabled={willImport === 0 || Boolean(progress)} onClick={runImport}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setStep('map')}
+              >
+                Adjust columns
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={willImport === 0 || Boolean(progress)}
+                onClick={runImport}
+              >
                 <Upload size={15} aria-hidden /> Import {plural(willImport, 'patient')}
               </button>
             </div>
@@ -516,7 +673,11 @@ export default function PatientImportPage() {
             icon={<FileSpreadsheet size={22} />}
             title={`${plural(result.imported, 'patient')} imported`}
             body={`${plural(result.skipped, 'row')} skipped.${result.balances ? ` Opening balances of ${formatMoney(result.balances)} were posted to the patients' accounts.` : ''} The import is recorded in the activity trail.`}
-            action={<Link to="/patients" className="btn btn--primary btn--sm">Go to patients</Link>}
+            action={
+              <Link to="/patients" className="btn btn--primary btn--sm">
+                Go to patients
+              </Link>
+            }
           />
         </section>
       )}
@@ -540,7 +701,11 @@ function FragmentRow({
   return (
     <>
       <span>{header}</span>
-      <select value={value ?? ''} onChange={(e) => onChange((e.target.value || null) as ImportField | null)} aria-label={`Import ${header} as`}>
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange((e.target.value || null) as ImportField | null)}
+        aria-label={`Import ${header} as`}
+      >
         <option value="">Don’t import</option>
         {IMPORT_FIELDS.map((f) => (
           <option key={f} value={f} disabled={taken.has(f) && value !== f}>
@@ -548,7 +713,9 @@ function FragmentRow({
           </option>
         ))}
       </select>
-      <span className="mapping-grid__sample" title={sample}>{sample || '—'}</span>
+      <span className="mapping-grid__sample" title={sample}>
+        {sample || '—'}
+      </span>
     </>
   );
 }

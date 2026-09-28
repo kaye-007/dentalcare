@@ -135,7 +135,9 @@ export class DocumentsService {
         `That file type is not accepted. Allowed formats: ${ALLOWED_TYPES_LABEL}.`,
       );
     }
-    const kind = dto.kind ?? (detected.startsWith('image/') && detected !== 'image/tiff' ? 'photo' : 'other');
+    const kind =
+      dto.kind ??
+      (detected.startsWith('image/') && detected !== 'image/tiff' ? 'photo' : 'other');
     if (dto.photoTag && kind !== 'photo') {
       throw new BadRequestException('Before, after and progress apply to photos only');
     }
@@ -160,7 +162,8 @@ export class DocumentsService {
       // Object.assign, not a spread: a spread copies enumerable properties
       // only, so it dropped the storage key and every profile photo failed
       // when setProfilePhoto signed a link for `undefined`.
-      if (dupe[0]) return Object.assign(mapDocument(dupe[0]), { duplicate: true as const });
+      if (dupe[0])
+        return Object.assign(mapDocument(dupe[0]), { duplicate: true as const });
 
       // Object first: a stored object with no row is a recoverable orphan,
       // whereas a row with no object is a broken download for the clinician.
@@ -208,7 +211,11 @@ export class DocumentsService {
    * record-access log is written — before the URL exists, so a link that was
    * handed out is a link that was recorded.
    */
-  async link(id: string, disposition: 'inline' | 'attachment', actor: PatientAccessActor) {
+  async link(
+    id: string,
+    disposition: 'inline' | 'attachment',
+    actor: PatientAccessActor,
+  ) {
     this.assertStorage();
     const tenantId = this.tenant.getRequiredTenantId();
     return this.tx(async (client) => {
@@ -264,7 +271,9 @@ export class DocumentsService {
         )
         .catch((err: { code?: string }) => {
           if (err.code === '23514') {
-            throw new BadRequestException('Before, after and progress apply to photos only');
+            throw new BadRequestException(
+              'Before, after and progress apply to photos only',
+            );
           }
           throw err;
         });
@@ -293,7 +302,10 @@ export class DocumentsService {
     if (docs.length === 0) return [];
     await this.access.record(tenantId, patientId, 'document_file', actor);
     return Promise.all(
-      docs.map(async (d) => ({ id: d.id, url: await this.storage.signedViewUrl(d.storage_key) })),
+      docs.map(async (d) => ({
+        id: d.id,
+        url: await this.storage.signedViewUrl(d.storage_key),
+      })),
     );
   }
 
@@ -334,7 +346,10 @@ export class DocumentsService {
         summary: `Changed ${rows[0].name}'s profile photo`,
         metadata: { documentId: doc.id },
       });
-      return { photoDocumentId: doc.id, photoUrl: await this.storage.signedViewUrl(doc.storageKey) };
+      return {
+        photoDocumentId: doc.id,
+        photoUrl: await this.storage.signedViewUrl(doc.storageKey),
+      };
     });
   }
 
@@ -443,8 +458,10 @@ function formatBytes(n: number): string {
  * an ordinary getter — must never put a bucket key in a response.
  */
 const mapDocument = (r: DocumentRow) =>
-  Object.defineProperty(documentFields(r), 'storageKey', { value: r.storage_key, enumerable: false }) as
-    ReturnType<typeof documentFields> & { readonly storageKey: string };
+  Object.defineProperty(documentFields(r), 'storageKey', {
+    value: r.storage_key,
+    enumerable: false,
+  }) as ReturnType<typeof documentFields> & { readonly storageKey: string };
 
 const documentFields = (r: DocumentRow) => ({
   id: r.id,

@@ -1,9 +1,25 @@
-import { APPOINTMENT_STATUSES, BLOCKING_STATUSES, STATUS_LABELS, TIMESTAMP_COLUMN, allowedTransitions, canTransition, explainRefusal, isBlocking, isStatus, type AppointmentStatus } from './status-machine';
+import {
+  APPOINTMENT_STATUSES,
+  BLOCKING_STATUSES,
+  STATUS_LABELS,
+  TIMESTAMP_COLUMN,
+  allowedTransitions,
+  canTransition,
+  explainRefusal,
+  isBlocking,
+  isStatus,
+  type AppointmentStatus,
+} from './status-machine';
 
 describe('appointment status machine', () => {
   it('declares exactly the six documented statuses', () => {
     expect(APPOINTMENT_STATUSES).toEqual([
-      'scheduled', 'checked_in', 'in_progress', 'completed', 'cancelled', 'no_show',
+      'scheduled',
+      'checked_in',
+      'in_progress',
+      'completed',
+      'cancelled',
+      'no_show',
     ]);
   });
 
@@ -72,9 +88,15 @@ describe('appointment status machine', () => {
       let reached = false;
       while (queue.length) {
         const cur = queue.shift()!;
-        if (terminal(cur)) { reached = true; break; }
+        if (terminal(cur)) {
+          reached = true;
+          break;
+        }
         for (const next of allowedTransitions(cur)) {
-          if (!seen.has(next)) { seen.add(next); queue.push(next); }
+          if (!seen.has(next)) {
+            seen.add(next);
+            queue.push(next);
+          }
         }
       }
       expect(reached).toBe(true);
@@ -112,9 +134,12 @@ describe('status guards and labels', () => {
   });
 
   it('stamps a timestamp for every status that has one, and only those', () => {
-    expect(Object.keys(TIMESTAMP_COLUMN).sort()).toEqual(
-      ['cancelled', 'checked_in', 'completed', 'in_progress'],
-    );
+    expect(Object.keys(TIMESTAMP_COLUMN).sort()).toEqual([
+      'cancelled',
+      'checked_in',
+      'completed',
+      'in_progress',
+    ]);
     // no_show deliberately has none — absence is not an event with a duration.
     expect(TIMESTAMP_COLUMN.no_show).toBeUndefined();
     expect(TIMESTAMP_COLUMN.scheduled).toBeUndefined();

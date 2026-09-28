@@ -51,36 +51,71 @@ afterAll(async () => {
 describe('home room', () => {
   it('starts empty and a practitioner can set their own', async () => {
     expect(await homeOf(dentistId)).toBeNull();
-    const res = await call(api, 'PUT', `/api/availability/home-room/${dentistId}`, A(dentist, { operatoryId: room }));
+    const res = await call(
+      api,
+      'PUT',
+      `/api/availability/home-room/${dentistId}`,
+      A(dentist, { operatoryId: room }),
+    );
     expect(res.status).toBe(200);
     expect(await homeOf(dentistId)).toBe(room);
   });
 
   it("refuses a colleague's without availability:manage", async () => {
-    const res = await call(api, 'PUT', `/api/availability/home-room/${s.a.adminId}`, A(dentist, { operatoryId: room }));
+    const res = await call(
+      api,
+      'PUT',
+      `/api/availability/home-room/${s.a.adminId}`,
+      A(dentist, { operatoryId: room }),
+    );
     expect(res.status).toBe(403);
   });
 
   it('lets an administrator set and clear anyone’s', async () => {
-    let res = await call(api, 'PUT', `/api/availability/home-room/${dentistId}`, A(admin, { operatoryId: null }));
+    let res = await call(
+      api,
+      'PUT',
+      `/api/availability/home-room/${dentistId}`,
+      A(admin, { operatoryId: null }),
+    );
     expect(res.status).toBe(200);
     expect(await homeOf(dentistId)).toBeNull();
-    res = await call(api, 'PUT', `/api/availability/home-room/${dentistId}`, A(admin, { operatoryId: room }));
+    res = await call(
+      api,
+      'PUT',
+      `/api/availability/home-room/${dentistId}`,
+      A(admin, { operatoryId: room }),
+    );
     expect(await homeOf(dentistId)).toBe(room);
   });
 
   it('is released when the room is retired, and a retired room cannot be chosen', async () => {
-    const off = await call(api, 'PATCH', `/api/operatories/${room}`, A(admin, { isActive: false }));
+    const off = await call(
+      api,
+      'PATCH',
+      `/api/operatories/${room}`,
+      A(admin, { isActive: false }),
+    );
     expect(off.status).toBe(200);
     expect(await homeOf(dentistId)).toBeNull();
 
-    const res = await call(api, 'PUT', `/api/availability/home-room/${dentistId}`, A(admin, { operatoryId: room }));
+    const res = await call(
+      api,
+      'PUT',
+      `/api/availability/home-room/${dentistId}`,
+      A(admin, { operatoryId: room }),
+    );
     expect(res.status).toBe(400);
   });
 
   it('cannot point at another clinic’s room', async () => {
     const theirs = await createOperatory(s.b);
-    const res = await call(api, 'PUT', `/api/availability/home-room/${dentistId}`, A(admin, { operatoryId: theirs }));
+    const res = await call(
+      api,
+      'PUT',
+      `/api/availability/home-room/${dentistId}`,
+      A(admin, { operatoryId: theirs }),
+    );
     expect(res.status).toBe(404);
   });
 });

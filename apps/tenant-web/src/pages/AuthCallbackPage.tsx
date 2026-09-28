@@ -37,7 +37,10 @@ export default function AuthCallbackPage() {
     // Google proved the first factor; the account needs a second. Continue at
     // the sign-in page's MFA step, carrying the challenge in router state.
     if (challenge && (stage === 'verify' || stage === 'enroll')) {
-      navigate('/login', { replace: true, state: { challenge: { token: challenge, stage }, next } });
+      navigate('/login', {
+        replace: true,
+        state: { challenge: { token: challenge, stage }, next },
+      });
       return;
     }
 

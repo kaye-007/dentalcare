@@ -37,7 +37,9 @@ async function insert(sql: string, params: unknown[]): Promise<string> {
  * surface, condition), so every test that leaves one behind would otherwise
  * collide with the next test's insert.
  */
-const TEETH = [11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36];
+const TEETH = [
+  11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36,
+];
 let nextTooth = 0;
 
 const finding = (tooth = TEETH[nextTooth++ % TEETH.length]) =>
@@ -107,7 +109,9 @@ describe('nothing clinical can be deleted by the runtime role', () => {
    */
   it('cannot DELETE a patient, which would cascade through the record', async () => {
     const code = await errorCodeOf(
-      asTenant(s.a.id, (c) => c.query('DELETE FROM patients WHERE id = $1', [s.a.patientId])),
+      asTenant(s.a.id, (c) =>
+        c.query('DELETE FROM patients WHERE id = $1', [s.a.patientId]),
+      ),
     );
     expect(code).toBe(DENIED);
   });
@@ -157,10 +161,9 @@ describe('withdrawal', () => {
     const id = await finding();
     const code = await errorCodeOf(
       asTenant(s.a.id, (c) =>
-        c.query(
-          `UPDATE tooth_conditions SET entered_in_error_at = now() WHERE id = $1`,
-          [id],
-        ),
+        c.query(`UPDATE tooth_conditions SET entered_in_error_at = now() WHERE id = $1`, [
+          id,
+        ]),
       ),
     );
     expect(code).toBe('23514');
@@ -276,7 +279,9 @@ describe('signing', () => {
 
     const code = await errorCodeOf(
       asTenant(s.a.id, (c) =>
-        c.query(`UPDATE perio_measurements SET probing_depth = 9 WHERE exam_id = $1`, [id]),
+        c.query(`UPDATE perio_measurements SET probing_depth = 9 WHERE exam_id = $1`, [
+          id,
+        ]),
       ),
     );
     expect(code).toBe(LOCKED);
@@ -347,7 +352,9 @@ describe('the record-access log is append-only', () => {
   it('cannot be rewritten', async () => {
     const code = await errorCodeOf(
       asTenant(s.a.id, (c) =>
-        c.query(`UPDATE patient_access_log SET resource = 'record' WHERE id = $1`, [entryId]),
+        c.query(`UPDATE patient_access_log SET resource = 'record' WHERE id = $1`, [
+          entryId,
+        ]),
       ),
     );
     expect(code).toBe(DENIED);
@@ -355,14 +362,18 @@ describe('the record-access log is append-only', () => {
 
   it('cannot be erased', async () => {
     const code = await errorCodeOf(
-      asTenant(s.a.id, (c) => c.query('DELETE FROM patient_access_log WHERE id = $1', [entryId])),
+      asTenant(s.a.id, (c) =>
+        c.query('DELETE FROM patient_access_log WHERE id = $1', [entryId]),
+      ),
     );
     expect(code).toBe(DENIED);
   });
 
   it('cannot be rewritten even by the owner role', async () => {
     const code = await errorCodeOf(
-      owner().query(`UPDATE patient_access_log SET resource = 'record' WHERE id = $1`, [entryId]),
+      owner().query(`UPDATE patient_access_log SET resource = 'record' WHERE id = $1`, [
+        entryId,
+      ]),
     );
     expect(code).toBe(DENIED);
   });

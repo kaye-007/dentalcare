@@ -9,6 +9,11 @@ import { WhatsAppTokenBox } from './token-box';
 @Module({
   imports: [AuthModule],
   controllers: [WhatsAppController],
-  providers: [WhatsAppService, WhatsAppRemindersService, WhatsAppGraphClient, WhatsAppTokenBox],
+  providers: [
+    WhatsAppService,
+    WhatsAppRemindersService,
+    WhatsAppGraphClient,
+    WhatsAppTokenBox,
+  ],
 })
 export class WhatsAppModule {}

@@ -1,7 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DeliveryError, type ReminderChannel, type ReminderPayload, type SendOutcome } from './channels';
+import {
+  DeliveryError,
+  type ReminderChannel,
+  type ReminderPayload,
+  type SendOutcome,
+} from './channels';
 
 /**
  * SMS through Twilio's REST API, with fetch — no SDK.
@@ -39,7 +44,9 @@ export function twilioSignature(
   const payload = Object.keys(params)
     .sort()
     .reduce((acc, key) => acc + key + params[key], url);
-  return createHmac('sha1', authToken).update(Buffer.from(payload, 'utf-8')).digest('base64');
+  return createHmac('sha1', authToken)
+    .update(Buffer.from(payload, 'utf-8'))
+    .digest('base64');
 }
 
 /** Constant-time comparison of a presented signature with the expected one. */
@@ -72,10 +79,13 @@ export function classifyTwilioFailure(httpStatus: number, body: unknown): Delive
     );
   }
   if (httpStatus === 429 || httpStatus === 503) {
-    return new DeliveryError(`The SMS provider is busy (${ref}); it will be tried again.`, {
-      code,
-      retryable: true,
-    });
+    return new DeliveryError(
+      `The SMS provider is busy (${ref}); it will be tried again.`,
+      {
+        code,
+        retryable: true,
+      },
+    );
   }
   if (httpStatus >= 500) {
     return new DeliveryError(
@@ -84,10 +94,14 @@ export function classifyTwilioFailure(httpStatus: number, body: unknown): Delive
     );
   }
   if (code === '21211' || code === '21614') {
-    return new DeliveryError('The number on file is not a valid mobile number.', { code });
+    return new DeliveryError('The number on file is not a valid mobile number.', {
+      code,
+    });
   }
   if (httpStatus === 401 || httpStatus === 403 || code === '20003') {
-    return new DeliveryError('The SMS provider refused the account credentials.', { code });
+    return new DeliveryError('The SMS provider refused the account credentials.', {
+      code,
+    });
   }
   return new DeliveryError(`The SMS provider refused the message (${ref}).`, { code });
 }
@@ -161,7 +175,10 @@ export class TwilioSmsChannel implements ReminderChannel {
     else form.set('From', this.value('TWILIO_FROM')!);
     if (payload.statusCallbackUrl) form.set('StatusCallback', payload.statusCallbackUrl);
 
-    const base = (this.value('TWILIO_API_BASE_URL') ?? 'https://api.twilio.com').replace(/\/+$/, '');
+    const base = (this.value('TWILIO_API_BASE_URL') ?? 'https://api.twilio.com').replace(
+      /\/+$/,
+      '',
+    );
     let res: Response;
     try {
       res = await fetch(`${base}/2010-04-01/Accounts/${sid}/Messages.json`, {

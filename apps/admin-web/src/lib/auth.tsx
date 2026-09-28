@@ -20,7 +20,10 @@ interface AuthState {
   admin: Admin | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<SignInStep>;
-  completeSignIn: (tokens: { accessToken: string; refreshToken: string }) => Promise<void>;
+  completeSignIn: (tokens: {
+    accessToken: string;
+    refreshToken: string;
+  }) => Promise<void>;
   /** Adopt a session minted by the Google callback. */
   adoptSession: (access: string, refresh?: string) => Promise<void>;
   logout: () => void;

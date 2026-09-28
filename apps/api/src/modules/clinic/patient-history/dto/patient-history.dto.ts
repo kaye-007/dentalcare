@@ -23,10 +23,14 @@ import {
 /* ══════════════════════════ DTOs ══════════════════════════ */
 
 export class CreateAllergyDto {
-  @IsString() @MinLength(1, { message: 'Substance is required' }) @MaxLength(120)
+  @IsString()
+  @MinLength(1, { message: 'Substance is required' })
+  @MaxLength(120)
   substance!: string;
 
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   reaction?: string;
 
   @IsIn(['mild', 'moderate', 'severe'], {
@@ -34,64 +38,96 @@ export class CreateAllergyDto {
   })
   severity!: 'mild' | 'moderate' | 'severe';
 
-  @IsOptional() @IsString() @MaxLength(1000)
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   notes?: string;
 }
 
 export class UpdateAllergyDto {
-  @IsOptional() @IsString() @MinLength(1) @MaxLength(120)
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
   substance?: string;
 
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   reaction?: string;
 
-  @IsOptional() @IsIn(['mild', 'moderate', 'severe'])
+  @IsOptional()
+  @IsIn(['mild', 'moderate', 'severe'])
   severity?: 'mild' | 'moderate' | 'severe';
 
-  @IsOptional() @IsString() @MaxLength(1000)
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   notes?: string;
 }
 
 export class CreateConditionDto {
-  @IsString() @MinLength(1, { message: 'Condition name is required' }) @MaxLength(160)
+  @IsString()
+  @MinLength(1, { message: 'Condition name is required' })
+  @MaxLength(160)
   name!: string;
 
-  @IsOptional() @IsIn(['active', 'resolved'])
+  @IsOptional()
+  @IsIn(['active', 'resolved'])
   status?: 'active' | 'resolved';
 
-  @IsOptional() @IsISO8601({}, { message: 'Diagnosed date must be a valid date' })
+  @IsOptional()
+  @IsISO8601({}, { message: 'Diagnosed date must be a valid date' })
   diagnosedOn?: string;
 
-  @IsOptional() @IsString() @MaxLength(1000)
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   notes?: string;
 }
 
 export class UpdateConditionDto extends CreateConditionDto {
-  @IsOptional() @IsString() @MinLength(1) @MaxLength(160)
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
   declare name: string;
 }
 
 export class CreateMedicationDto {
-  @IsString() @MinLength(1, { message: 'Medication name is required' }) @MaxLength(160)
+  @IsString()
+  @MinLength(1, { message: 'Medication name is required' })
+  @MaxLength(160)
   name!: string;
 
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
   dosage?: string;
 
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
   frequency?: string;
 
-  @IsOptional() @IsISO8601({}, { message: 'Start date must be a valid date' })
+  @IsOptional()
+  @IsISO8601({}, { message: 'Start date must be a valid date' })
   startedOn?: string;
 
-  @IsOptional() @IsISO8601({}, { message: 'End date must be a valid date' })
+  @IsOptional()
+  @IsISO8601({}, { message: 'End date must be a valid date' })
   endedOn?: string;
 
-  @IsOptional() @IsString() @MaxLength(1000)
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   notes?: string;
 }
 
 export class UpdateMedicationDto extends CreateMedicationDto {
-  @IsOptional() @IsString() @MinLength(1) @MaxLength(160)
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
   declare name: string;
 }

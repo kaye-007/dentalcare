@@ -152,12 +152,18 @@ describe('validateEnv', () => {
     });
 
     it('requires WHATSAPP_ENCRYPTION_KEYS in production', () => {
-      expect(() => validateEnv({ ...prodBase, MFA_ENCRYPTION_KEYS: MFA_KEYS })).toThrow(/WHATSAPP_ENCRYPTION_KEYS/);
+      expect(() => validateEnv({ ...prodBase, MFA_ENCRYPTION_KEYS: MFA_KEYS })).toThrow(
+        /WHATSAPP_ENCRYPTION_KEYS/,
+      );
     });
 
     it('refuses optional MFA in production', () => {
       expect(() =>
-        validateEnv({ ...prodBase, MFA_ENCRYPTION_KEYS: MFA_KEYS, MFA_ENFORCEMENT: 'optional' }),
+        validateEnv({
+          ...prodBase,
+          MFA_ENCRYPTION_KEYS: MFA_KEYS,
+          MFA_ENFORCEMENT: 'optional',
+        }),
       ).toThrow(/MFA_ENFORCEMENT/);
     });
 
@@ -166,7 +172,9 @@ describe('validateEnv', () => {
     });
 
     it('refuses a malformed WhatsApp keyring in any environment', () => {
-      expect(() => validateEnv({ ...base, WHATSAPP_ENCRYPTION_KEYS: 'k1:short' })).toThrow(/WHATSAPP_ENCRYPTION_KEYS/);
+      expect(() =>
+        validateEnv({ ...base, WHATSAPP_ENCRYPTION_KEYS: 'k1:short' }),
+      ).toThrow(/WHATSAPP_ENCRYPTION_KEYS/);
     });
 
     it('refuses a malformed keyring in any environment', () => {
@@ -181,7 +189,9 @@ describe('validateEnv', () => {
   });
 
   it('refuses a refresh lifetime that is not a duration', () => {
-    expect(() => validateEnv({ ...base, JWT_REFRESH_TTL: 'a week' })).toThrow(/JWT_REFRESH_TTL/);
+    expect(() => validateEnv({ ...base, JWT_REFRESH_TTL: 'a week' })).toThrow(
+      /JWT_REFRESH_TTL/,
+    );
     expect(validateEnv({ ...base, JWT_REFRESH_TTL: '12h' }).JWT_REFRESH_TTL).toBe('12h');
   });
 

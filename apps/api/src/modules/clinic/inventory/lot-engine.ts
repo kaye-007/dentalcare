@@ -48,7 +48,11 @@ export function isIsoDate(value: unknown): value is string {
   const mo = Number(m[2]);
   const d = Number(m[3]);
   const date = new Date(Date.UTC(y, mo - 1, d));
-  return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;
+  return (
+    date.getUTCFullYear() === y &&
+    date.getUTCMonth() === mo - 1 &&
+    date.getUTCDate() === d
+  );
 }
 
 function dayNumber(iso: string): number {

@@ -55,6 +55,7 @@ suites listed under [Test coverage](#test-coverage).
   without a clinic is pinned in `tenant-middleware.itest.ts`.
 
 ### CRITICAL — Config could silently disable all tenant isolation
+
 `env.validation.ts`, `database.service.ts`
 
 `APP_DATABASE_URL` was optional. Unset, the tenant pool fell back to the
@@ -64,16 +65,18 @@ entirely on RLS, so every query would have returned every tenant's rows. The
 app logged a warning and booted normally.
 
 **Fix.** Two independent gates:
+
 1. Production requires `APP_DATABASE_URL` (Zod `superRefine`) — boot refused.
 2. At boot, `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname =
-   current_user`. If the tenant role is privileged, production boot is
-   refused. A *correct* URL pointing at a *privileged* role defeats RLS just
+current_user`. If the tenant role is privileged, production boot is
+   refused. A _correct_ URL pointing at a _privileged_ role defeats RLS just
    as completely, so validating the string alone was not enough.
 
 **Verified.** 10 tests in `env.validation.spec.ts`; runtime boot confirmed the
 role check runs and stays silent for `app_user`.
 
 ### CRITICAL — Seed script could reset production credentials
+
 `scripts/seed.js`
 
 `seed.js` upserts credentials published in the README (`admin@nodex.al` /
@@ -112,6 +115,7 @@ path and the override. (The earlier claim of "9 tests in `seed.spec.ts`" named
 a file that does not exist.)
 
 ### HIGH — Archived tenants retained full access
+
 `tenant.middleware.ts`, `auth.service.ts`
 
 Migration `0004` replaced the status set `('trial','active','suspended',
@@ -127,10 +131,11 @@ with the real constraint.
 `cancelled`, `trial`, and an unknown status.
 
 ### HIGH — Tenant header failed open
+
 `tenant.middleware.ts`
 
 `X-Tenant-Subdomain` let the caller choose its clinic, enabled by the
-*absence* of `NODE_ENV=production`. A deploy missing one variable quietly
+_absence_ of `NODE_ENV=production`. A deploy missing one variable quietly
 accepted client-chosen tenants. Token-to-tenant binding still blocked
 cross-tenant reads, so impact was tenant enumeration and credential probing
 against arbitrary clinics rather than a data leak.
@@ -142,6 +147,7 @@ in production.
 production even with the flag, and that `Host` wins.
 
 ### HIGH — No password management existed
+
 API-wide
 
 No password could be changed by anyone, anywhere. Staff were created with an
@@ -207,24 +213,24 @@ Closed since the previous revision of this table: refresh-token rotation and
 revocation, the shared JWT secret (`PLATFORM_JWT_SECRET`), the missing
 clinic-plane audit trail, and patient data in the reminder log.
 
-| Severity | Issue | Note |
-|---|---|---|
-| Medium | An access token outlives revocation by up to `JWT_ACCESS_TTL` (15 min) | Sessions are revoked server-side at once, but an access token already issued is stateless. Shorten the TTL, or check the session on each request, if that window matters. |
-| Medium | Tokens in `localStorage` | XSS-reachable. Acceptable with a strong CSP on the SPA host; otherwise an httpOnly refresh cookie. |
-| Medium | Platform plane uses the migration owner role | Should be a dedicated least-privilege role. |
-| Medium | SMS never sent through the real provider | Built to Twilio's documented API; tested against a local stand-in and Twilio's published signature example. See DEPLOYMENT.md staging checklist. |
-| Medium | Hyperdrive caching is not assertable from the repository | `npm run cf:check-caching -w @dentalcare/api` asks the account; not yet run against a real one. |
-| Low | An interrupted SMS attempt stays `sending` | Deliberately not retried; nothing alerts on it yet. |
-| Low | Patient documents keep a soft delete | Admin-only and audited, but not the entered-in-error model of the clinical record. |
-| Low | Uploads pass through the API | No pre-signed direct-to-bucket upload, which large imaging studies will need. |
-| Low | The baseline migration interpolates `APP_DB_PASSWORD` into SQL | A password containing a quote breaks or alters `CREATE ROLE`. Documented in `.env.production.example`. |
-| High | Migrations 0009–0011 have not been run | Written without a database available. Run `migrate:up` and the integration suite (including `role.itest.ts`, which checks RLS on the four new tenant tables) before merging. |
-| High | Fiscalization not exercised against DPT's test CIS | Signatures verify with xml-crypto; the element set, SOAPAction values and endpoint paths are to the published schema as understood. Needs a test certificate and registered codes. Corrective invoices are not implemented, so a registered invoice cannot yet be corrected in-app. |
-| Medium | Fiscal signing keys share MFA_ENCRYPTION_KEYS | Sealed with AES-256-GCM bound to the clinic. A key rotation must re-seal certificates as well as MFA factors. |
-| Medium | Viber delivery is unconfirmed | Vonage reports status to an application-level JWT-signed webhook that is not built; a Viber reminder reads "sent", never "delivered", and a non-Viber number fails silently. |
-| Medium | Platform stats and export rely on the privileged role reading across tenants | As the tenants list and reminder scheduler already did. If the platform role is ever made least-privilege and subject to FORCE RLS, these queries return zeros. |
-| Low | Clinic export is capped at 200,000 rows and built in memory | Larger clinics must be exported from a database backup. |
-| Low | Opening balances from an import are ledger adjustments | Correct, append-only, and labelled with the file name; a wrong import is corrected by opposing adjustments, one patient at a time. |
+| Severity | Issue                                                                        | Note                                                                                                                                                                                                                                                                                |
+| -------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Medium   | An access token outlives revocation by up to `JWT_ACCESS_TTL` (15 min)       | Sessions are revoked server-side at once, but an access token already issued is stateless. Shorten the TTL, or check the session on each request, if that window matters.                                                                                                           |
+| Medium   | Tokens in `localStorage`                                                     | XSS-reachable. Acceptable with a strong CSP on the SPA host; otherwise an httpOnly refresh cookie.                                                                                                                                                                                  |
+| Medium   | Platform plane uses the migration owner role                                 | Should be a dedicated least-privilege role.                                                                                                                                                                                                                                         |
+| Medium   | SMS never sent through the real provider                                     | Built to Twilio's documented API; tested against a local stand-in and Twilio's published signature example. See DEPLOYMENT.md staging checklist.                                                                                                                                    |
+| Medium   | Hyperdrive caching is not assertable from the repository                     | `npm run cf:check-caching -w @dentalcare/api` asks the account; not yet run against a real one.                                                                                                                                                                                     |
+| Low      | An interrupted SMS attempt stays `sending`                                   | Deliberately not retried; nothing alerts on it yet.                                                                                                                                                                                                                                 |
+| Low      | Patient documents keep a soft delete                                         | Admin-only and audited, but not the entered-in-error model of the clinical record.                                                                                                                                                                                                  |
+| Low      | Uploads pass through the API                                                 | No pre-signed direct-to-bucket upload, which large imaging studies will need.                                                                                                                                                                                                       |
+| Low      | The baseline migration interpolates `APP_DB_PASSWORD` into SQL               | A password containing a quote breaks or alters `CREATE ROLE`. Documented in `.env.production.example`.                                                                                                                                                                              |
+| High     | Migrations 0009–0011 have not been run                                       | Written without a database available. Run `migrate:up` and the integration suite (including `role.itest.ts`, which checks RLS on the four new tenant tables) before merging.                                                                                                        |
+| High     | Fiscalization not exercised against DPT's test CIS                           | Signatures verify with xml-crypto; the element set, SOAPAction values and endpoint paths are to the published schema as understood. Needs a test certificate and registered codes. Corrective invoices are not implemented, so a registered invoice cannot yet be corrected in-app. |
+| Medium   | Fiscal signing keys share MFA_ENCRYPTION_KEYS                                | Sealed with AES-256-GCM bound to the clinic. A key rotation must re-seal certificates as well as MFA factors.                                                                                                                                                                       |
+| Medium   | Viber delivery is unconfirmed                                                | Vonage reports status to an application-level JWT-signed webhook that is not built; a Viber reminder reads "sent", never "delivered", and a non-Viber number fails silently.                                                                                                        |
+| Medium   | Platform stats and export rely on the privileged role reading across tenants | As the tenants list and reminder scheduler already did. If the platform role is ever made least-privilege and subject to FORCE RLS, these queries return zeros.                                                                                                                     |
+| Low      | Clinic export is capped at 200,000 rows and built in memory                  | Larger clinics must be exported from a database backup.                                                                                                                                                                                                                             |
+| Low      | Opening balances from an import are ledger adjustments                       | Correct, append-only, and labelled with the file name; a wrong import is corrected by opposing adjustments, one patient at a time.                                                                                                                                                  |
 
 ## Test coverage
 
@@ -237,12 +243,12 @@ Run on 2026-09-14 against PostgreSQL 16:
 
 The integration suites that carry the security claims above:
 
-| Suite | Proves |
-|---|---|
+| Suite                                                               | Proves                                                                                            |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `role.itest.ts`, `tenant-isolation.itest.ts`, `privileges.itest.ts` | RLS on every tenant table, cross-clinic reads and writes refused, revoked privileges stay revoked |
-| `api-sessions.itest.ts`, `api-mfa.itest.ts`, `api-auth.itest.ts` | Rotation, replay revocation, MFA enrolment and challenge with enforcement required |
-| `clinical-record.itest.ts`, `api-clinical.itest.ts` | No deletes, withdrawal with reason, signing locks, access log |
-| `money.itest.ts` | Cents, one currency per clinic, cancellation reverses the ledger |
-| `api-inventory-lots.itest.ts` | Lot balance at commit, recall refusals, who received a lot |
-| `reminders-delivery.itest.ts` | SMS contents, skips, retries, opt-out, signed receipts that cannot cross clinics |
-| `tenant-middleware.itest.ts` | The exact list of routes that run without a clinic |
+| `api-sessions.itest.ts`, `api-mfa.itest.ts`, `api-auth.itest.ts`    | Rotation, replay revocation, MFA enrolment and challenge with enforcement required                |
+| `clinical-record.itest.ts`, `api-clinical.itest.ts`                 | No deletes, withdrawal with reason, signing locks, access log                                     |
+| `money.itest.ts`                                                    | Cents, one currency per clinic, cancellation reverses the ledger                                  |
+| `api-inventory-lots.itest.ts`                                       | Lot balance at commit, recall refusals, who received a lot                                        |
+| `reminders-delivery.itest.ts`                                       | SMS contents, skips, retries, opt-out, signed receipts that cannot cross clinics                  |
+| `tenant-middleware.itest.ts`                                        | The exact list of routes that run without a clinic                                                |

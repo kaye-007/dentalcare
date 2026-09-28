@@ -11,7 +11,11 @@ import {
 } from '@nestjs/common';
 import { PlatformBillingService } from './billing.service';
 import { MarkPaidDto, RunBillingDto, VoidInvoiceDto } from './dto/billing.dto';
-import { CurrentAdmin, PlatformJwtGuard, PlatformTokenPayload } from '@/modules/platform/auth';
+import {
+  CurrentAdmin,
+  PlatformJwtGuard,
+  PlatformTokenPayload,
+} from '@/modules/platform/auth';
 import { PlatformAuditActor } from '../audit/audit.service';
 
 function actorOf(admin?: PlatformTokenPayload): PlatformAuditActor {

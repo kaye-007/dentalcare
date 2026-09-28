@@ -47,7 +47,8 @@ export class EntitlementsService {
       for (const r of rows) {
         // Only booleans mean anything today. A limit (a number) stored against
         // a boolean feature is ignored rather than coerced into "on".
-        if (isFeatureKey(r.feature_key) && typeof r.value === 'boolean') out[r.feature_key] = r.value;
+        if (isFeatureKey(r.feature_key) && typeof r.value === 'boolean')
+          out[r.feature_key] = r.value;
       }
       return out;
     };
@@ -68,13 +69,17 @@ export class EntitlementsService {
     return resolveFeatures({
       plan: toBool(plan.rows),
       overrides: toBool(overrides.rows),
-      settings: toBool(settings.rows.map((r) => ({ feature_key: r.feature_key, value: r.enabled }))),
+      settings: toBool(
+        settings.rows.map((r) => ({ feature_key: r.feature_key, value: r.enabled })),
+      ),
     });
   }
 
   /** Resolve every feature for the current request's clinic. */
   resolve(): Promise<Record<FeatureKey, ResolvedFeature>> {
-    return this.db.withTenant(this.tenant.getRequiredTenantId(), (client) => this.resolveWithin(client));
+    return this.db.withTenant(this.tenant.getRequiredTenantId(), (client) =>
+      this.resolveWithin(client),
+    );
   }
 
   async isEnabled(client: PoolClient, key: FeatureKey): Promise<boolean> {
@@ -98,7 +103,12 @@ export function featureUnavailable(resolved: ResolvedFeature): ForbiddenExceptio
         : `${name} is turned off for this clinic. An administrator can turn it on in Settings → Features.`;
   // 403, with a code of its own: not a missing permission (a different 403)
   // and not an unpaid clinic (402). The app tells the three apart by `code`.
-  return new ForbiddenException({ code: 'feature_unavailable', feature: resolved.key, state: resolved.state, message });
+  return new ForbiddenException({
+    code: 'feature_unavailable',
+    feature: resolved.key,
+    state: resolved.state,
+    message,
+  });
 }
 
 export const FEATURE_METADATA_KEY = 'dentalcare:required-feature';
@@ -108,7 +118,8 @@ export const FEATURE_METADATA_KEY = 'dentalcare:required-feature';
  * Requires FeatureGuard in the controller's @UseGuards, after JwtAuthGuard —
  * route-coverage.spec fails the build when it is missing.
  */
-export const RequiresFeature = (key: FeatureKey) => SetMetadata(FEATURE_METADATA_KEY, key);
+export const RequiresFeature = (key: FeatureKey) =>
+  SetMetadata(FEATURE_METADATA_KEY, key);
 
 /**
  * Enforces @RequiresFeature. Controller-level rather than global, so it runs
@@ -123,10 +134,10 @@ export class FeatureGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const key = this.reflector.getAllAndOverride<FeatureKey | undefined>(FEATURE_METADATA_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const key = this.reflector.getAllAndOverride<FeatureKey | undefined>(
+      FEATURE_METADATA_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     if (!key) return true;
     const resolved = (await this.entitlements.resolve())[key];
     if (resolved.state !== 'enabled') throw featureUnavailable(resolved);

@@ -13,8 +13,19 @@ import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
 import { clinicCurrency } from '@/core/money/clinic-currency';
 import { vatSummary } from '@dentalcare/shared';
-import { Keyring, developmentKeyring, open, parseKeyring, seal } from '@/core/mfa/secret-box';
-import { FiscalCertificateError, describeSubject, importSigningKey, parseSigningMaterial } from './fiscal-crypto';
+import {
+  Keyring,
+  developmentKeyring,
+  open,
+  parseKeyring,
+  seal,
+} from '@/core/mfa/secret-box';
+import {
+  FiscalCertificateError,
+  describeSubject,
+  importSigningKey,
+  parseSigningMaterial,
+} from './fiscal-crypto';
 import { pkcs12ToPem } from './fiscal-pkcs12';
 import { queueTiming } from './fiscal-queue';
 import {
@@ -34,7 +45,11 @@ import {
   type FiscalPayType,
   type RequestHeader,
 } from './fiscal-xml';
-import { CashDepositDto, InstallCertificateDto, UpdateFiscalSettingsDto } from './dto/fiscal.dto';
+import {
+  CashDepositDto,
+  InstallCertificateDto,
+  UpdateFiscalSettingsDto,
+} from './dto/fiscal.dto';
 
 /** An Albanian NIPT: a letter, eight digits, a letter. */
 const NIPT = /^[A-Z][0-9]{8}[A-Z]$/;
@@ -169,7 +184,9 @@ export class FiscalService {
     const spec = config.get<string>('MFA_ENCRYPTION_KEYS');
     // The same envelope as MFA secrets; env.validation refuses production
     // without real keys, so the derived key is development only.
-    this.keyring = spec ? parseKeyring(spec) : developmentKeyring(config.get<string>('JWT_SECRET')!);
+    this.keyring = spec
+      ? parseKeyring(spec)
+      : developmentKeyring(config.get<string>('JWT_SECRET')!);
   }
 
   private softwareCode(): string | null {
@@ -177,11 +194,15 @@ export class FiscalService {
   }
 
   private cisUrl(env: 'test' | 'production'): string {
-    return this.config.get<string>(env === 'production' ? 'FISCAL_CIS_URL_PRODUCTION' : 'FISCAL_CIS_URL_TEST')!;
+    return this.config.get<string>(
+      env === 'production' ? 'FISCAL_CIS_URL_PRODUCTION' : 'FISCAL_CIS_URL_TEST',
+    )!;
   }
 
   private verifyBase(env: 'test' | 'production'): string {
-    return this.config.get<string>(env === 'production' ? 'FISCAL_VERIFY_URL_PRODUCTION' : 'FISCAL_VERIFY_URL_TEST')!;
+    return this.config.get<string>(
+      env === 'production' ? 'FISCAL_VERIFY_URL_PRODUCTION' : 'FISCAL_VERIFY_URL_TEST',
+    )!;
   }
 
   private aad(tenantId: string) {
@@ -196,7 +217,10 @@ export class FiscalService {
       const s = await this.settingsRow(client);
       const clinic = await this.clinicRow(client, tenantId);
       const { rows: operators } = await client.query<{
-        id: string; full_name: string; role: string; fiscal_operator_code: string | null;
+        id: string;
+        full_name: string;
+        role: string;
+        fiscal_operator_code: string | null;
       }>(
         `SELECT id, full_name, role, fiscal_operator_code FROM users
           WHERE status = 'active' AND role IN ('admin','receptionist')
@@ -243,7 +267,10 @@ export class FiscalService {
       const next = {
         enabled: dto.enabled ?? current.enabled,
         environment: dto.environment ?? current.environment,
-        business_unit_code: dto.businessUnitCode !== undefined ? dto.businessUnitCode : current.business_unit_code,
+        business_unit_code:
+          dto.businessUnitCode !== undefined
+            ? dto.businessUnitCode
+            : current.business_unit_code,
         tcr_code: dto.tcrCode !== undefined ? dto.tcrCode : current.tcr_code,
         is_issuer_in_vat: dto.isIssuerInVat ?? current.is_issuer_in_vat,
         vat_exemption_code: dto.vatExemptionCode ?? current.vat_exemption_code,
@@ -252,15 +279,19 @@ export class FiscalService {
       if (next.enabled) {
         const clinic = await this.clinicRow(client, tenantId);
         const missing: string[] = [];
-        if (!this.softwareCode()) missing.push('the software code for this deployment (NODE X support)');
-        if (!clinic.nipt || !NIPT.test(clinic.nipt)) missing.push('the clinic NIPT (Settings → Clinic profile)');
+        if (!this.softwareCode())
+          missing.push('the software code for this deployment (NODE X support)');
+        if (!clinic.nipt || !NIPT.test(clinic.nipt))
+          missing.push('the clinic NIPT (Settings → Clinic profile)');
         if (!clinic.address || !clinic.town) missing.push('the clinic address and city');
         if (!next.business_unit_code) missing.push('the business unit code');
         if (!next.tcr_code) missing.push('the cash register (TCR) code');
         if (!current.private_key_ciphertext) missing.push('the signing certificate');
         if (clinic.currency !== 'ALL') missing.push('lek (ALL) as the clinic currency');
         if (missing.length) {
-          throw new BadRequestException(`Fiscalization cannot be turned on without ${missing.join(', ')}.`);
+          throw new BadRequestException(
+            `Fiscalization cannot be turned on without ${missing.join(', ')}.`,
+          );
         }
       }
 
@@ -269,10 +300,20 @@ export class FiscalService {
             SET enabled = $2, environment = $3, business_unit_code = $4, tcr_code = $5,
                 is_issuer_in_vat = $6, vat_exemption_code = $7, updated_by = $8, updated_at = now()
           WHERE tenant_id = $1`,
-        [tenantId, next.enabled, next.environment, next.business_unit_code, next.tcr_code,
-         next.is_issuer_in_vat, next.vat_exemption_code, actor.userId],
+        [
+          tenantId,
+          next.enabled,
+          next.environment,
+          next.business_unit_code,
+          next.tcr_code,
+          next.is_issuer_in_vat,
+          next.vat_exemption_code,
+          actor.userId,
+        ],
       );
-      const fields = Object.entries(dto).filter(([, v]) => v !== undefined).map(([k]) => k);
+      const fields = Object.entries(dto)
+        .filter(([, v]) => v !== undefined)
+        .map(([k]) => k);
       await this.audit.record(client, actor, {
         action: 'fiscal.settings_updated',
         entityType: 'clinic_fiscal_settings',
@@ -294,11 +335,16 @@ export class FiscalService {
       if (!pem) throw new FiscalCertificateError('Upload the certificate file.');
       material = await parseSigningMaterial(pem);
     } catch (err) {
-      if (err instanceof FiscalCertificateError) throw new BadRequestException(err.message);
+      if (err instanceof FiscalCertificateError)
+        throw new BadRequestException(err.message);
       throw err;
     }
     const tenantId = this.tenant.getRequiredTenantId();
-    const sealed = seal(this.keyring, material.pkcs8.toString('base64'), this.aad(tenantId));
+    const sealed = seal(
+      this.keyring,
+      material.pkcs8.toString('base64'),
+      this.aad(tenantId),
+    );
     const subject = describeSubject(material.info.subject);
 
     await this.db.withTenant(tenantId, async (client) => {
@@ -312,8 +358,15 @@ export class FiscalService {
                 private_key_ciphertext = $5, private_key_key_id = $6,
                 updated_by = $7, updated_at = now()
           WHERE tenant_id = $1`,
-        [tenantId, material.certificatePem, subject, material.info.notAfter,
-         sealed.ciphertext, sealed.keyId, actor.userId],
+        [
+          tenantId,
+          material.certificatePem,
+          subject,
+          material.info.notAfter,
+          sealed.ciphertext,
+          sealed.keyId,
+          actor.userId,
+        ],
       );
       await this.audit.record(client, actor, {
         action: 'fiscal.certificate_installed',
@@ -363,12 +416,17 @@ export class FiscalService {
     const tenantId = this.tenant.getRequiredTenantId();
     const software = this.softwareCode();
     if (!software) {
-      throw new ServiceUnavailableException('Fiscalization is not available on this deployment.');
+      throw new ServiceUnavailableException(
+        'Fiscalization is not available on this deployment.',
+      );
     }
 
     const registered = await this.db.withTenant(tenantId, async (client) => {
       const { rows: inv } = await client.query<{
-        status: string; total: number; issued_at: string; invoice_number: string;
+        status: string;
+        total: number;
+        issued_at: string;
+        invoice_number: string;
       }>(
         'SELECT status, total, issued_at::text AS issued_at, invoice_number FROM invoices WHERE id = $1 FOR UPDATE',
         [invoiceId],
@@ -378,15 +436,25 @@ export class FiscalService {
 
       const existing = await fiscalRecordFor(client, invoiceId);
       if (existing) return { record: existing, isNew: false };
-      if (invoice.status === 'cancelled') throw new ConflictException('A cancelled invoice cannot be fiscalized');
+      if (invoice.status === 'cancelled')
+        throw new ConflictException('A cancelled invoice cannot be fiscalized');
 
       const settings = await this.settingsRow(client);
-      if (!settings?.enabled || !settings.business_unit_code || !settings.tcr_code || !settings.private_key_ciphertext) {
-        throw new BadRequestException('Fiscalization is not turned on for this clinic (Settings → Fiscalization).');
+      if (
+        !settings?.enabled ||
+        !settings.business_unit_code ||
+        !settings.tcr_code ||
+        !settings.private_key_ciphertext
+      ) {
+        throw new BadRequestException(
+          'Fiscalization is not turned on for this clinic (Settings → Fiscalization).',
+        );
       }
       const clinic = await this.clinicRow(client, tenantId);
       if (!clinic.nipt || !NIPT.test(clinic.nipt)) {
-        throw new BadRequestException('The clinic NIPT is missing or not in the form L12345678A.');
+        throw new BadRequestException(
+          'The clinic NIPT is missing or not in the form L12345678A.',
+        );
       }
       if ((await clinicCurrency(client)) !== 'ALL') {
         throw new BadRequestException('Only invoices in lek (ALL) can be fiscalized.');
@@ -403,7 +471,12 @@ export class FiscalService {
         );
       }
 
-      const payment = await this.paymentFor(client, invoiceId, invoice.total, invoice.status);
+      const payment = await this.paymentFor(
+        client,
+        invoiceId,
+        invoice.total,
+        invoice.status,
+      );
       const items = await this.itemsFor(client, invoiceId);
 
       const now = new Date();
@@ -444,7 +517,8 @@ export class FiscalService {
       try {
         fiscalTotals(input);
       } catch (err) {
-        if (err instanceof FiscalValidationError) throw new BadRequestException(err.message);
+        if (err instanceof FiscalValidationError)
+          throw new BadRequestException(err.message);
         throw err;
       }
 
@@ -459,16 +533,36 @@ export class FiscalService {
             total_price, iic, iic_signature, qr_url, payload, next_attempt_at, created_by)
          VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb, now(), $17)
          RETURNING id`,
-        [tenantId, invoiceId, settings.environment, input.typeOfInv, input.businessUnitCode,
-         input.tcrCode, operatorCode, software, ordNum, invNum(input), input.issueDateTime,
-         input.totalPrice, codes.iic, codes.iicSignature, qr, JSON.stringify(input), actor.userId],
+        [
+          tenantId,
+          invoiceId,
+          settings.environment,
+          input.typeOfInv,
+          input.businessUnitCode,
+          input.tcrCode,
+          operatorCode,
+          software,
+          ordNum,
+          invNum(input),
+          input.issueDateTime,
+          input.totalPrice,
+          codes.iic,
+          codes.iicSignature,
+          qr,
+          JSON.stringify(input),
+          actor.userId,
+        ],
       );
       await this.audit.record(client, actor, {
         action: 'fiscal.invoice_registered',
         entityType: 'invoice',
         entityId: invoiceId,
         summary: `Issued ${invoice.invoice_number} as fiscal invoice ${invNum(input)}`,
-        metadata: { fiscalInvoiceId: rows[0]!.id, invNum: invNum(input), environment: settings.environment },
+        metadata: {
+          fiscalInvoiceId: rows[0]!.id,
+          invNum: invNum(input),
+          environment: settings.environment,
+        },
       });
       return { record: (await fiscalRecordFor(client, invoiceId))!, isNew: true };
     });
@@ -488,9 +582,13 @@ export class FiscalService {
   async receipt(invoiceId: string) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const { rows } = await client.query<FiscalRow & {
-        invoice_number: string; patient_name: string; cashier_name: string | null;
-      }>(
+      const { rows } = await client.query<
+        FiscalRow & {
+          invoice_number: string;
+          patient_name: string;
+          cashier_name: string | null;
+        }
+      >(
         `SELECT f.*, i.invoice_number, (p.first_name || ' ' || p.last_name) AS patient_name,
                 u.full_name AS cashier_name
            FROM fiscal_invoices f
@@ -502,9 +600,10 @@ export class FiscalService {
       );
       const r = rows[0];
       if (!r) throw new NotFoundException('This invoice has not been fiscalized');
-      const { rows: contact } = await client.query<{ phone: string | null; email: string | null }>(
-        'SELECT phone, email FROM clinic_settings LIMIT 1',
-      );
+      const { rows: contact } = await client.query<{
+        phone: string | null;
+        email: string | null;
+      }>('SELECT phone, email FROM clinic_settings LIMIT 1');
       const p = r.payload;
       const items = p.items.map((item) => ({
         name: item.name,
@@ -537,7 +636,13 @@ export class FiscalService {
         vatExemptionCode: p.vatExemptionCode,
         currency: 'ALL' as const,
         items,
-        vat: vatSummary(items.map((i) => ({ taxRateBp: i.taxRateBp, net: i.total - i.taxAmount, taxAmount: i.taxAmount }))),
+        vat: vatSummary(
+          items.map((i) => ({
+            taxRateBp: i.taxRateBp,
+            net: i.total - i.taxAmount,
+            taxAmount: i.taxAmount,
+          })),
+        ),
         totals: { net: totals.priceWoVat, vat: totals.vat, total: totals.price },
         payments: p.payMethods,
       };
@@ -574,7 +679,8 @@ export class FiscalService {
       const settings = await this.settingsRow(client);
       return { row, settings };
     });
-    if (!leased?.settings?.private_key_ciphertext || !leased.settings.certificate_pem) return;
+    if (!leased?.settings?.private_key_ciphertext || !leased.settings.certificate_pem)
+      return;
     const { row, settings } = leased;
 
     let envelope: string;
@@ -582,9 +688,17 @@ export class FiscalService {
       const key = await this.signingKey(settings, tenantId);
       // The first attempt is a normal delivery. Anything later was issued while
       // the authority could not be reached, which is what the flag declares.
-      const header: RequestHeader = newHeader(FISCAL_TZ, row.attempts > 1 ? 'NOINTERNET' : undefined);
-      const unsigned = registerInvoiceXml(row.payload, header, { iic: row.iic, iicSignature: row.iic_signature });
-      envelope = soapEnvelope(await signRequest(unsigned, key, certificateDer(settings.certificate_pem!)));
+      const header: RequestHeader = newHeader(
+        FISCAL_TZ,
+        row.attempts > 1 ? 'NOINTERNET' : undefined,
+      );
+      const unsigned = registerInvoiceXml(row.payload, header, {
+        iic: row.iic,
+        iicSignature: row.iic_signature,
+      });
+      envelope = soapEnvelope(
+        await signRequest(unsigned, key, certificateDer(settings.certificate_pem!)),
+      );
     } catch (err) {
       await this.settle(tenantId, fiscalId, {
         status: 'rejected',
@@ -593,12 +707,26 @@ export class FiscalService {
       return;
     }
 
-    const answer = await this.post(this.cisUrl(row.environment), SOAP_ACTION.invoice, envelope, 'FIC');
+    const answer = await this.post(
+      this.cisUrl(row.environment),
+      SOAP_ACTION.invoice,
+      envelope,
+      'FIC',
+    );
     if (answer.kind === 'code') {
-      await this.settle(tenantId, fiscalId, { status: 'fiscalized', fic: answer.code, request: envelope, response: answer.body });
+      await this.settle(tenantId, fiscalId, {
+        status: 'fiscalized',
+        fic: answer.code,
+        request: envelope,
+        response: answer.body,
+      });
     } else if (answer.kind === 'fault') {
       await this.settle(tenantId, fiscalId, {
-        status: 'rejected', error: answer.message, errorCode: answer.code, request: envelope, response: answer.body,
+        status: 'rejected',
+        error: answer.message,
+        errorCode: answer.code,
+        request: envelope,
+        response: answer.body,
       });
     } else {
       await this.settle(tenantId, fiscalId, {
@@ -689,12 +817,17 @@ export class FiscalService {
   async retryNow(fiscalId: string): Promise<FiscalRecord> {
     const tenantId = this.tenant.getRequiredTenantId();
     const { rows } = await this.db.withTenant(tenantId, (client) =>
-      client.query<{ status: string }>('SELECT status FROM fiscal_invoices WHERE id = $1', [fiscalId]),
+      client.query<{ status: string }>(
+        'SELECT status FROM fiscal_invoices WHERE id = $1',
+        [fiscalId],
+      ),
     );
     const row = rows[0];
     if (!row) throw new NotFoundException('That registration does not exist');
     if (row.status === 'fiscalized') {
-      throw new BadRequestException('This invoice is already registered with the tax authority.');
+      throw new BadRequestException(
+        'This invoice is already registered with the tax authority.',
+      );
     }
     if (row.status === 'rejected') {
       throw new BadRequestException(
@@ -734,7 +867,10 @@ export class FiscalService {
     drawerTcrCode: string | null;
     drawerSessionId: string;
     actor: ClinicAuditActor;
-  }): Promise<{ status: 'not_required' | 'registered' | 'rejected' | 'unreachable' | 'failed'; message: string | null }> {
+  }): Promise<{
+    status: 'not_required' | 'registered' | 'rejected' | 'unreachable' | 'failed';
+    message: string | null;
+  }> {
     const tenantId = this.tenant.getRequiredTenantId();
     const settings = await this.db.withTenant(tenantId, async (client) => {
       const s = await this.settingsRow(client);
@@ -761,31 +897,61 @@ export class FiscalService {
         input.actor,
         input.drawerSessionId,
       );
-      return { status: deposit.status as 'registered' | 'rejected' | 'unreachable', message: deposit.error };
+      return {
+        status: deposit.status as 'registered' | 'rejected' | 'unreachable',
+        message: deposit.error,
+      };
     } catch (e) {
       return { status: 'failed', message: e instanceof Error ? e.message : String(e) };
     }
   }
 
-  async registerCashDeposit(dto: CashDepositDto, actor: ClinicAuditActor, drawerSessionId: string | null = null) {
+  async registerCashDeposit(
+    dto: CashDepositDto,
+    actor: ClinicAuditActor,
+    drawerSessionId: string | null = null,
+  ) {
     const tenantId = this.tenant.getRequiredTenantId();
     const { settings, clinic } = await this.db.withTenant(tenantId, async (client) => ({
       settings: await this.settingsRow(client),
       clinic: await this.clinicRow(client, tenantId),
     }));
-    if (!settings?.enabled || !settings.tcr_code || !settings.certificate_pem || !clinic.nipt) {
+    if (
+      !settings?.enabled ||
+      !settings.tcr_code ||
+      !settings.certificate_pem ||
+      !clinic.nipt
+    ) {
       throw new BadRequestException('Fiscalization is not turned on for this clinic.');
     }
     const changeDateTime = issueDateTime(new Date(), FISCAL_TZ);
     const key = await this.signingKey(settings, tenantId);
     const unsigned = registerCashDepositXml(
-      { nipt: clinic.nipt, tcrCode: settings.tcr_code, operation: dto.operation, amount: dto.amount, changeDateTime },
+      {
+        nipt: clinic.nipt,
+        tcrCode: settings.tcr_code,
+        operation: dto.operation,
+        amount: dto.amount,
+        changeDateTime,
+      },
       newHeader(FISCAL_TZ),
     );
-    const envelope = soapEnvelope(await signRequest(unsigned, key, certificateDer(settings.certificate_pem)));
-    const answer = await this.post(this.cisUrl(settings.environment), SOAP_ACTION.cash, envelope, 'FCDC');
+    const envelope = soapEnvelope(
+      await signRequest(unsigned, key, certificateDer(settings.certificate_pem)),
+    );
+    const answer = await this.post(
+      this.cisUrl(settings.environment),
+      SOAP_ACTION.cash,
+      envelope,
+      'FCDC',
+    );
 
-    const status = answer.kind === 'code' ? 'registered' : answer.kind === 'fault' ? 'rejected' : 'unreachable';
+    const status =
+      answer.kind === 'code'
+        ? 'registered'
+        : answer.kind === 'fault'
+          ? 'rejected'
+          : 'unreachable';
     return this.db.withTenant(tenantId, async (client) => {
       const { rows } = await client.query(
         `INSERT INTO fiscal_cash_deposits
@@ -793,9 +959,18 @@ export class FiscalService {
             drawer_session_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          RETURNING id, operation, amount, change_datetime, status, fcdc, last_error, created_at`,
-        [tenantId, settings.tcr_code, dto.operation, dto.amount, changeDateTime, status,
-         answer.kind === 'code' ? answer.code : null, answer.kind === 'code' ? null : answer.message, actor.userId,
-         drawerSessionId],
+        [
+          tenantId,
+          settings.tcr_code,
+          dto.operation,
+          dto.amount,
+          changeDateTime,
+          status,
+          answer.kind === 'code' ? answer.code : null,
+          answer.kind === 'code' ? null : answer.message,
+          actor.userId,
+          drawerSessionId,
+        ],
       );
       if (status === 'registered') {
         await this.audit.record(client, actor, {
@@ -834,8 +1009,12 @@ export class FiscalService {
 
   private async clinicRow(client: PoolClient, tenantId: string) {
     const { rows } = await client.query<{
-      name: string; legal_name: string | null; tax_number: string | null;
-      address: string | null; city: string | null; currency: string | null;
+      name: string;
+      legal_name: string | null;
+      tax_number: string | null;
+      address: string | null;
+      city: string | null;
+      currency: string | null;
     }>(
       `SELECT t.name, cs.legal_name, cs.tax_number, cs.address, cs.city, cs.currency
          FROM tenants t LEFT JOIN clinic_settings cs ON cs.tenant_id = t.id
@@ -869,7 +1048,12 @@ export class FiscalService {
    * in notes or by card when it is issued; an invoice paid, or to be paid, by
    * bank transfer is non-cash. The two do not mix on one fiscal invoice.
    */
-  private async paymentFor(client: PoolClient, invoiceId: string, total: number, status: string) {
+  private async paymentFor(
+    client: PoolClient,
+    invoiceId: string,
+    total: number,
+    status: string,
+  ) {
     const { rows } = await client.query<{ method: string; amount: string }>(
       `SELECT method, sum(amount)::text AS amount FROM payments
         WHERE invoice_id = $1 AND voided_at IS NULL GROUP BY method`,
@@ -877,14 +1061,20 @@ export class FiscalService {
     );
     const paid = rows.reduce((s, r) => s + Number(r.amount), 0);
     if (paid === 0) {
-      return { type: 'NONCASH' as const, methods: [{ type: 'ACCOUNT' as const, amount: total }] };
+      return {
+        type: 'NONCASH' as const,
+        methods: [{ type: 'ACCOUNT' as const, amount: total }],
+      };
     }
     if (status !== 'paid' || paid !== total) {
       throw new BadRequestException(
         'Fiscalize an invoice once it is fully paid, or before any payment when it will be paid by bank transfer.',
       );
     }
-    const methods = rows.map((r) => ({ type: PAY_TYPE[r.method] ?? 'BANKNOTE', amount: Number(r.amount) }));
+    const methods = rows.map((r) => ({
+      type: PAY_TYPE[r.method] ?? 'BANKNOTE',
+      amount: Number(r.amount),
+    }));
     const bank = methods.some((m) => m.type === 'ACCOUNT');
     if (bank && methods.length > 1) {
       throw new BadRequestException(
@@ -896,8 +1086,14 @@ export class FiscalService {
 
   private async itemsFor(client: PoolClient, invoiceId: string) {
     const { rows } = await client.query<{
-      description: string; quantity: number; unit_price: number; discount_amount: number;
-      tax_rate_bp: number; tax_amount: number; amount: number; code: string | null;
+      description: string;
+      quantity: number;
+      unit_price: number;
+      discount_amount: number;
+      tax_rate_bp: number;
+      tax_amount: number;
+      amount: number;
+      code: string | null;
     }>(
       `SELECT li.description, li.quantity, li.unit_price, li.discount_amount, li.tax_rate_bp,
               li.tax_amount, li.amount, pc.code
@@ -907,7 +1103,8 @@ export class FiscalService {
         ORDER BY li.sort_order, li.id`,
       [invoiceId],
     );
-    if (rows.length === 0) throw new BadRequestException('An invoice without lines cannot be fiscalized.');
+    if (rows.length === 0)
+      throw new BadRequestException('An invoice without lines cannot be fiscalized.');
     return rows.map((r) => ({
       name: r.description,
       code: r.code,
@@ -940,7 +1137,11 @@ export class FiscalService {
         signal: AbortSignal.timeout(CIS_TIMEOUT_MS),
       });
     } catch {
-      return { kind: 'unreachable', message: 'The tax authority could not be reached; it will be sent again.', body: null };
+      return {
+        kind: 'unreachable',
+        message: 'The tax authority could not be reached; it will be sent again.',
+        body: null,
+      };
     }
     const body = await res.text().catch(() => '');
     const answer = parseCisResponse(body, codeElement);
@@ -984,21 +1185,37 @@ export class FiscalService {
                   last_response_xml = coalesce($8, last_response_xml),
                   updated_at = now()
             WHERE id = $1`,
-          [id, o.status, o.fic ?? null, o.retryInMinutes ?? 10, o.error ?? null, o.errorCode ?? null,
-           o.request ?? null, o.response ?? null],
+          [
+            id,
+            o.status,
+            o.fic ?? null,
+            o.retryInMinutes ?? 10,
+            o.error ?? null,
+            o.errorCode ?? null,
+            o.request ?? null,
+            o.response ?? null,
+          ],
         ),
       );
     } catch (err) {
       // The authority may already hold it. The row stays pending and the next
       // pass sends it again as a subsequent delivery, which CIS de-duplicates
       // by NSLF.
-      this.logger.error(`fiscal invoice ${id}: could not record the outcome: ${err instanceof Error ? err.message : err}`);
+      this.logger.error(
+        `fiscal invoice ${id}: could not record the outcome: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 }
 
-export async function fiscalRecordFor(client: PoolClient, invoiceId: string): Promise<FiscalRecord | null> {
-  const { rows } = await client.query<FiscalRow>('SELECT * FROM fiscal_invoices WHERE invoice_id = $1', [invoiceId]);
+export async function fiscalRecordFor(
+  client: PoolClient,
+  invoiceId: string,
+): Promise<FiscalRecord | null> {
+  const { rows } = await client.query<FiscalRow>(
+    'SELECT * FROM fiscal_invoices WHERE invoice_id = $1',
+    [invoiceId],
+  );
   return rows[0] ? mapFiscal(rows[0]) : null;
 }
 
@@ -1007,8 +1224,14 @@ function certificateDer(pem: string): Buffer {
 }
 
 function mapDeposit(r: {
-  id: string; operation: string; amount: number; change_datetime: string;
-  status: string; fcdc: string | null; last_error: string | null; created_at: string;
+  id: string;
+  operation: string;
+  amount: number;
+  change_datetime: string;
+  status: string;
+  fcdc: string | null;
+  last_error: string | null;
+  created_at: string;
 }) {
   return {
     id: r.id,

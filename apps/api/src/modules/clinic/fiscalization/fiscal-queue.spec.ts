@@ -1,13 +1,16 @@
 import { DELIVERY_WINDOW_HOURS, queueTiming } from './fiscal-queue';
 
 const ISSUED = '2026-09-17T08:00:00+02:00';
-const at = (hoursAfter: number) => new Date(new Date(ISSUED).getTime() + hoursAfter * 3_600_000);
+const at = (hoursAfter: number) =>
+  new Date(new Date(ISSUED).getTime() + hoursAfter * 3_600_000);
 
 describe('fiscal delivery window', () => {
   it('counts from when the invoice was issued, not from the last attempt', () => {
     const t = queueTiming(ISSUED, at(3));
     expect(t.ageMs).toBe(3 * 3_600_000);
-    expect(new Date(t.deliverBy).getTime()).toBe(new Date(ISSUED).getTime() + DELIVERY_WINDOW_HOURS * 3_600_000);
+    expect(new Date(t.deliverBy).getTime()).toBe(
+      new Date(ISSUED).getTime() + DELIVERY_WINDOW_HOURS * 3_600_000,
+    );
     expect(t.msLeft).toBe(45 * 3_600_000);
   });
 
@@ -24,7 +27,11 @@ describe('fiscal delivery window', () => {
   });
 
   it('is overdue exactly at the 48-hour limit, and stays overdue', () => {
-    expect(queueTiming(ISSUED, at(48))).toMatchObject({ overdue: true, urgency: 'overdue', msLeft: 0 });
+    expect(queueTiming(ISSUED, at(48))).toMatchObject({
+      overdue: true,
+      urgency: 'overdue',
+      msLeft: 0,
+    });
     expect(queueTiming(ISSUED, at(60)).overdue).toBe(true);
     expect(queueTiming(ISSUED, at(60)).msLeft).toBeLessThan(0);
   });

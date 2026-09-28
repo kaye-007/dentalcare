@@ -360,7 +360,11 @@ export class ChartingService {
     });
   }
 
-  async updateCondition(id: string, dto: UpdateToothConditionDto, actor: ClinicAuditActor) {
+  async updateCondition(
+    id: string,
+    dto: UpdateToothConditionDto,
+    actor: ClinicAuditActor,
+  ) {
     const sets: string[] = [];
     const params: unknown[] = [id];
     const push = (col: string, v: unknown) => {
@@ -556,7 +560,8 @@ export class ChartingService {
     if (dto.defaultFee !== undefined) push('default_fee = $$', dto.defaultFee);
     if (dto.treatmentId !== undefined) push('treatment_id = $$', dto.treatmentId ?? null);
     if (dto.isActive !== undefined) push('is_active = $$', dto.isActive);
-    if (dto.vatCategory !== undefined) push('is_taxable = $$', dto.vatCategory === 'cosmetic');
+    if (dto.vatCategory !== undefined)
+      push('is_taxable = $$', dto.vatCategory === 'cosmetic');
     if (!sets.length) throw new BadRequestException('Nothing to update');
 
     return this.tx(async (client) => {
@@ -647,7 +652,11 @@ export class ChartingService {
     });
   }
 
-  async logProcedure(patientId: string, dto: CreateProcedureDto, actor: ClinicAuditActor) {
+  async logProcedure(
+    patientId: string,
+    dto: CreateProcedureDto,
+    actor: ClinicAuditActor,
+  ) {
     if (dto.tooth !== undefined && !isValidTooth(dto.tooth)) {
       throw new BadRequestException('Not a valid FDI tooth number');
     }

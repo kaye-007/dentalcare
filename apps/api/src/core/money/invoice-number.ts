@@ -8,7 +8,10 @@ import { PoolClient } from 'pg';
  * never changes, so a clinic that renames its series keeps both in its
  * history. Uniqueness still rests on the per-clinic sequence, not the text.
  */
-export async function nextInvoiceNumber(client: PoolClient, seq: number): Promise<string> {
+export async function nextInvoiceNumber(
+  client: PoolClient,
+  seq: number,
+): Promise<string> {
   const { rows } = await client.query<{ invoice_prefix: string | null }>(
     'SELECT invoice_prefix FROM clinic_settings LIMIT 1',
   );

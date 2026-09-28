@@ -79,14 +79,13 @@ const TRANSITIONS: Readonly<Record<AppointmentStatus, readonly AppointmentStatus
     no_show: ['scheduled'],
   });
 
-export function allowedTransitions(from: AppointmentStatus): readonly AppointmentStatus[] {
+export function allowedTransitions(
+  from: AppointmentStatus,
+): readonly AppointmentStatus[] {
   return TRANSITIONS[from] ?? [];
 }
 
-export function canTransition(
-  from: AppointmentStatus,
-  to: AppointmentStatus,
-): boolean {
+export function canTransition(from: AppointmentStatus, to: AppointmentStatus): boolean {
   return allowedTransitions(from).includes(to);
 }
 
@@ -97,24 +96,20 @@ export function isStatus(value: unknown): value is AppointmentStatus {
   );
 }
 
-export const STATUS_LABELS: Readonly<Record<AppointmentStatus, string>> =
-  Object.freeze({
-    scheduled: 'Scheduled',
-    checked_in: 'Checked in',
-    in_progress: 'In progress',
-    completed: 'Completed',
-    cancelled: 'Cancelled',
-    no_show: 'No-show',
-  });
+export const STATUS_LABELS: Readonly<Record<AppointmentStatus, string>> = Object.freeze({
+  scheduled: 'Scheduled',
+  checked_in: 'Checked in',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  no_show: 'No-show',
+});
 
 /**
  * Why a particular move is refused, phrased for the person at the front desk
  * rather than for a log file.
  */
-export function explainRefusal(
-  from: AppointmentStatus,
-  to: AppointmentStatus,
-): string {
+export function explainRefusal(from: AppointmentStatus, to: AppointmentStatus): string {
   if (from === to) {
     return `This appointment is already ${STATUS_LABELS[to].toLowerCase()}.`;
   }
@@ -140,11 +135,10 @@ export function explainRefusal(
  * `completed_at` and `cancelled_at` are additionally enforced by CHECK
  * constraints in migration 0014, so this and the schema agree by construction.
  */
-export const TIMESTAMP_COLUMN: Readonly<
-  Partial<Record<AppointmentStatus, string>>
-> = Object.freeze({
-  checked_in: 'checked_in_at',
-  in_progress: 'in_progress_at',
-  completed: 'completed_at',
-  cancelled: 'cancelled_at',
-});
+export const TIMESTAMP_COLUMN: Readonly<Partial<Record<AppointmentStatus, string>>> =
+  Object.freeze({
+    checked_in: 'checked_in_at',
+    in_progress: 'in_progress_at',
+    completed: 'completed_at',
+    cancelled: 'cancelled_at',
+  });

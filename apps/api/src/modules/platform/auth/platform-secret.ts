@@ -19,8 +19,5 @@ import { ConfigService } from '@nestjs/config';
  * verification cannot end up disagreeing about which key is in play.
  */
 export function platformJwtSecret(config: ConfigService): string {
-  return (
-    config.get<string>('PLATFORM_JWT_SECRET') ||
-    config.get<string>('JWT_SECRET')!
-  );
+  return config.get<string>('PLATFORM_JWT_SECRET') || config.get<string>('JWT_SECRET')!;
 }

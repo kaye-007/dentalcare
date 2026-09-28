@@ -32,10 +32,7 @@ export class UsersService {
   constructor(private readonly db: DatabaseService) {}
 
   /** Look up a user by email WITHIN the given tenant (RLS-scoped). */
-  async findForAuthByEmail(
-    tenantId: string,
-    email: string,
-  ): Promise<AuthUserRow | null> {
+  async findForAuthByEmail(tenantId: string, email: string): Promise<AuthUserRow | null> {
     return this.db.withTenant(tenantId, async (client) => {
       const { rows } = await client.query<AuthUserRow>(
         `${SELECT} WHERE lower(u.email) = lower($1) LIMIT 1`,
@@ -46,10 +43,7 @@ export class UsersService {
   }
 
   /** Look up a user by id WITHIN the given tenant (RLS-scoped). */
-  async findForAuthById(
-    tenantId: string,
-    id: string,
-  ): Promise<AuthUserRow | null> {
+  async findForAuthById(tenantId: string, id: string): Promise<AuthUserRow | null> {
     return this.db.withTenant(tenantId, async (client) => {
       const { rows } = await client.query<AuthUserRow>(
         `${SELECT} WHERE u.id = $1 LIMIT 1`,

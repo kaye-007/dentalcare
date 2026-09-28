@@ -37,7 +37,8 @@ export function decideGoogleLink(
   if (!account) {
     return {
       allow: false,
-      reason: 'No account here uses that Google address. Ask your clinic administrator to add you first.',
+      reason:
+        'No account here uses that Google address. Ask your clinic administrator to add you first.',
     };
   }
 

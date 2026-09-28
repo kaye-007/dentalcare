@@ -62,13 +62,26 @@ export class ReminderDeliveryController {
     const params: Record<string, string> = {};
     for (const [key, value] of Object.entries(body ?? {})) params[key] = String(value);
 
-    if (!this.channel.verifyReceipt(req.originalUrl, params, req.header('x-twilio-signature'))) {
+    if (
+      !this.channel.verifyReceipt(
+        req.originalUrl,
+        params,
+        req.header('x-twilio-signature'),
+      )
+    ) {
       throw new ForbiddenException('The request signature does not match');
     }
 
     const messageId = params.MessageSid ?? params.SmsSid;
     const status = params.MessageStatus ?? params.SmsStatus;
-    if (!tenant || !reminder || !UUID.test(tenant) || !UUID.test(reminder) || !messageId || !status) {
+    if (
+      !tenant ||
+      !reminder ||
+      !UUID.test(tenant) ||
+      !UUID.test(reminder) ||
+      !messageId ||
+      !status
+    ) {
       return;
     }
 

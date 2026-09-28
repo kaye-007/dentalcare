@@ -11,7 +11,12 @@ import { PaymentsController } from './payments.controller';
 
 @Module({
   imports: [AuthModule, CashDrawerModule, FiscalizationModule],
-  controllers: [InvoicesController, PaymentsController, ExpensesController, FinanceSummaryController],
+  controllers: [
+    InvoicesController,
+    PaymentsController,
+    ExpensesController,
+    FinanceSummaryController,
+  ],
   providers: [FinanceService, InvoicePdfService],
 })
 export class FinanceModule {}

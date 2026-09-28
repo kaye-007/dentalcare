@@ -42,15 +42,21 @@ const KEY_ID = /^[A-Za-z0-9_-]{1,32}$/;
 export function parseKeyring(spec: string): Keyring {
   const keys = new Map<string, Buffer>();
   let currentId: string | undefined;
-  for (const part of spec.split(',').map((p) => p.trim()).filter(Boolean)) {
+  for (const part of spec
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)) {
     const colon = part.indexOf(':');
     if (colon < 1) throw new RangeError('each key must be written as <id>:<base64 key>');
     const id = part.slice(0, colon);
-    if (!KEY_ID.test(id)) throw new RangeError(`key id "${id}" must be 1-32 letters, digits, _ or -`);
+    if (!KEY_ID.test(id))
+      throw new RangeError(`key id "${id}" must be 1-32 letters, digits, _ or -`);
     if (keys.has(id)) throw new RangeError(`key id "${id}" appears twice`);
     const key = Buffer.from(part.slice(colon + 1), 'base64');
     if (key.length !== 32) {
-      throw new RangeError(`key "${id}" must decode to exactly 32 bytes (it is ${key.length})`);
+      throw new RangeError(
+        `key "${id}" must decode to exactly 32 bytes (it is ${key.length})`,
+      );
     }
     keys.set(id, key);
     currentId ??= id;
@@ -65,11 +71,17 @@ export function parseKeyring(spec: string): Keyring {
  * production reach this.
  */
 export function developmentKeyring(jwtSecret: string): Keyring {
-  const key = createHmac('sha256', jwtSecret).update('dentalcare/mfa/development-key').digest();
+  const key = createHmac('sha256', jwtSecret)
+    .update('dentalcare/mfa/development-key')
+    .digest();
   return { currentId: 'dev', keys: new Map([['dev', key]]) };
 }
 
-export function seal(keyring: Keyring, plaintext: string, associatedData: string): Sealed {
+export function seal(
+  keyring: Keyring,
+  plaintext: string,
+  associatedData: string,
+): Sealed {
   const key = keyring.keys.get(keyring.currentId)!;
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -91,7 +103,9 @@ export function open(keyring: Keyring, sealed: Sealed, associatedData: string): 
   const decipher = createDecipheriv('aes-256-gcm', key, raw.subarray(0, 12));
   decipher.setAAD(Buffer.from(associatedData, 'utf8'));
   decipher.setAuthTag(raw.subarray(12, 28));
-  return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8');
+  return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString(
+    'utf8',
+  );
 }
 
 /**

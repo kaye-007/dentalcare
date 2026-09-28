@@ -1,4 +1,10 @@
-import { GENESIS_HASH, eventHash, verifyChain, type EventFacts, type StoredEvent } from './drawer-ledger';
+import {
+  GENESIS_HASH,
+  eventHash,
+  verifyChain,
+  type EventFacts,
+  type StoredEvent,
+} from './drawer-ledger';
 
 const SESSION = '5f0c7b6e-1d2a-4c3b-9e8f-7a6b5c4d3e2f';
 const ACTOR = '0a1b2c3d-4e5f-4061-8a9b-0c1d2e3f4a5b';
@@ -79,6 +85,8 @@ describe('drawer event chain', () => {
   });
 
   it('treats an empty session with a genesis head as valid', () => {
-    expect(verifyChain([], { lastSeq: 0, lastHash: GENESIS_HASH })).toEqual({ valid: true });
+    expect(verifyChain([], { lastSeq: 0, lastHash: GENESIS_HASH })).toEqual({
+      valid: true,
+    });
   });
 });

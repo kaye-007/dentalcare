@@ -20,8 +20,12 @@ describe('SMS configuration', () => {
   });
 
   it('refuses Twilio without its credentials', () => {
-    expect(() => validateEnv({ ...base, SMS_PROVIDER: 'twilio' })).toThrow(/TWILIO_ACCOUNT_SID/);
-    expect(() => validateEnv({ ...base, ...twilio, TWILIO_FROM: undefined })).toThrow(/TWILIO_FROM/);
+    expect(() => validateEnv({ ...base, SMS_PROVIDER: 'twilio' })).toThrow(
+      /TWILIO_ACCOUNT_SID/,
+    );
+    expect(() => validateEnv({ ...base, ...twilio, TWILIO_FROM: undefined })).toThrow(
+      /TWILIO_FROM/,
+    );
   });
 
   it('accepts a number or a messaging service as the sender', () => {
@@ -37,14 +41,18 @@ describe('SMS configuration', () => {
   });
 
   it('refuses a sender that is not E.164', () => {
-    expect(() => validateEnv({ ...base, ...twilio, TWILIO_FROM: '069 123 4567' })).toThrow(/E\.164/);
+    expect(() =>
+      validateEnv({ ...base, ...twilio, TWILIO_FROM: '069 123 4567' }),
+    ).toThrow(/E\.164/);
   });
 
   it('wants PUBLIC_API_URL as a bare origin, because receipts are signed against it', () => {
     expect(() =>
       validateEnv({ ...base, PUBLIC_API_URL: 'https://api.example.com/api' }),
     ).toThrow(/origin/);
-    expect(() => validateEnv({ ...base, PUBLIC_API_URL: 'https://api.example.com' })).not.toThrow();
+    expect(() =>
+      validateEnv({ ...base, PUBLIC_API_URL: 'https://api.example.com' }),
+    ).not.toThrow();
   });
 
   it('requires a receipt address for SMS in production', () => {
@@ -80,10 +88,14 @@ describe('WhatsApp content templates', () => {
   });
 
   it('accepts a template per kind of message (0012)', () => {
-    expect(() => validateEnv(whatsapp(`sq:${sid(1)},followup.sq:${sid(2)},balance.en:${sid(3)}`))).not.toThrow();
+    expect(() =>
+      validateEnv(whatsapp(`sq:${sid(1)},followup.sq:${sid(2)},balance.en:${sid(3)}`)),
+    ).not.toThrow();
   });
 
   it('refuses a kind of message that does not exist', () => {
-    expect(() => validateEnv(whatsapp(`refund.sq:${sid(1)}`))).toThrow(/TWILIO_WHATSAPP_CONTENT_SIDS/);
+    expect(() => validateEnv(whatsapp(`refund.sq:${sid(1)}`))).toThrow(
+      /TWILIO_WHATSAPP_CONTENT_SIDS/,
+    );
   });
 });

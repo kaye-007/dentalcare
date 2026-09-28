@@ -27,7 +27,9 @@ export class FilesController {
   ): Promise<void> {
     const key = Array.isArray(keyParam) ? keyParam.join('/') : keyParam;
     const file =
-      key && exp && sig ? await this.storage.openSigned(key, exp, sig, disposition ?? '') : null;
+      key && exp && sig
+        ? await this.storage.openSigned(key, exp, sig, disposition ?? '')
+        : null;
     if (!file) throw new NotFoundException('This link has expired or is not valid.');
 
     res.setHeader('Content-Type', file.contentType);

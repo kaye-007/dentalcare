@@ -262,7 +262,12 @@ export class PlatformBillingService {
       await this.audit.record(client, actor, {
         action: 'platform.billing.run',
         entityType: 'subscription_billing',
-        metadata: { period, considered: due.length, issued: issued.length, numbers: issued },
+        metadata: {
+          period,
+          considered: due.length,
+          issued: issued.length,
+          numbers: issued,
+        },
       });
 
       return { considered: due.length, issued: issued.length, numbers: issued };
@@ -299,7 +304,14 @@ export class PlatformBillingService {
                 note = coalesce($6, note), updated_at = now()
           WHERE id = $1
           RETURNING id`,
-        [id, dto.paidAt ?? null, amount, dto.method, dto.reference ?? null, dto.note ?? null],
+        [
+          id,
+          dto.paidAt ?? null,
+          amount,
+          dto.method,
+          dto.reference ?? null,
+          dto.note ?? null,
+        ],
       );
 
       await this.audit.record(client, actor, {
@@ -331,7 +343,8 @@ export class PlatformBillingService {
       if (invoice.status === 'paid') {
         throw new BadRequestException({
           code: 'already_paid',
-          message: 'A settled invoice cannot be voided. Refund it outside the system first.',
+          message:
+            'A settled invoice cannot be voided. Refund it outside the system first.',
         });
       }
 

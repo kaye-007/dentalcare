@@ -1,4 +1,8 @@
-import { IMPORT_BATCH_LIMIT, IMPORT_DATE_FORMATS, type ImportDateFormat } from '@dentalcare/shared';
+import {
+  IMPORT_BATCH_LIMIT,
+  IMPORT_DATE_FORMATS,
+  type ImportDateFormat,
+} from '@dentalcare/shared';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -25,11 +29,15 @@ import {
  * apply exactly one set of rules.
  */
 export class ImportBatchDto {
-  @IsString() @MinLength(1) @MaxLength(200)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
   fileName!: string;
 
   /** Where the data came from, for the record: "Excel", "DentalSoft 4". */
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
   sourceLabel?: string;
 
   @IsIn([...IMPORT_DATE_FORMATS])
@@ -44,10 +52,14 @@ export class ImportBatchDto {
   skipDuplicates!: boolean;
 
   /** Rows before this batch, so errors name the line in the file. */
-  @IsInt() @Min(0) @Max(1_000_000)
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
   rowOffset!: number;
 
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(IMPORT_BATCH_LIMIT)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(IMPORT_BATCH_LIMIT)
   @IsObject({ each: true })
   rows!: Record<string, unknown>[];
 }

@@ -14,7 +14,13 @@ import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
 import { GraphError, WhatsAppGraphClient } from './graph-client';
-import { WhatsAppService, mapTemplate, templateReady, type OpenConnection, type TemplateRow } from './whatsapp.service';
+import {
+  WhatsAppService,
+  mapTemplate,
+  templateReady,
+  type OpenConnection,
+  type TemplateRow,
+} from './whatsapp.service';
 import { HistoryQueryDto, SendRemindersDto } from './dto/whatsapp.dto';
 
 interface ClinicFacts {
@@ -67,7 +73,12 @@ export class WhatsAppRemindersService {
   }
 
   private async clinic(client: PoolClient): Promise<ClinicFacts> {
-    const { rows } = await client.query<{ name: string; phone: string | null; timezone: string | null; phone_country_code: string | null }>(
+    const { rows } = await client.query<{
+      name: string;
+      phone: string | null;
+      timezone: string | null;
+      phone_country_code: string | null;
+    }>(
       `SELECT t.name, s.phone, s.timezone, s.phone_country_code
          FROM tenants t LEFT JOIN clinic_settings s ON s.tenant_id = t.id
         WHERE t.id = $1`,
@@ -92,7 +103,12 @@ export class WhatsAppRemindersService {
   }
 
   /** A day's appointments with each patient's consent and the latest reminder for it. */
-  private async appointments(client: PoolClient, date: string, timezone: string, ids?: string[]) {
+  private async appointments(
+    client: PoolClient,
+    date: string,
+    timezone: string,
+    ids?: string[],
+  ) {
     const { rows } = await client.query<AppointmentRow>(
       `SELECT a.id AS appointment_id, a.patient_id, p.first_name, p.last_name, p.phone,
               p.whatsapp_phone_e164, p.whatsapp_opt_in, p.reminders_opt_out,
@@ -132,7 +148,10 @@ export class WhatsAppRemindersService {
     connected: boolean,
     templateOk: boolean,
   ): { exclusion: WhatsAppExclusion | null; phone: string | null } {
-    const recipient = whatsAppRecipient({ whatsappPhone: r.whatsapp_phone_e164, phone: r.phone }, clinic.countryCode);
+    const recipient = whatsAppRecipient(
+      { whatsappPhone: r.whatsapp_phone_e164, phone: r.phone },
+      clinic.countryCode,
+    );
     return {
       phone: recipient.phone,
       exclusion: whatsAppExclusion({
@@ -147,7 +166,11 @@ export class WhatsAppRemindersService {
     };
   }
 
-  private values(r: AppointmentRow, clinic: ClinicFacts, languageCode: string): WhatsAppValues {
+  private values(
+    r: AppointmentRow,
+    clinic: ClinicFacts,
+    languageCode: string,
+  ): WhatsAppValues {
     return whatsAppReminderValues({
       patientFirstName: r.first_name,
       clinicName: clinic.name,
@@ -179,7 +202,9 @@ export class WhatsAppRemindersService {
           whatsappPhone: phone ?? (r.whatsapp_phone_e164 || r.phone || null),
           startsAt: new Date(r.starts_at).toISOString(),
           appointmentStatus: r.status,
-          reminder: r.last_status ? { status: r.last_status, at: r.last_at, failureReason: r.last_reason } : null,
+          reminder: r.last_status
+            ? { status: r.last_status, at: r.last_at, failureReason: r.last_reason }
+            : null,
           exclusion,
           exclusionLabel: exclusion ? WHATSAPP_EXCLUSION_LABELS[exclusion] : null,
           // The values the template is filled with — the same the send uses.
@@ -192,14 +217,21 @@ export class WhatsAppRemindersService {
         date: day,
         timezone: clinic.timezone,
         clinic: { name: clinic.name, phone: clinic.phone },
-        connection: { connected: conn.connected, displayPhoneNumber: conn.displayPhoneNumber },
+        connection: {
+          connected: conn.connected,
+          displayPhoneNumber: conn.displayPhoneNumber,
+        },
         template: template ? mapTemplate(template) : null,
         summary: {
           total: out.length,
           eligible: count((x) => x.exclusion === null),
           alreadyReminded: count((x) => x.exclusion === 'already_sent'),
-          noConsent: count((x) => x.exclusion === 'no_consent' || x.exclusion === 'opted_out'),
-          phoneProblem: count((x) => x.exclusion === 'phone_missing' || x.exclusion === 'phone_invalid'),
+          noConsent: count(
+            (x) => x.exclusion === 'no_consent' || x.exclusion === 'opted_out',
+          ),
+          phoneProblem: count(
+            (x) => x.exclusion === 'phone_missing' || x.exclusion === 'phone_invalid',
+          ),
           cancelled: count((x) => x.exclusion === 'appointment_cancelled'),
         },
         rows: out,
@@ -225,13 +257,17 @@ export class WhatsAppRemindersService {
   async send(dto: SendRemindersDto, actor: ClinicAuditActor) {
     const conn = await this.whatsapp.openConnection();
     if (!conn) {
-      throw new ConflictException({ code: 'whatsapp_not_connected', message: 'Connect WhatsApp before sending reminders.' });
+      throw new ConflictException({
+        code: 'whatsapp_not_connected',
+        message: 'Connect WhatsApp before sending reminders.',
+      });
     }
     const checked = await this.whatsapp.checkTemplate(dto.templateId);
     if (!checked.isActive || !checked.ready) {
       throw new ConflictException({
         code: 'whatsapp_template_not_ready',
-        message: checked.meta.problem ?? 'This template is not active or not approved by Meta.',
+        message:
+          checked.meta.problem ?? 'This template is not active or not approved by Meta.',
       });
     }
     const tenantId = this.tenant.getRequiredTenantId();
@@ -239,14 +275,26 @@ export class WhatsAppRemindersService {
     const claimed = await this.tx(async (client) => {
       const clinic = await this.clinic(client);
       const template = await this.whatsapp.templateRow(client, dto.templateId);
-      const rows = await this.appointments(client, dto.date, clinic.timezone, dto.appointmentIds);
+      const rows = await this.appointments(
+        client,
+        dto.date,
+        clinic.timezone,
+        dto.appointmentIds,
+      );
       const found = new Map(rows.map((r) => [r.appointment_id, r]));
 
       const batch = await client.query<{ id: string }>(
         `INSERT INTO whatsapp_send_batches
            (tenant_id, selected_date, template_id, template_name, selected_count, initiated_by_user_id)
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-        [tenantId, dto.date, template.id, template.display_name, dto.appointmentIds.length, actor.userId],
+        [
+          tenantId,
+          dto.date,
+          template.id,
+          template.display_name,
+          dto.appointmentIds.length,
+          actor.userId,
+        ],
       );
       const batchId = batch.rows[0]!.id;
 
@@ -260,14 +308,27 @@ export class WhatsAppRemindersService {
           continue;
         }
         const { exclusion, phone } = this.judge(r, clinic, true, true);
-        const base = [tenantId, batchId, r.patient_id, r.appointment_id, template.id, template.display_name, phone, actor.userId];
+        const base = [
+          tenantId,
+          batchId,
+          r.patient_id,
+          r.appointment_id,
+          template.id,
+          template.display_name,
+          phone,
+          actor.userId,
+        ];
         if (exclusion) {
           await client.query(
             `INSERT INTO whatsapp_message_sends
                (tenant_id, batch_id, patient_id, appointment_id, template_id, template_name, recipient_phone, sent_by,
                 status, failure_reason)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-            [...base, exclusion === 'already_sent' ? 'already_sent' : 'skipped', WHATSAPP_EXCLUSION_LABELS[exclusion]],
+            [
+              ...base,
+              exclusion === 'already_sent' ? 'already_sent' : 'skipped',
+              WHATSAPP_EXCLUSION_LABELS[exclusion],
+            ],
           );
           skipped++;
           continue;
@@ -294,7 +355,11 @@ export class WhatsAppRemindersService {
           skipped++;
           continue;
         }
-        toSend.push({ sendId: ins.rows[0].id, phone: phone!, values: this.values(r, clinic, template.language_code) });
+        toSend.push({
+          sendId: ins.rows[0].id,
+          phone: phone!,
+          values: this.values(r, clinic, template.language_code),
+        });
       }
       return { batchId, template, toSend, skipped };
     });
@@ -312,9 +377,15 @@ export class WhatsAppRemindersService {
         action: 'whatsapp.reminders_sent',
         entityType: 'whatsapp_batch',
         entityId: claimed.batchId,
-        summary: `Sent ${outcome.accepted} WhatsApp reminder${outcome.accepted === 1 ? '' : 's'} for ${dto.date}` +
+        summary:
+          `Sent ${outcome.accepted} WhatsApp reminder${outcome.accepted === 1 ? '' : 's'} for ${dto.date}` +
           `${outcome.failed ? `, ${outcome.failed} failed` : ''}${claimed.skipped ? `, ${claimed.skipped} skipped` : ''}`,
-        metadata: { batchId: claimed.batchId, accepted: outcome.accepted, failed: outcome.failed, skipped: claimed.skipped },
+        metadata: {
+          batchId: claimed.batchId,
+          accepted: outcome.accepted,
+          failed: outcome.failed,
+          skipped: claimed.skipped,
+        },
       });
       return this.batch(client, claimed.batchId);
     });
@@ -342,16 +413,25 @@ export class WhatsAppRemindersService {
           to: item.phone,
           name: template.meta_template_name,
           language: template.language_code,
-          parameters: names.map((n) => ({ name: n, text: item.values[n as keyof WhatsAppValues] ?? '' })),
+          parameters: names.map((n) => ({
+            name: n,
+            text: item.values[n as keyof WhatsAppValues] ?? '',
+          })),
         });
         await this.finish(item.sendId, 'accepted', res.messageId, null);
         accepted++;
       } catch (err) {
-        const message = err instanceof GraphError ? err.message : 'The message could not be sent.';
+        const message =
+          err instanceof GraphError ? err.message : 'The message could not be sent.';
         if (err instanceof GraphError && err.kind === 'unreachable') {
           // No answer: the message may have gone out. It stays claimed, so
           // nobody sends it a second time by accident.
-          await this.finish(item.sendId, 'sending', null, 'WhatsApp did not answer; the message may have been delivered.');
+          await this.finish(
+            item.sendId,
+            'sending',
+            null,
+            'WhatsApp did not answer; the message may have been delivered.',
+          );
         } else {
           await this.finish(item.sendId, 'failed', null, message);
         }
@@ -370,7 +450,12 @@ export class WhatsAppRemindersService {
     return { accepted, failed };
   }
 
-  private finish(sendId: string, status: WhatsAppSendStatus, apiMessageId: string | null, reason: string | null) {
+  private finish(
+    sendId: string,
+    status: WhatsAppSendStatus,
+    apiMessageId: string | null,
+    reason: string | null,
+  ) {
     return this.tx((client) =>
       client.query(
         `UPDATE whatsapp_message_sends
@@ -480,6 +565,9 @@ export class WhatsAppRemindersService {
   }
 
   history(q: HistoryQueryDto) {
-    return this.tx(async (client) => ({ batches: await this.batches(client), sends: await this.sends(client, q) }));
+    return this.tx(async (client) => ({
+      batches: await this.batches(client),
+      sends: await this.sends(client, q),
+    }));
   }
 }

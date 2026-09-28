@@ -44,35 +44,35 @@ this file.
 
 ## Classification
 
-| Class | Count | Notes |
-|---|---|---|
-| Tracked, modified | 166 | +28,453 / −7,182 lines |
-| Tracked, deleted | 4 | the Shqip i18n layer: `LanguageToggle.tsx`, `lib/i18n/{en,sq,index}` |
-| Tracked, staged | 0 | |
-| Untracked | 214 | 210 text files, 4 binary (`.p12` test fixtures) |
-| Generated | 0 to be committed | `node_modules/`, every `dist/`, `.wrangler/` and `graphify-out/` are git-ignored (verified with `git check-ignore`) |
-| Secrets / configuration | 0 real secrets | see [Secrets check](#secrets-check) |
+| Class                   | Count             | Notes                                                                                                               |
+| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Tracked, modified       | 166               | +28,453 / −7,182 lines                                                                                              |
+| Tracked, deleted        | 4                 | the Shqip i18n layer: `LanguageToggle.tsx`, `lib/i18n/{en,sq,index}`                                                |
+| Tracked, staged         | 0                 |                                                                                                                     |
+| Untracked               | 214               | 210 text files, 4 binary (`.p12` test fixtures)                                                                     |
+| Generated               | 0 to be committed | `node_modules/`, every `dist/`, `.wrangler/` and `graphify-out/` are git-ignored (verified with `git check-ignore`) |
+| Secrets / configuration | 0 real secrets    | see [Secrets check](#secrets-check)                                                                                 |
 
 ## Migrations present
 
-| Migration | State before commit |
-|---|---|
-| `0001_baseline.js` | tracked, **modified** (removes a pg_dump `ALTER DEFAULT PRIVILEGES` line) |
-| `0002_inventory.js` | untracked |
-| `0003_clinical-roles.js` | untracked |
-| `0004_clinical-record-integrity.js` | untracked |
-| `0005_sessions-and-mfa.js` | untracked |
-| `0006_money-minor-units.js` | untracked |
-| `0007_inventory-lots.js` | untracked |
-| `0008_reminder-delivery.js` | untracked |
-| `0009_clinic-operations.js` | untracked |
-| `0010_fiscalization.js` | untracked |
-| `0011_platform-lifecycle.js` | untracked |
-| `0012_albanian-market.js` | untracked |
-| `0013_foundations.js` | untracked |
-| `0014_cash_drawer.js` | untracked |
-| `0015_checkout_documents.js` | untracked |
-| `0016_platform_billing.js` | untracked |
+| Migration                           | State before commit                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------- |
+| `0001_baseline.js`                  | tracked, **modified** (removes a pg_dump `ALTER DEFAULT PRIVILEGES` line) |
+| `0002_inventory.js`                 | untracked                                                                 |
+| `0003_clinical-roles.js`            | untracked                                                                 |
+| `0004_clinical-record-integrity.js` | untracked                                                                 |
+| `0005_sessions-and-mfa.js`          | untracked                                                                 |
+| `0006_money-minor-units.js`         | untracked                                                                 |
+| `0007_inventory-lots.js`            | untracked                                                                 |
+| `0008_reminder-delivery.js`         | untracked                                                                 |
+| `0009_clinic-operations.js`         | untracked                                                                 |
+| `0010_fiscalization.js`             | untracked                                                                 |
+| `0011_platform-lifecycle.js`        | untracked                                                                 |
+| `0012_albanian-market.js`           | untracked                                                                 |
+| `0013_foundations.js`               | untracked                                                                 |
+| `0014_cash_drawer.js`               | untracked                                                                 |
+| `0015_checkout_documents.js`        | untracked                                                                 |
+| `0016_platform_billing.js`          | untracked                                                                 |
 
 ## Integration suites present (27)
 
@@ -91,22 +91,22 @@ Untracked before the commit (14): `albanian-market`, `api-inventory`,
 Directories whose files were **entirely** untracked (the feature existed only
 on disk):
 
-| Directory | Files |
-|---|---|
-| `apps/api/src/modules/clinic/fiscalization` | 24 |
-| `apps/api/src/modules/clinic/inventory` | 10 |
-| `apps/api/src/modules/clinic/cash-drawer` | 7 |
-| `apps/api/src/core/mfa` | 7 |
-| `apps/api/src/modules/clinic/features` | 5 |
-| `apps/api/src/modules/platform/billing` | 5 |
-| `apps/api/src/modules/platform/activity` | 4 |
-| `apps/api/src/modules/platform/usage` | 4 |
-| `apps/api/src/core/sessions` | 3 |
-| `apps/api/src/core/money` | 2 |
-| `apps/api/src/core/pdf` | 2 |
-| `apps/api/src/core/entitlements` | 1 |
-| `apps/api/src/core/idempotency` | 1 |
-| `apps/api/src/core/request-context` | 1 |
+| Directory                                   | Files |
+| ------------------------------------------- | ----- |
+| `apps/api/src/modules/clinic/fiscalization` | 24    |
+| `apps/api/src/modules/clinic/inventory`     | 10    |
+| `apps/api/src/modules/clinic/cash-drawer`   | 7     |
+| `apps/api/src/core/mfa`                     | 7     |
+| `apps/api/src/modules/clinic/features`      | 5     |
+| `apps/api/src/modules/platform/billing`     | 5     |
+| `apps/api/src/modules/platform/activity`    | 4     |
+| `apps/api/src/modules/platform/usage`       | 4     |
+| `apps/api/src/core/sessions`                | 3     |
+| `apps/api/src/core/money`                   | 2     |
+| `apps/api/src/core/pdf`                     | 2     |
+| `apps/api/src/core/entitlements`            | 1     |
+| `apps/api/src/core/idempotency`             | 1     |
+| `apps/api/src/core/request-context`         | 1     |
 
 Partly untracked: `core/audit`, `core/config`, `clinic/billing`,
 `clinic/documents`, `clinic/finance`, `clinic/patients`, `clinic/reminders`,
@@ -124,20 +124,20 @@ Modified tracked files by area: `apps/api/src` 78, `apps/tenant-web/src` 41,
 Every file that would be committed (tracked + untracked, 552 paths) was
 scanned by name and by content. No values are reproduced here.
 
-| File | Key / item | Real credential? |
-|---|---|---|
-| `.env` | all keys | **not committed.** Git-ignored, and absent from all git history |
-| `.env.example` | `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`, `DATABASE_URL`, `APP_DATABASE_URL` | no. Documented local-dev defaults |
-| `.env.example` | every other key | no. Empty or placeholder |
-| `.env.production.example` | `DATABASE_URL`, `APP_DATABASE_URL` | no. Placeholder passwords on host `db.internal` |
-| `.env.production.example` | `CORS_ORIGINS`, `PUBLIC_API_URL` | no. Placeholder domain `dentalcare.com` |
-| `.github/workflows/ci.yml` | `DATABASE_URL`, `APP_DATABASE_URL` | no. Throwaway CI database credentials |
-| `apps/api/wrangler.jsonc` | Hyperdrive `id` ×2 | no. `REPLACE_WITH_…` placeholders |
-| `apps/api/wrangler.jsonc` | `localConnectionString` ×2 | no. The same local-dev defaults as `.env.example` |
-| `apps/api/wrangler.jsonc`, `docs/DEPLOYMENT.md`, `apps/api/scripts/check-cloudflare-bindings.mjs` | example Supabase connection strings | no. `PASSWORD` / `PROJECT` placeholders |
-| `apps/api/src/modules/clinic/auth/guards.spec.ts` | JWT `secret` | no. Test-only string |
-| `apps/api/src/modules/clinic/fiscalization/__fixtures__/*.pem`, `*.p12` (9 files) | test certificate, keys, PKCS#12 bundles | no. Self-signed `CN=Klinika Test, O=Test Clinic, serialNumber=L12345678A` (dummy NIPT) and `CN=Someone Else`. Every `.p12` opens with the spec's test password to that same test certificate |
-| `apps/api/src/core/mfa/secret-box.ts`, `apps/api/src/modules/platform/auth/platform-secret.ts` | source code | no. Code that handles secrets and contains none |
+| File                                                                                              | Key / item                                                                 | Real credential?                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.env`                                                                                            | all keys                                                                   | **not committed.** Git-ignored, and absent from all git history                                                                                                                              |
+| `.env.example`                                                                                    | `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`, `DATABASE_URL`, `APP_DATABASE_URL` | no. Documented local-dev defaults                                                                                                                                                            |
+| `.env.example`                                                                                    | every other key                                                            | no. Empty or placeholder                                                                                                                                                                     |
+| `.env.production.example`                                                                         | `DATABASE_URL`, `APP_DATABASE_URL`                                         | no. Placeholder passwords on host `db.internal`                                                                                                                                              |
+| `.env.production.example`                                                                         | `CORS_ORIGINS`, `PUBLIC_API_URL`                                           | no. Placeholder domain `dentalcare.com`                                                                                                                                                      |
+| `.github/workflows/ci.yml`                                                                        | `DATABASE_URL`, `APP_DATABASE_URL`                                         | no. Throwaway CI database credentials                                                                                                                                                        |
+| `apps/api/wrangler.jsonc`                                                                         | Hyperdrive `id` ×2                                                         | no. `REPLACE_WITH_…` placeholders                                                                                                                                                            |
+| `apps/api/wrangler.jsonc`                                                                         | `localConnectionString` ×2                                                 | no. The same local-dev defaults as `.env.example`                                                                                                                                            |
+| `apps/api/wrangler.jsonc`, `docs/DEPLOYMENT.md`, `apps/api/scripts/check-cloudflare-bindings.mjs` | example Supabase connection strings                                        | no. `PASSWORD` / `PROJECT` placeholders                                                                                                                                                      |
+| `apps/api/src/modules/clinic/auth/guards.spec.ts`                                                 | JWT `secret`                                                               | no. Test-only string                                                                                                                                                                         |
+| `apps/api/src/modules/clinic/fiscalization/__fixtures__/*.pem`, `*.p12` (9 files)                 | test certificate, keys, PKCS#12 bundles                                    | no. Self-signed `CN=Klinika Test, O=Test Clinic, serialNumber=L12345678A` (dummy NIPT) and `CN=Someone Else`. Every `.p12` opens with the spec's test password to that same test certificate |
+| `apps/api/src/core/mfa/secret-box.ts`, `apps/api/src/modules/platform/auth/platform-secret.ts`    | source code                                                                | no. Code that handles secrets and contains none                                                                                                                                              |
 
 Content patterns searched: AWS keys, Twilio `AC…`/`SK…` SIDs, Google OAuth
 client secrets and IDs, Google API keys, PEM private-key blocks outside the

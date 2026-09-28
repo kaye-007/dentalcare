@@ -39,7 +39,9 @@ export class SettingsController {
   /** Multer's own limit is the hard stop; the service refuses anything over 1 MB. */
   @Post('logo')
   @RequirePermissions('settings:manage')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 1024 * 1024 + 1, files: 1 } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 1024 * 1024 + 1, files: 1 } }),
+  )
   uploadLogo(
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user?: AccessTokenPayload,

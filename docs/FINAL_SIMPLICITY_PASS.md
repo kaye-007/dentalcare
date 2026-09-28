@@ -19,19 +19,19 @@ The visual identity (Ink & Ember) is unchanged. Every visual change is listed in
 
 ## 1. What was visually changed (the veto list)
 
-| #   | Change                                                                                                                                                                                                                                   | Where it lives                                                    |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| #   | Change                                                                                                                                                                                                                                                        | Where it lives                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | 1   | **Booking panel.** Three numbered steps (Patient, What for, When). A finished step folds to one line with **Change**. Free times are rows (time · dentist · room) grouped under Today, Tomorrow, Friday 2 October. Services are a list with length and price. | `AppointmentModal.tsx`; `.step--folded`, `.slot`, `.svcrow` in `polish.css` |
-| 2   | **Dentist chips** above the times: First available, then the patient's own dentist with a small "usual" tag, then the others.                                                                                                            | `.finder__who`, `.chip__tag`                                      |
-| 3   | **An existing visit** opens on one filled button, its next step (Check in, Start treatment, Complete or Reinstate), then **Move**, then **⋯** for the rest. The footer button is **Done**.                                                                 | `AppointmentModal.tsx` (`VisitPanel`), `.visit__do`               |
-| 4   | **Toasts can carry an action**, a pill-shaped **Undo** or **View** button on the dark toast.                                                                                                                                             | `ui.tsx` (`ToastView`), `.toast__action`                          |
-| 5   | **"Waiting 12 min"** on a checked-in patient's row (dashboard and calendar list), amber from 20 minutes. It replaces the plain "Checked in" pill.                                                                                          | `WaitingPill.tsx`                                                  |
-| 6   | **Search results come in groups**: patients, then Services, Actions and Go to, each with a small uppercase label. A patient's second line shows their next visit when they have one.                                                     | `AppLayout.tsx`, `.gsearch__group`                                |
-| 7   | **Patient header**: a **Move** link beside the next appointment. The **Clinical note** button is now **Note**.                                                                                                                           | `PatientProfilePage.tsx`, `.profile__move`                        |
-| 8   | **Financials opens on Today**: Collected · Spent · Net · Outstanding in one strip, above the period figures, which now carry a small period label.                                                                                        | `FinancialsPage.tsx`, `.fin__label`                               |
-| 9   | **Owner's "Collected today" tile** has a note: "5,000 L spent · 40,000 L net" (only when something was spent).                                                                                                                            | `DashboardPage.tsx`                                               |
-| 10  | **Severe-allergy banner**: its detail line is full strength. It was faded to 90 % and failed contrast.                                                                                                                                    | `polish.css`                                                      |
-| 11  | **Wording** (see §6): Book appointment, Add stock / Use stock, Pay / Paid.                                                                                                                                                              | `strings.ts`, `InvoiceDetailPage.tsx`                             |
+| 2   | **Dentist chips** above the times: First available, then the patient's own dentist with a small "usual" tag, then the others.                                                                                                                                 | `.finder__who`, `.chip__tag`                                                |
+| 3   | **An existing visit** opens on one filled button, its next step (Check in, Start treatment, Complete or Reinstate), then **Move**, then **⋯** for the rest. The footer button is **Done**.                                                                    | `AppointmentModal.tsx` (`VisitPanel`), `.visit__do`                         |
+| 4   | **Toasts can carry an action**, a pill-shaped **Undo** or **View** button on the dark toast.                                                                                                                                                                  | `ui.tsx` (`ToastView`), `.toast__action`                                    |
+| 5   | **"Waiting 12 min"** on a checked-in patient's row (dashboard and calendar list), amber from 20 minutes. It replaces the plain "Checked in" pill.                                                                                                             | `WaitingPill.tsx`                                                           |
+| 6   | **Search results come in groups**: patients, then Services, Actions and Go to, each with a small uppercase label. A patient's second line shows their next visit when they have one.                                                                          | `AppLayout.tsx`, `.gsearch__group`                                          |
+| 7   | **Patient header**: a **Move** link beside the next appointment. The **Clinical note** button is now **Note**.                                                                                                                                                | `PatientProfilePage.tsx`, `.profile__move`                                  |
+| 8   | **Financials opens on Today**: Collected · Spent · Net · Outstanding in one strip, above the period figures, which now carry a small period label.                                                                                                            | `FinancialsPage.tsx`, `.fin__label`                                         |
+| 9   | **Owner's "Collected today" tile** has a note: "5,000 L spent · 40,000 L net" (only when something was spent).                                                                                                                                                | `DashboardPage.tsx`                                                         |
+| 10  | **Severe-allergy banner**: its detail line is full strength. It was faded to 90 % and failed contrast.                                                                                                                                                        | `polish.css`                                                                |
+| 11  | **Wording** (see §6): Book appointment, Add stock / Use stock, Pay / Paid.                                                                                                                                                                                    | `strings.ts`, `InvoiceDetailPage.tsx`                                       |
 
 Nothing else about colour, type, glass, bloom, shadows or radii changed. The new styles are one section at the end of `polish.css` and use the existing tokens only.
 
@@ -115,34 +115,34 @@ Measured on the demo clinic at 390 px: dashboard → **Book appointment** → ty
 
 ## 4. Smart defaults (all editable)
 
-| Default                            | Before                           | Now                                                                          |
-| ---------------------------------- | -------------------------------- | ---------------------------------------------------------------------------- |
-| Visit length                       | Always 45 min in the panel       | The clinic's setting (Settings › Opening hours › Visit length); a service's own length once chosen |
-| Dentist                            | Unassigned, or the column clicked | The patient's own dentist (who saw them last); the column clicked still wins |
-| Room                               | The dentist's home room          | The same, now also inside the suggested times, with a free room when it is taken |
-| Day                                | Today                            | The day the calendar was showing, when it is later than today                |
-| Service → reason and length        | Filled from the catalogue        | Unchanged                                                                    |
+| Default                     | Before                            | Now                                                                                                |
+| --------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Visit length                | Always 45 min in the panel        | The clinic's setting (Settings › Opening hours › Visit length); a service's own length once chosen |
+| Dentist                     | Unassigned, or the column clicked | The patient's own dentist (who saw them last); the column clicked still wins                       |
+| Room                        | The dentist's home room           | The same, now also inside the suggested times, with a free room when it is taken                   |
+| Day                         | Today                             | The day the calendar was showing, when it is later than today                                      |
+| Service → reason and length | Filled from the catalogue         | Unchanged                                                                                          |
 
 ## 5. What became contextual (three layers)
 
-| Screen             | Level 1: now                                   | Level 2: in context                        | Level 3: still there, folded                 |
-| ------------------ | ---------------------------------------------- | ------------------------------------------ | -------------------------------------------- |
-| Booking            | Patient · What for · When · Book               | Change on each step; dentist chips; Choose a day; More times | Details: exact time, length, dentist, room, reason |
-| A visit            | Its next step                                  | Move                                       | ⋯ (No-show, Cancel, Complete, Undo check-in…), Details, History |
-| Patient            | Appointment · Note · Treatment · Payment       | Move beside the next visit                 | ⋯ (Archive), tabs                            |
-| Search             | Patients                                       | Invoices by number                         | Services, actions, pages                     |
-| Financials         | Today                                          | The chosen period                          | Charts and breakdowns below                  |
+| Screen     | Level 1: now                             | Level 2: in context                                          | Level 3: still there, folded                                    |
+| ---------- | ---------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------- |
+| Booking    | Patient · What for · When · Book         | Change on each step; dentist chips; Choose a day; More times | Details: exact time, length, dentist, room, reason              |
+| A visit    | Its next step                            | Move                                                         | ⋯ (No-show, Cancel, Complete, Undo check-in…), Details, History |
+| Patient    | Appointment · Note · Treatment · Payment | Move beside the next visit                                   | ⋯ (Archive), tabs                                               |
+| Search     | Patients                                 | Invoices by number                                           | Services, actions, pages                                        |
+| Financials | Today                                    | The chosen period                                            | Charts and breakdowns below                                     |
 
 ## 6. One action language
 
-| Action                  | Before                                                                    | Now                          |
-| ----------------------- | ------------------------------------------------------------------------- | ---------------------------- |
-| Create an appointment   | "New appointment", "Book appointment", "Book an appointment", "Appointment" | **Book appointment** (and "Appointment" beside the patient's other actions) |
-| Status steps            | "→ Mark checked in", "Mark in progress", "Mark completed", "Mark scheduled" | **Check in**, **Start treatment**, **Complete**, **Reinstate**, **Undo check-in** |
-| Reschedule              | Edit the form                                                             | **Move**                      |
-| Take money              | "Take payment" → "Take 3,500 L" → "Payment received"                     | **Pay** → **Pay 3,500 L** → **Paid** |
-| Stock                   | "Stock in" / "Stock out"                                                  | **Add stock** / **Use stock**  |
-| Close a panel that saves itself | "Close"                                                           | **Done**                      |
+| Action                          | Before                                                                      | Now                                                                               |
+| ------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Create an appointment           | "New appointment", "Book appointment", "Book an appointment", "Appointment" | **Book appointment** (and "Appointment" beside the patient's other actions)       |
+| Status steps                    | "→ Mark checked in", "Mark in progress", "Mark completed", "Mark scheduled" | **Check in**, **Start treatment**, **Complete**, **Reinstate**, **Undo check-in** |
+| Reschedule                      | Edit the form                                                               | **Move**                                                                          |
+| Take money                      | "Take payment" → "Take 3,500 L" → "Payment received"                        | **Pay** → **Pay 3,500 L** → **Paid**                                              |
+| Stock                           | "Stock in" / "Stock out"                                                    | **Add stock** / **Use stock**                                                     |
+| Close a panel that saves itself | "Close"                                                                     | **Done**                                                                          |
 
 **Button discipline:**
 
@@ -199,12 +199,12 @@ Services and pages match the start of a word, so "ka" finds "Trajtim kanali", no
 
 ## 10. Undo instead of "Are you sure?"
 
-| Action                            | Undo does                                                                                     |
-| --------------------------------- | --------------------------------------------------------------------------------------------- |
-| Check in (dashboard, calendar list, visit) | Back to Scheduled                                                                 |
-| No-show, Cancel (from Scheduled)   | Back to Scheduled; the database re-checks that the slot is still free                         |
-| No-show, Cancel (from Checked in)  | Back to Scheduled, then Checked in                                                           |
-| Move                               | Back to the old time, dentist and room                                                        |
+| Action                                     | Undo does                                                             |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| Check in (dashboard, calendar list, visit) | Back to Scheduled                                                     |
+| No-show, Cancel (from Scheduled)           | Back to Scheduled; the database re-checks that the slot is still free |
+| No-show, Cancel (from Checked in)          | Back to Scheduled, then Checked in                                    |
+| Move                                       | Back to the old time, dentist and room                                |
 
 A toast with an action stays 8 seconds. It waits while the pointer or keyboard focus is on it.
 
@@ -300,18 +300,18 @@ Everything ran against the isolated stack:
 
 Your API (:3000) and database (:5432) were not touched.
 
-| Check                      | Result                                                                                                                                                                                                                            |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Typecheck (all workspaces) | pass                                                                                                                                                                                                                              |
-| Lint                       | pass, no warnings                                                                                                                                                                                                                 |
-| Unit tests                 | **739 passed** (46 suites), was 722. New: 16 for find-times, 1 for undoing a check-in                                                                                                                                              |
-| Integration tests          | **504 passed** (34 suites), was 492. New: `find-times.itest.ts` (10), and 2 search cases (accents, word order). Run with `TZ=Europe/Tirane`, as before                                                                             |
+| Check                      | Result                                                                                                                                                                                                               |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Typecheck (all workspaces) | pass                                                                                                                                                                                                                 |
+| Lint                       | pass, no warnings                                                                                                                                                                                                    |
+| Unit tests                 | **739 passed** (46 suites), was 722. New: 16 for find-times, 1 for undoing a check-in                                                                                                                                |
+| Integration tests          | **504 passed** (34 suites), was 492. New: `find-times.itest.ts` (10), and 2 search cases (accents, word order). Run with `TZ=Europe/Tirane`, as before                                                               |
 | Build                      | pass. Main chunk 338.8 kB (106.8 kB gzip), up 5.8 kB (search, the booking entry point, toast actions). The booking panel is its own 30.7 kB chunk (10.3 kB gzip), shared by the calendar and every other entry point |
-| Cloudflare dry-run         | pass. API 3,631.6 KiB / 946.5 KiB gzip (up 9 KiB); tenant-web and admin-web 0.33 KiB each                                                                                                                                          |
-| Format gate                | 46 files, was 44. See the note below the table                                                                                                                                                                                    |
-| Page overflow              | **0** of 270: owner 19 routes × 8 widths (320, 375, 390, 414, 768, 1024, 1280, 1440); reception 11 × 8; dentist 6 × 5                                                                                                             |
-| Panel overflow             | **0** of 48: 6 booking and visit states × 8 widths                                                                                                                                                                                |
-| axe WCAG 2 A/AA            | **0** after the one fix (§13)                                                                                                                                                                                                     |
+| Cloudflare dry-run         | pass. API 3,631.6 KiB / 946.5 KiB gzip (up 9 KiB); tenant-web and admin-web 0.33 KiB each                                                                                                                            |
+| Format gate                | 46 files, was 44. See the note below the table                                                                                                                                                                       |
+| Page overflow              | **0** of 270: owner 19 routes × 8 widths (320, 375, 390, 414, 768, 1024, 1280, 1440); reception 11 × 8; dentist 6 × 5                                                                                                |
+| Panel overflow             | **0** of 48: 6 booking and visit states × 8 widths                                                                                                                                                                   |
+| axe WCAG 2 A/AA            | **0** after the one fix (§13)                                                                                                                                                                                        |
 
 **Format gate note.** Every new file, and every file Prettier accepted before this pass, is Prettier-clean. `AppointmentModal.tsx` left the list. The three that joined it are hand-wrapped API files that Prettier already rejected at `HEAD`, and they now carry small edits in the surrounding style:
 

@@ -7,7 +7,11 @@ import { StorageService } from '@/core/storage/storage.service';
 import { fiscalRecordFor } from '@/modules/clinic/fiscalization/fiscal.service';
 import { renderInvoicePdf, type InvoicePdfData } from './invoice-pdf';
 
-const METHOD_LABEL: Record<string, string> = { cash: 'Cash', card: 'Card', bank: 'Bank transfer' };
+const METHOD_LABEL: Record<string, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  bank: 'Bank transfer',
+};
 
 /** The QR code's modules, medium error correction, as the PDF writer draws them. */
 export function qrModules(text: string): boolean[][] {
@@ -15,7 +19,9 @@ export function qrModules(text: string): boolean[][] {
   qr.addData(text);
   qr.make();
   const n = qr.getModuleCount();
-  return Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => qr.isDark(r, c)));
+  return Array.from({ length: n }, (_, r) =>
+    Array.from({ length: n }, (_, c) => qr.isDark(r, c)),
+  );
 }
 
 @Injectable()
@@ -69,14 +75,24 @@ export class InvoicePdfService {
             [invoiceId],
           )
         : { rows: [] };
-      return { i, items, payments, clinic: clinicRows[0], fiscal, cashierName: cashier[0]?.full_name ?? null };
+      return {
+        i,
+        items,
+        payments,
+        clinic: clinicRows[0],
+        fiscal,
+        cashierName: cashier[0]?.full_name ?? null,
+      };
     });
 
     // Invoices issued before per-line totals existed carry zeros there; the
     // lines are the truth.
     const lineGross = data.items.reduce((s, l) => s + l.quantity * l.unit_price, 0);
     const lineDiscount = data.items.reduce((s, l) => s + l.discount_amount, 0);
-    const lineTax = data.items.reduce((s, l) => s + (l.amount - (l.quantity * l.unit_price - l.discount_amount)), 0);
+    const lineTax = data.items.reduce(
+      (s, l) => s + (l.amount - (l.quantity * l.unit_price - l.discount_amount)),
+      0,
+    );
 
     const logo =
       data.clinic?.logo_storage_key && this.storage.isConfigured

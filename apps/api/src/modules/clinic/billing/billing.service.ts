@@ -1,8 +1,22 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
-import { AGEING_BUCKETS, LEDGER_SIGN, type AgeingBucketKey, type LedgerEntryType, bucketFor, calculateInvoice, calculateInvoiceLine, planLinesToInvoiceLines } from '@/modules/clinic/finance';
+import {
+  AGEING_BUCKETS,
+  LEDGER_SIGN,
+  type AgeingBucketKey,
+  type LedgerEntryType,
+  bucketFor,
+  calculateInvoice,
+  calculateInvoiceLine,
+  planLinesToInvoiceLines,
+} from '@/modules/clinic/finance';
 import { ClinicAuditService, ClinicAuditActor } from '@/core/audit/clinic-audit.service';
 import { moneyText } from '@/core/money/clinic-currency';
 import { nextInvoiceNumber } from '@/core/money/invoice-number';
@@ -48,7 +62,9 @@ export class BillingService {
    */
   private async billingConfig(client: PoolClient): Promise<ClinicBilling> {
     const { rows } = await client.query<{
-      currency: string; vat_rate_bp: number; payment_terms_days: number;
+      currency: string;
+      vat_rate_bp: number;
+      payment_terms_days: number;
     }>('SELECT currency, vat_rate_bp, payment_terms_days FROM clinic_settings LIMIT 1');
     return {
       currency: rows[0]?.currency ?? 'EUR',
@@ -71,13 +87,20 @@ export class BillingService {
    *  - VAT is taken per line from the treatment's taxable flag, so exempt and
    *    taxable work can sit on one invoice
    */
-  async generateFromPlan(planId: string, dto: GenerateInvoiceDto, actor: ClinicAuditActor) {
+  async generateFromPlan(
+    planId: string,
+    dto: GenerateInvoiceDto,
+    actor: ClinicAuditActor,
+  ) {
     const tenantId = this.tenant.getRequiredTenantId();
     const completedOnly = dto.completedOnly !== false;
 
     return this.db.withTenant(tenantId, async (client) => {
       const { rows: planRows } = await client.query<{
-        id: string; patient_id: string; title: string; status: string;
+        id: string;
+        patient_id: string;
+        title: string;
+        status: string;
         discount_amount: number;
       }>(
         `SELECT id, patient_id, title, status, discount_amount
@@ -95,10 +118,17 @@ export class BillingService {
       // Candidate lines: not cancelled, not already billed, and — by default —
       // only work that has actually been done.
       const { rows: items } = await client.query<{
-        id: string; description: string; quantity: number; unit_fee: number;
-        discount_amount: number; tooth: number | null; status: string;
-        treatment_id: string | null; procedure_code_id: string | null;
-        treatment_taxable: boolean | null; code_taxable: boolean | null;
+        id: string;
+        description: string;
+        quantity: number;
+        unit_fee: number;
+        discount_amount: number;
+        tooth: number | null;
+        status: string;
+        treatment_id: string | null;
+        procedure_code_id: string | null;
+        treatment_taxable: boolean | null;
+        code_taxable: boolean | null;
       }>(
         `SELECT i.id, i.description, i.quantity, i.unit_fee, i.discount_amount,
                 i.tooth, i.status, i.treatment_id, i.procedure_code_id,
@@ -133,8 +163,7 @@ export class BillingService {
         quantity: i.quantity,
         unitFee: i.unit_fee,
         discountAmount: i.discount_amount,
-        taxRateBp:
-          i.treatment_taxable || i.code_taxable ? config.vatRateBp : 0,
+        taxRateBp: i.treatment_taxable || i.code_taxable ? config.vatRateBp : 0,
       }));
 
       /**
@@ -151,7 +180,8 @@ export class BillingService {
       );
       const planNetTotal = Number(allLines[0]?.net ?? 0);
       const billingNet = planLines.reduce(
-        (s, l) => s + Math.max(0, l.unitFee * l.quantity - l.discountAmount), 0,
+        (s, l) => s + Math.max(0, l.unitFee * l.quantity - l.discountAmount),
+        0,
       );
       const applicableDiscount =
         planNetTotal > 0
@@ -184,11 +214,21 @@ export class BillingService {
                      $14,$15)
              RETURNING id`,
             [
-              tenantId, plan.patient_id, seq, number, planId,
-              totals.subtotal, totals.discountAmount, totals.taxAmount, totals.total,
-              config.currency, config.vatRateBp,
-              dto.issuedAt ?? null, String(config.paymentTermsDays),
-              dto.notes ?? `Generated from treatment plan: ${plan.title}`, actor.userId,
+              tenantId,
+              plan.patient_id,
+              seq,
+              number,
+              planId,
+              totals.subtotal,
+              totals.discountAmount,
+              totals.taxAmount,
+              totals.total,
+              config.currency,
+              config.vatRateBp,
+              dto.issuedAt ?? null,
+              String(config.paymentTermsDays),
+              dto.notes ?? `Generated from treatment plan: ${plan.title}`,
+              actor.userId,
             ],
           );
           const invoiceId = invRows[0]!.id;
@@ -204,9 +244,20 @@ export class BillingService {
                   tax_rate_bp, tax_amount, amount, sort_order)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
               [
-                tenantId, invoiceId, item.treatment_id, item.procedure_code_id, item.id,
-                item.tooth, item.description, input.quantity, input.unitPrice,
-                input.discountAmount, input.taxRateBp, cost.taxAmount, cost.total, idx,
+                tenantId,
+                invoiceId,
+                item.treatment_id,
+                item.procedure_code_id,
+                item.id,
+                item.tooth,
+                item.description,
+                input.quantity,
+                input.unitPrice,
+                input.discountAmount,
+                input.taxRateBp,
+                cost.taxAmount,
+                cost.total,
+                idx,
               ],
             );
           }
@@ -217,8 +268,14 @@ export class BillingService {
                 description, occurred_on, created_by)
              VALUES ($1,$2,$3,'charge',$4,$5,$6, coalesce($7::date, CURRENT_DATE), $8)`,
             [
-              tenantId, plan.patient_id, invoiceId, totals.total, config.currency,
-              `Invoice ${number} — ${plan.title}`, dto.issuedAt ?? null, actor.userId,
+              tenantId,
+              plan.patient_id,
+              invoiceId,
+              totals.total,
+              config.currency,
+              `Invoice ${number} — ${plan.title}`,
+              dto.issuedAt ?? null,
+              actor.userId,
             ],
           );
 
@@ -261,11 +318,23 @@ export class BillingService {
 
   private async getInvoice(client: PoolClient, id: string) {
     const { rows } = await client.query<{
-      id: string; invoice_number: string; patient_id: string; patient_name: string;
-      treatment_plan_id: string | null; plan_title: string | null;
-      status: string; subtotal: number; discount_amount: number;
-      tax_amount: number; total: number; currency: string; vat_rate_bp: number;
-      issued_at: string; due_on: string | null; notes: string | null; paid: string;
+      id: string;
+      invoice_number: string;
+      patient_id: string;
+      patient_name: string;
+      treatment_plan_id: string | null;
+      plan_title: string | null;
+      status: string;
+      subtotal: number;
+      discount_amount: number;
+      tax_amount: number;
+      total: number;
+      currency: string;
+      vat_rate_bp: number;
+      issued_at: string;
+      due_on: string | null;
+      notes: string | null;
+      paid: string;
     }>(
       `SELECT i.id, i.invoice_number, i.patient_id,
               (p.first_name || ' ' || p.last_name) AS patient_name,
@@ -284,9 +353,16 @@ export class BillingService {
     const inv = rows[0]!;
 
     const { rows: lines } = await client.query<{
-      id: string; description: string; quantity: number; unit_price: number;
-      discount_amount: number; tax_rate_bp: number; tax_amount: number;
-      amount: number; tooth: number | null; code: string | null;
+      id: string;
+      description: string;
+      quantity: number;
+      unit_price: number;
+      discount_amount: number;
+      tax_rate_bp: number;
+      tax_amount: number;
+      amount: number;
+      tooth: number | null;
+      code: string | null;
     }>(
       `SELECT l.id, l.description, l.quantity, l.unit_price, l.discount_amount,
               l.tax_rate_bp, l.tax_amount, l.amount, l.tooth, c.code
@@ -335,15 +411,22 @@ export class BillingService {
 
   async ledgerFor(patientId: string) {
     return this.tx(async (client) => {
-      const { rowCount } = await client.query(
-        'SELECT 1 FROM patients WHERE id = $1', [patientId],
-      );
+      const { rowCount } = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+        patientId,
+      ]);
       if (!rowCount) throw new NotFoundException('Patient not found');
 
       const { rows } = await client.query<{
-        id: string; entry_type: LedgerEntryType; amount: number; currency: string;
-        description: string; occurred_on: string; invoice_id: string | null;
-        invoice_number: string | null; actor_name: string | null; created_at: string;
+        id: string;
+        entry_type: LedgerEntryType;
+        amount: number;
+        currency: string;
+        description: string;
+        occurred_on: string;
+        invoice_id: string | null;
+        invoice_number: string | null;
+        actor_name: string | null;
+        created_at: string;
       }>(
         `SELECT l.id, l.entry_type, l.amount, l.currency, l.description,
                 l.occurred_on::text AS occurred_on, l.invoice_id,
@@ -378,7 +461,9 @@ export class BillingService {
       });
 
       const charged = rows.filter((r) => r.amount > 0).reduce((s, r) => s + r.amount, 0);
-      const credited = rows.filter((r) => r.amount < 0).reduce((s, r) => s + -r.amount, 0);
+      const credited = rows
+        .filter((r) => r.amount < 0)
+        .reduce((s, r) => s + -r.amount, 0);
 
       return {
         patientId,
@@ -407,9 +492,9 @@ export class BillingService {
     }
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
-      const { rowCount } = await client.query(
-        'SELECT 1 FROM patients WHERE id = $1', [patientId],
-      );
+      const { rowCount } = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+        patientId,
+      ]);
       if (!rowCount) throw new NotFoundException('Patient not found');
 
       const config = await this.billingConfig(client);
@@ -421,8 +506,14 @@ export class BillingService {
             occurred_on, created_by)
          VALUES ($1,$2,$3,$4,$5,$6, coalesce($7::date, CURRENT_DATE), $8)`,
         [
-          tenantId, patientId, dto.entryType, signed, config.currency,
-          dto.description.trim(), dto.occurredOn ?? null, actor.userId,
+          tenantId,
+          patientId,
+          dto.entryType,
+          signed,
+          config.currency,
+          dto.description.trim(),
+          dto.occurredOn ?? null,
+          actor.userId,
         ],
       );
       await this.audit.record(client, actor, {
@@ -451,9 +542,16 @@ export class BillingService {
   async accountsReceivable() {
     return this.tx(async (client) => {
       const { rows } = await client.query<{
-        id: string; invoice_number: string; patient_id: string; patient_name: string;
-        total: number; paid: string; issued_at: string; due_on: string | null;
-        days_outstanding: number; currency: string;
+        id: string;
+        invoice_number: string;
+        patient_id: string;
+        patient_name: string;
+        total: number;
+        paid: string;
+        issued_at: string;
+        due_on: string | null;
+        days_outstanding: number;
+        currency: string;
       }>(
         `SELECT i.id, i.invoice_number, i.patient_id,
                 (p.first_name || ' ' || p.last_name) AS patient_name,
@@ -519,7 +617,10 @@ export class BillingService {
   async patientBalances() {
     return this.tx(async (client) => {
       const { rows } = await client.query<{
-        patient_id: string; patient_name: string; balance: string; last_activity: string;
+        patient_id: string;
+        patient_name: string;
+        balance: string;
+        last_activity: string;
       }>(
         `SELECT l.patient_id,
                 (p.first_name || ' ' || p.last_name) AS patient_name,

@@ -4,7 +4,14 @@ import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditActor, ClinicAuditService } from '@/core/audit/clinic-audit.service';
 import { rethrowRecordLocked, withdrawEntry } from '@/core/audit/clinical-record';
-import { CreateAllergyDto, CreateConditionDto, CreateMedicationDto, UpdateAllergyDto, UpdateConditionDto, UpdateMedicationDto } from './dto/patient-history.dto';
+import {
+  CreateAllergyDto,
+  CreateConditionDto,
+  CreateMedicationDto,
+  UpdateAllergyDto,
+  UpdateConditionDto,
+  UpdateMedicationDto,
+} from './dto/patient-history.dto';
 
 /* ═════════════════════════ service ═════════════════════════ */
 
@@ -21,23 +28,40 @@ import { CreateAllergyDto, CreateConditionDto, CreateMedicationDto, UpdateAllerg
  */
 
 interface AllergyRow {
-  id: string; substance: string; reaction: string | null;
-  severity: 'mild' | 'moderate' | 'severe'; notes: string | null;
-  recorded_by_name: string | null; created_at: string; updated_at: string;
+  id: string;
+  substance: string;
+  reaction: string | null;
+  severity: 'mild' | 'moderate' | 'severe';
+  notes: string | null;
+  recorded_by_name: string | null;
+  created_at: string;
+  updated_at: string;
   patient_id?: string;
 }
 
 interface ConditionRow {
-  id: string; name: string; status: 'active' | 'resolved';
-  diagnosed_on: string | null; notes: string | null;
-  recorded_by_name: string | null; created_at: string; updated_at: string;
+  id: string;
+  name: string;
+  status: 'active' | 'resolved';
+  diagnosed_on: string | null;
+  notes: string | null;
+  recorded_by_name: string | null;
+  created_at: string;
+  updated_at: string;
   patient_id?: string;
 }
 
 interface MedicationRow {
-  id: string; name: string; dosage: string | null; frequency: string | null;
-  started_on: string | null; ended_on: string | null; notes: string | null;
-  recorded_by_name: string | null; created_at: string; updated_at: string;
+  id: string;
+  name: string;
+  dosage: string | null;
+  frequency: string | null;
+  started_on: string | null;
+  ended_on: string | null;
+  notes: string | null;
+  recorded_by_name: string | null;
+  created_at: string;
+  updated_at: string;
   patient_id?: string;
 }
 
@@ -66,10 +90,9 @@ export class PatientHistoryService {
    * patient exists, so a bad id is a clean 404 instead of a foreign-key error.
    */
   private async assertPatient(client: PoolClient, patientId: string) {
-    const { rowCount } = await client.query(
-      'SELECT 1 FROM patients WHERE id = $1',
-      [patientId],
-    );
+    const { rowCount } = await client.query('SELECT 1 FROM patients WHERE id = $1', [
+      patientId,
+    ]);
     if (!rowCount) throw new NotFoundException('Patient not found');
   }
 
@@ -115,8 +138,15 @@ export class PatientHistoryService {
            VALUES ($1,$2,btrim($3),$4,$5,$6,$7)
            RETURNING id, substance, reaction, severity, notes,
                      NULL::text AS recorded_by_name, created_at, updated_at`,
-          [tenantId, patientId, dto.substance, dto.reaction ?? null,
-           dto.severity, dto.notes ?? null, actor.userId],
+          [
+            tenantId,
+            patientId,
+            dto.substance,
+            dto.reaction ?? null,
+            dto.severity,
+            dto.notes ?? null,
+            actor.userId,
+          ],
         );
         row = rows[0]!;
       } catch (err) {
@@ -184,15 +214,17 @@ export class PatientHistoryService {
 
   async withdrawAllergy(id: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      await withdrawEntry<{ patient_id: string; entered_in_error_at: unknown; substance: string }>(
-        client, this.audit, actor, {
-          table: 'patient_allergies',
-          id,
-          reason,
-          action: 'clinical.history_withdrawn',
-          describe: (r) => `the allergy to ${r.substance}`,
-        },
-      );
+      await withdrawEntry<{
+        patient_id: string;
+        entered_in_error_at: unknown;
+        substance: string;
+      }>(client, this.audit, actor, {
+        table: 'patient_allergies',
+        id,
+        reason,
+        action: 'clinical.history_withdrawn',
+        describe: (r) => `the allergy to ${r.substance}`,
+      });
       return { withdrawn: true as const };
     });
   }
@@ -215,7 +247,11 @@ export class PatientHistoryService {
     });
   }
 
-  async createCondition(patientId: string, dto: CreateConditionDto, actor: ClinicAuditActor) {
+  async createCondition(
+    patientId: string,
+    dto: CreateConditionDto,
+    actor: ClinicAuditActor,
+  ) {
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       const patient = await this.patientName(client, patientId);
@@ -225,8 +261,15 @@ export class PatientHistoryService {
          VALUES ($1,$2,btrim($3),$4,$5,$6,$7)
          RETURNING id, name, status, diagnosed_on, notes,
                    NULL::text AS recorded_by_name, created_at, updated_at`,
-        [tenantId, patientId, dto.name, dto.status ?? 'active',
-         dto.diagnosedOn || null, dto.notes ?? null, actor.userId],
+        [
+          tenantId,
+          patientId,
+          dto.name,
+          dto.status ?? 'active',
+          dto.diagnosedOn || null,
+          dto.notes ?? null,
+          actor.userId,
+        ],
       );
       const row = rows[0]!;
       await this.audit.record(client, actor, {
@@ -284,15 +327,17 @@ export class PatientHistoryService {
 
   async withdrawCondition(id: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      await withdrawEntry<{ patient_id: string; entered_in_error_at: unknown; name: string }>(
-        client, this.audit, actor, {
-          table: 'patient_conditions',
-          id,
-          reason,
-          action: 'clinical.history_withdrawn',
-          describe: (r) => `the condition "${r.name}"`,
-        },
-      );
+      await withdrawEntry<{
+        patient_id: string;
+        entered_in_error_at: unknown;
+        name: string;
+      }>(client, this.audit, actor, {
+        table: 'patient_conditions',
+        id,
+        reason,
+        action: 'clinical.history_withdrawn',
+        describe: (r) => `the condition "${r.name}"`,
+      });
       return { withdrawn: true as const };
     });
   }
@@ -315,7 +360,11 @@ export class PatientHistoryService {
     });
   }
 
-  async createMedication(patientId: string, dto: CreateMedicationDto, actor: ClinicAuditActor) {
+  async createMedication(
+    patientId: string,
+    dto: CreateMedicationDto,
+    actor: ClinicAuditActor,
+  ) {
     assertDateOrder(dto.startedOn, dto.endedOn);
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
@@ -326,8 +375,17 @@ export class PatientHistoryService {
          VALUES ($1,$2,btrim($3),$4,$5,$6,$7,$8,$9)
          RETURNING id, name, dosage, frequency, started_on, ended_on, notes,
                    NULL::text AS recorded_by_name, created_at, updated_at`,
-        [tenantId, patientId, dto.name, dto.dosage ?? null, dto.frequency ?? null,
-         dto.startedOn || null, dto.endedOn || null, dto.notes ?? null, actor.userId],
+        [
+          tenantId,
+          patientId,
+          dto.name,
+          dto.dosage ?? null,
+          dto.frequency ?? null,
+          dto.startedOn || null,
+          dto.endedOn || null,
+          dto.notes ?? null,
+          actor.userId,
+        ],
       );
       const row = rows[0]!;
       await this.audit.record(client, actor, {
@@ -360,7 +418,8 @@ export class PatientHistoryService {
       // Validate the resulting row, not just the patch — a lone endedOn must
       // still be checked against the startedOn already stored.
       const { rows: existing } = await client.query<{
-        started_on: string | null; ended_on: string | null;
+        started_on: string | null;
+        ended_on: string | null;
       }>(
         `SELECT started_on, ended_on FROM patient_medications
           WHERE id = $1 AND entered_in_error_at IS NULL`,
@@ -402,15 +461,17 @@ export class PatientHistoryService {
 
   async withdrawMedication(id: string, reason: string, actor: ClinicAuditActor) {
     return this.tx(async (client) => {
-      await withdrawEntry<{ patient_id: string; entered_in_error_at: unknown; name: string }>(
-        client, this.audit, actor, {
-          table: 'patient_medications',
-          id,
-          reason,
-          action: 'clinical.history_withdrawn',
-          describe: (r) => `the medication ${r.name}`,
-        },
-      );
+      await withdrawEntry<{
+        patient_id: string;
+        entered_in_error_at: unknown;
+        name: string;
+      }>(client, this.audit, actor, {
+        table: 'patient_medications',
+        id,
+        reason,
+        action: 'clinical.history_withdrawn',
+        describe: (r) => `the medication ${r.name}`,
+      });
       return { withdrawn: true as const };
     });
   }

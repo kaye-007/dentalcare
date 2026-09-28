@@ -48,25 +48,37 @@ export class CreateTenantDto {
 
   /* ── the clinic's first settings, so the owner signs in to a working clinic ── */
 
-  @IsOptional() @IsIn(CURRENCIES as unknown as string[])
+  @IsOptional()
+  @IsIn(CURRENCIES as unknown as string[])
   currency?: CurrencyCode;
 
-  @IsOptional() @IsString() @MaxLength(64)
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
   timezone?: string;
 
-  @IsOptional() @Matches(/^[1-9]\d{0,2}$/, { message: 'Country code without + or 00, e.g. 355' })
+  @IsOptional()
+  @Matches(/^[1-9]\d{0,2}$/, { message: 'Country code without + or 00, e.g. 355' })
   phoneCountryCode?: string;
 
-  @IsOptional() @IsString() @MaxLength(40)
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
   phone?: string;
 
-  @IsOptional() @IsString() @MaxLength(200)
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
   address?: string;
 
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
   city?: string;
 
-  @IsOptional() @ValidateIf((_, v) => v !== '') @Matches(/^[A-Za-z0-9 -]{5,20}$/, { message: 'Enter the NIPT as printed' })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== '')
+  @Matches(/^[A-Za-z0-9 -]{5,20}$/, { message: 'Enter the NIPT as printed' })
   taxNumber?: string;
 }
 
@@ -112,6 +124,8 @@ export class DeleteTenantDto {
   @IsString()
   confirmSubdomain!: string;
 
-  @IsString() @MinLength(3) @MaxLength(300)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
   reason!: string;
 }

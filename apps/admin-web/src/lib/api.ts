@@ -15,7 +15,10 @@ export const token = {
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -82,7 +85,7 @@ async function req<T>(path: string, options: RequestInit = {}, auth = true): Pro
     let message = res.statusText;
     try {
       const b = await res.json();
-      message = Array.isArray(b.message) ? b.message.join(', ') : b.message ?? message;
+      message = Array.isArray(b.message) ? b.message.join(', ') : (b.message ?? message);
     } catch {
       /* keep */
     }
@@ -137,7 +140,8 @@ export type TenantStatus = 'active' | 'suspended' | 'archived' | 'deleted';
  * production served dentalcare.com.
  */
 export const TENANT_BASE_DOMAIN =
-  (import.meta.env.VITE_TENANT_BASE_DOMAIN as string | undefined)?.trim() || 'dentalcare.com';
+  (import.meta.env.VITE_TENANT_BASE_DOMAIN as string | undefined)?.trim() ||
+  'dentalcare.com';
 
 export function clinicHost(subdomain: string): string {
   return `${subdomain}.${TENANT_BASE_DOMAIN}`;
@@ -202,7 +206,11 @@ export function toDay(iso: string): Date {
 /** Plan prices are minor units of euro. */
 export function formatEuro(minor: number | null | undefined): string {
   if (minor === null || minor === undefined) return '—';
-  return new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: minor % 100 ? 2 : 0 }).format(minor / 100);
+  return new Intl.NumberFormat('en-IE', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: minor % 100 ? 2 : 0,
+  }).format(minor / 100);
 }
 export interface AuditRow {
   id: string;
@@ -262,9 +270,17 @@ export function trialState(trialEndsAt: string | null): TrialState {
   // left" rather than "0" — a countdown that hits zero a day early looks
   // broken to the person watching it.
   if (diff >= 0) {
-    return { kind: 'running', endsAt: trialEndsAt, daysLeft: Math.ceil(diff / 86_400_000) };
+    return {
+      kind: 'running',
+      endsAt: trialEndsAt,
+      daysLeft: Math.ceil(diff / 86_400_000),
+    };
   }
-  return { kind: 'expired', endsAt: trialEndsAt, daysAgo: Math.floor(-diff / 86_400_000) };
+  return {
+    kind: 'expired',
+    endsAt: trialEndsAt,
+    daysAgo: Math.floor(-diff / 86_400_000),
+  };
 }
 
 export const api = {
@@ -318,12 +334,17 @@ export const api = {
       body: JSON.stringify({ subdomain }),
     }),
   deleteTenant: (id: string, confirmSubdomain: string, reason: string) =>
-    req<{ id: string; status: 'deleted'; purgeAfter: string }>(`/platform/tenants/${id}/delete`, {
-      method: 'POST',
-      body: JSON.stringify({ confirmSubdomain, reason }),
-    }),
+    req<{ id: string; status: 'deleted'; purgeAfter: string }>(
+      `/platform/tenants/${id}/delete`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ confirmSubdomain, reason }),
+      },
+    ),
   restoreTenant: (id: string) =>
-    req<{ id: string; status: 'suspended' }>(`/platform/tenants/${id}/restore`, { method: 'POST' }),
+    req<{ id: string; status: 'suspended' }>(`/platform/tenants/${id}/restore`, {
+      method: 'POST',
+    }),
   /** A JSON snapshot of the clinic's data, saved by the browser. Audited on the server. */
   exportTenant: async (id: string, fallbackName: string) => {
     const send = () => {
@@ -343,13 +364,17 @@ export const api = {
       let message = res.statusText;
       try {
         const b = await res.json();
-        message = Array.isArray(b.message) ? b.message.join(', ') : b.message ?? message;
+        message = Array.isArray(b.message)
+          ? b.message.join(', ')
+          : (b.message ?? message);
       } catch {
         /* keep */
       }
       throw new ApiError(res.status, message);
     }
-    const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName;
+    const name =
+      /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ??
+      fallbackName;
     const url = URL.createObjectURL(await res.blob());
     const a = document.createElement('a');
     a.href = url;
@@ -397,10 +422,13 @@ export const api = {
   tenantInvoices: (tenantId: string) =>
     req<SubscriptionInvoice[]>(`/platform/billing/tenants/${tenantId}/invoices`),
   runBilling: (period?: string) =>
-    req<{ considered: number; issued: number; numbers: string[] }>('/platform/billing/run', {
-      method: 'POST',
-      body: JSON.stringify(period ? { period } : {}),
-    }),
+    req<{ considered: number; issued: number; numbers: string[] }>(
+      '/platform/billing/run',
+      {
+        method: 'POST',
+        body: JSON.stringify(period ? { period } : {}),
+      },
+    ),
   markInvoicePaid: (id: string, input: MarkPaidInput) =>
     req<{ id: string; status: 'paid'; paidAmount: number }>(
       `/platform/billing/invoices/${id}/pay`,
@@ -419,12 +447,27 @@ export const api = {
   // ── The price list ──────────────────────────────────────────────────────
   plansAll: () => req<PlanDetail[]>('/platform/plans/all'),
   createPlan: (input: { code: string; name: string; priceMonthly: number }) =>
-    req<{ id: string }>('/platform/plans', { method: 'POST', body: JSON.stringify(input) }),
-  updatePlan: (id: string, input: { name?: string; priceMonthly?: number; isActive?: boolean }) =>
-    req<{ id: string }>(`/platform/plans/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+    req<{ id: string }>('/platform/plans', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updatePlan: (
+    id: string,
+    input: { name?: string; priceMonthly?: number; isActive?: boolean },
+  ) =>
+    req<{ id: string }>(`/platform/plans/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
 
   // ── Everything the console has done ─────────────────────────────────────
-  activity: (q: { category?: ActivityCategory; limit?: number; cursor?: ActivityCursor | null } = {}) =>
+  activity: (
+    q: {
+      category?: ActivityCategory;
+      limit?: number;
+      cursor?: ActivityCursor | null;
+    } = {},
+  ) =>
     req<ActivityPage>(
       `/platform/activity?${new URLSearchParams({
         ...(q.category ? { category: q.category } : {}),

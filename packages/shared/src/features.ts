@@ -33,10 +33,20 @@
  * off for a new module that changes how the desk works.
  */
 
-export const FEATURE_KEYS = ['fiscalization', 'whatsapp_shortcuts', 'cash_drawer'] as const;
+export const FEATURE_KEYS = [
+  'fiscalization',
+  'whatsapp_shortcuts',
+  'cash_drawer',
+] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
-export const FEATURE_GROUPS = ['front_desk', 'clinical', 'growth', 'team', 'finance'] as const;
+export const FEATURE_GROUPS = [
+  'front_desk',
+  'clinical',
+  'growth',
+  'team',
+  'finance',
+] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
 
 export interface FeatureDefinition {
@@ -59,7 +69,8 @@ export const FEATURES: Readonly<Record<FeatureKey, FeatureDefinition>> = Object.
   fiscalization: {
     key: 'fiscalization',
     name: 'Fiscal invoices',
-    description: 'Register invoices with the tax authority and print the NSLF, NIVF and QR code.',
+    description:
+      'Register invoices with the tax authority and print the NSLF, NIVF and QR code.',
     group: 'finance',
     defaultEntitled: true,
     defaultEnabled: true,
@@ -101,7 +112,12 @@ export function isFeatureKey(value: unknown): value is FeatureKey {
  *   not_in_plan         the plan (or an override) withholds it
  *   blocked             a feature it depends on is not enabled
  */
-export const FEATURE_STATES = ['enabled', 'disabled_by_clinic', 'not_in_plan', 'blocked'] as const;
+export const FEATURE_STATES = [
+  'enabled',
+  'disabled_by_clinic',
+  'not_in_plan',
+  'blocked',
+] as const;
 export type FeatureState = (typeof FEATURE_STATES)[number];
 
 export interface ResolvedFeature {
@@ -130,7 +146,9 @@ export interface FeatureInputs {
  * feature ignores all three — a plan cannot withhold fiscalization and a
  * clinic cannot switch it off.
  */
-export function resolveFeatures(inputs: FeatureInputs): Record<FeatureKey, ResolvedFeature> {
+export function resolveFeatures(
+  inputs: FeatureInputs,
+): Record<FeatureKey, ResolvedFeature> {
   const out = {} as Record<FeatureKey, ResolvedFeature>;
 
   const resolveOne = (key: FeatureKey, seen: Set<FeatureKey>): ResolvedFeature => {
@@ -167,7 +185,12 @@ export function resolveFeatures(inputs: FeatureInputs): Record<FeatureKey, Resol
     }
 
     const on = inputs.settings[key] ?? def.defaultEnabled;
-    return (out[key] = { key, state: on ? 'enabled' : 'disabled_by_clinic', entitledBy, missing: [] });
+    return (out[key] = {
+      key,
+      state: on ? 'enabled' : 'disabled_by_clinic',
+      entitledBy,
+      missing: [],
+    });
   };
 
   for (const key of FEATURE_KEYS) resolveOne(key, new Set());

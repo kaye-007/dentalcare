@@ -334,9 +334,18 @@ export class ReportsService {
           expenses: Number(r.expenses),
           profit: Number(r.collected) - Number(r.expenses),
         })),
-        revenueByTreatment: byTreatment.rows.map((r) => ({ label: r.label, value: Number(r.value) })),
-        expensesByCategory: byCategory.rows.map((r) => ({ label: r.label, value: Number(r.value) })),
-        paymentsByMethod: byMethod.rows.map((r) => ({ label: r.label, value: Number(r.value) })),
+        revenueByTreatment: byTreatment.rows.map((r) => ({
+          label: r.label,
+          value: Number(r.value),
+        })),
+        expensesByCategory: byCategory.rows.map((r) => ({
+          label: r.label,
+          value: Number(r.value),
+        })),
+        paymentsByMethod: byMethod.rows.map((r) => ({
+          label: r.label,
+          value: Number(r.value),
+        })),
         appointmentsByDentist: byDentist.rows.map((r) => ({
           label: r.label,
           total: Number(r.total),

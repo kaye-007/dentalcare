@@ -13,7 +13,8 @@ import { ConfigService } from '@nestjs/config';
 
 const TIMEOUT_MS = 10_000;
 
-export type GraphFailureKind = 'auth' | 'not_found' | 'recipient' | 'template' | 'rate' | 'unreachable' | 'other';
+export type GraphFailureKind =
+  'auth' | 'not_found' | 'recipient' | 'template' | 'rate' | 'unreachable' | 'other';
 
 export class GraphError extends Error {
   constructor(
@@ -37,7 +38,12 @@ export interface GraphTemplate {
   category?: string;
   language: string;
   parameter_format?: string;
-  components?: { type: string; text?: string; format?: string; buttons?: { type: string; url?: string }[] }[];
+  components?: {
+    type: string;
+    text?: string;
+    format?: string;
+    buttons?: { type: string; url?: string }[];
+  }[];
 }
 
 export interface TemplateParameter {
@@ -50,20 +56,60 @@ export interface TemplateParameter {
  * Meta's own sentence, with the code for whoever looks it up.
  */
 const KNOWN: Record<number, { kind: GraphFailureKind; message: string }> = {
-  190: { kind: 'auth', message: 'The WhatsApp access token is invalid or has expired. Paste a new one in WhatsApp Settings.' },
-  10: { kind: 'auth', message: 'The access token does not have permission for this WhatsApp account.' },
-  200: { kind: 'auth', message: 'The access token does not have permission for this WhatsApp account.' },
-  4: { kind: 'rate', message: 'WhatsApp is limiting requests from this account. Try again in a few minutes.' },
-  80007: { kind: 'rate', message: 'WhatsApp is limiting requests from this account. Try again in a few minutes.' },
-  130429: { kind: 'rate', message: 'WhatsApp is limiting messages from this number. Try again in a few minutes.' },
-  131056: { kind: 'rate', message: 'Too many messages to this patient in a short time. Try again later.' },
+  190: {
+    kind: 'auth',
+    message:
+      'The WhatsApp access token is invalid or has expired. Paste a new one in WhatsApp Settings.',
+  },
+  10: {
+    kind: 'auth',
+    message: 'The access token does not have permission for this WhatsApp account.',
+  },
+  200: {
+    kind: 'auth',
+    message: 'The access token does not have permission for this WhatsApp account.',
+  },
+  4: {
+    kind: 'rate',
+    message:
+      'WhatsApp is limiting requests from this account. Try again in a few minutes.',
+  },
+  80007: {
+    kind: 'rate',
+    message:
+      'WhatsApp is limiting requests from this account. Try again in a few minutes.',
+  },
+  130429: {
+    kind: 'rate',
+    message:
+      'WhatsApp is limiting messages from this number. Try again in a few minutes.',
+  },
+  131056: {
+    kind: 'rate',
+    message: 'Too many messages to this patient in a short time. Try again later.',
+  },
   131026: { kind: 'recipient', message: 'This number cannot receive WhatsApp messages.' },
-  131030: { kind: 'recipient', message: 'This number is not on the WhatsApp test account’s allowed list.' },
+  131030: {
+    kind: 'recipient',
+    message: 'This number is not on the WhatsApp test account’s allowed list.',
+  },
   131031: { kind: 'auth', message: 'Meta has locked this WhatsApp Business account.' },
-  133010: { kind: 'auth', message: 'The clinic’s WhatsApp number is not registered with the Cloud API.' },
-  368: { kind: 'auth', message: 'Meta has temporarily blocked this account for a policy violation.' },
-  132000: { kind: 'template', message: 'The template’s variables do not match the approved template.' },
-  132001: { kind: 'template', message: 'The template does not exist in this language on the WhatsApp account.' },
+  133010: {
+    kind: 'auth',
+    message: 'The clinic’s WhatsApp number is not registered with the Cloud API.',
+  },
+  368: {
+    kind: 'auth',
+    message: 'Meta has temporarily blocked this account for a policy violation.',
+  },
+  132000: {
+    kind: 'template',
+    message: 'The template’s variables do not match the approved template.',
+  },
+  132001: {
+    kind: 'template',
+    message: 'The template does not exist in this language on the WhatsApp account.',
+  },
   132005: { kind: 'template', message: 'The filled-in template text is too long.' },
   132007: { kind: 'template', message: 'The template text breaks a WhatsApp policy.' },
   132012: { kind: 'template', message: 'A template variable has the wrong format.' },
@@ -76,11 +122,18 @@ export class WhatsAppGraphClient {
   constructor(private readonly config: ConfigService) {}
 
   private base(): string {
-    const root = (this.config.get<string>('WHATSAPP_GRAPH_BASE_URL') ?? 'https://graph.facebook.com').replace(/\/+$/, '');
+    const root = (
+      this.config.get<string>('WHATSAPP_GRAPH_BASE_URL') ?? 'https://graph.facebook.com'
+    ).replace(/\/+$/, '');
     return `${root}/${this.config.get<string>('WHATSAPP_GRAPH_VERSION') ?? 'v25.0'}`;
   }
 
-  private async call<T>(token: string, method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  private async call<T>(
+    token: string,
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
     let res: Response;
     try {
       res = await fetch(`${this.base()}${path}`, {
@@ -93,7 +146,10 @@ export class WhatsAppGraphClient {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {
-      throw new GraphError('WhatsApp did not answer. Check the connection and try again.', 'unreachable');
+      throw new GraphError(
+        'WhatsApp did not answer. Check the connection and try again.',
+        'unreachable',
+      );
     }
     const json: unknown = await res.json().catch(() => null);
     if (!res.ok) throw toGraphError(res.status, json, token);
@@ -130,7 +186,12 @@ export class WhatsAppGraphClient {
   async sendTemplate(
     token: string,
     phoneNumberId: string,
-    input: { to: string; name: string; language: string; parameters: TemplateParameter[] },
+    input: {
+      to: string;
+      name: string;
+      language: string;
+      parameters: TemplateParameter[];
+    },
   ): Promise<{ messageId: string; status: string | null }> {
     const body = {
       messaging_product: 'whatsapp',
@@ -145,30 +206,44 @@ export class WhatsAppGraphClient {
               components: [
                 {
                   type: 'body',
-                  parameters: input.parameters.map((p) => ({ type: 'text', parameter_name: p.name, text: p.text })),
+                  parameters: input.parameters.map((p) => ({
+                    type: 'text',
+                    parameter_name: p.name,
+                    text: p.text,
+                  })),
                 },
               ],
             }
           : {}),
       },
     };
-    const out = await this.call<{ messages?: { id?: string; message_status?: string }[] }>(
-      token,
-      'POST',
-      `/${encodeURIComponent(phoneNumberId)}/messages`,
-      body,
-    );
+    const out = await this.call<{
+      messages?: { id?: string; message_status?: string }[];
+    }>(token, 'POST', `/${encodeURIComponent(phoneNumberId)}/messages`, body);
     const id = out.messages?.[0]?.id;
-    if (!id) throw new GraphError('WhatsApp accepted the request but returned no message id.', 'other');
+    if (!id)
+      throw new GraphError(
+        'WhatsApp accepted the request but returned no message id.',
+        'other',
+      );
     return { messageId: id, status: out.messages?.[0]?.message_status ?? null };
   }
 }
 
 /** Meta's error, as something safe to show and store. Exported for the spec. */
-export function toGraphError(httpStatus: number, body: unknown, token: string): GraphError {
+export function toGraphError(
+  httpStatus: number,
+  body: unknown,
+  token: string,
+): GraphError {
   const err = (
     body as {
-      error?: { code?: unknown; error_subcode?: unknown; message?: unknown; error_data?: { details?: unknown } };
+      error?: {
+        code?: unknown;
+        error_subcode?: unknown;
+        message?: unknown;
+        error_data?: { details?: unknown };
+      };
     } | null
   )?.error;
   const code = typeof err?.code === 'number' ? err.code : null;
@@ -184,10 +259,15 @@ export function toGraphError(httpStatus: number, body: unknown, token: string): 
       code,
     );
   }
-  const detail = typeof err?.error_data?.details === 'string' ? err.error_data.details : undefined;
+  const detail =
+    typeof err?.error_data?.details === 'string' ? err.error_data.details : undefined;
   const said = detail ?? (typeof err?.message === 'string' ? err.message : undefined);
   const text = said ? redact(said, token).slice(0, 300) : `HTTP ${httpStatus}`;
-  return new GraphError(`WhatsApp refused the request${code !== null ? ` (code ${code})` : ''}: ${text}`, 'other', code);
+  return new GraphError(
+    `WhatsApp refused the request${code !== null ? ` (code ${code})` : ''}: ${text}`,
+    'other',
+    code,
+  );
 }
 
 function redact(text: string, token: string): string {

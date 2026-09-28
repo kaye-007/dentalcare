@@ -21,13 +21,19 @@ import type { CurrencyCode } from './money';
  * 5 and 1. Euro: notes 500 to 5, coins 2 to 1 cent. The other three carry
  * their everyday circulating sets.
  */
-export const DRAWER_DENOMINATIONS: Readonly<Record<CurrencyCode, readonly number[]>> = Object.freeze({
-  ALL: [1_000_000, 500_000, 200_000, 100_000, 50_000, 20_000, 10_000, 5_000, 2_000, 1_000, 500, 100],
-  EUR: [50_000, 20_000, 10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50, 20, 10, 5, 2, 1],
-  USD: [10_000, 5_000, 2_000, 1_000, 500, 100, 25, 10, 5, 1],
-  GBP: [5_000, 2_000, 1_000, 500, 200, 100, 50, 20, 10, 5, 2, 1],
-  CHF: [100_000, 20_000, 10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50, 20, 10, 5],
-});
+export const DRAWER_DENOMINATIONS: Readonly<Record<CurrencyCode, readonly number[]>> =
+  Object.freeze({
+    ALL: [
+      1_000_000, 500_000, 200_000, 100_000, 50_000, 20_000, 10_000, 5_000, 2_000, 1_000,
+      500, 100,
+    ],
+    EUR: [
+      50_000, 20_000, 10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50, 20, 10, 5, 2, 1,
+    ],
+    USD: [10_000, 5_000, 2_000, 1_000, 500, 100, 25, 10, 5, 1],
+    GBP: [5_000, 2_000, 1_000, 500, 200, 100, 50, 20, 10, 5, 2, 1],
+    CHF: [100_000, 20_000, 10_000, 5_000, 2_000, 1_000, 500, 200, 100, 50, 20, 10, 5],
+  });
 
 /** A count: denomination (minor units, as a string key) -> how many. */
 export type DenominationCount = Readonly<Record<string, number>>;
@@ -37,7 +43,10 @@ export type DenominationCount = Readonly<Record<string, number>>;
  * number of a denomination this currency has. Null rather than a best effort:
  * a count the server cannot read is a count it must refuse.
  */
-export function countTotal(currency: CurrencyCode, count: DenominationCount): number | null {
+export function countTotal(
+  currency: CurrencyCode,
+  count: DenominationCount,
+): number | null {
   const allowed = new Set(DRAWER_DENOMINATIONS[currency]);
   let total = 0;
   for (const [key, qty] of Object.entries(count)) {
@@ -120,14 +129,15 @@ export function varianceBand(variance: number, t: VarianceThresholds): VarianceB
 }
 
 /** Thresholds for a clinic that has not set its own, per currency. */
-export const DEFAULT_VARIANCE_THRESHOLDS: Readonly<Record<CurrencyCode, VarianceThresholds>> =
-  Object.freeze({
-    ALL: { tolerance: 10_000, approval: 200_000 },
-    EUR: { tolerance: 100, approval: 2_000 },
-    USD: { tolerance: 100, approval: 2_000 },
-    GBP: { tolerance: 100, approval: 2_000 },
-    CHF: { tolerance: 100, approval: 2_000 },
-  });
+export const DEFAULT_VARIANCE_THRESHOLDS: Readonly<
+  Record<CurrencyCode, VarianceThresholds>
+> = Object.freeze({
+  ALL: { tolerance: 10_000, approval: 200_000 },
+  EUR: { tolerance: 100, approval: 2_000 },
+  USD: { tolerance: 100, approval: 2_000 },
+  GBP: { tolerance: 100, approval: 2_000 },
+  CHF: { tolerance: 100, approval: 2_000 },
+});
 
 /** The shortest note a receptionist may give for a variance in the note band. */
 export const VARIANCE_NOTE_MIN_LENGTH = 10;

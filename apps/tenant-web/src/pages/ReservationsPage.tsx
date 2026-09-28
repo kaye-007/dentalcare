@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Filter,
-  Plus,
-  X,
-} from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, Plus, X } from 'lucide-react';
 import {
   appointmentsApi,
   operatoriesApi,
@@ -29,7 +22,13 @@ import { dateLocale } from '../lib/strings';
 import { t } from '../lib/strings';
 import { plural } from '../lib/format';
 import { useMinute } from '../lib/useMinute';
-import { fromWall, fromWallString, toWall, toWallString, wallNow } from '../lib/clinic-time';
+import {
+  fromWall,
+  fromWallString,
+  toWall,
+  toWallString,
+  wallNow,
+} from '../lib/clinic-time';
 
 /* ── calendar constants ─────────────────────────────────── */
 /** Drawn when the clinic's opening hours are unknown. */
@@ -130,7 +129,10 @@ function workdayFor(hours: WorkingDay[] | null, d: Date) {
  * closes at three o'clock five empty hours every afternoon — and hid a 07:30
  * emergency booking entirely.
  */
-function visibleHours(hours: WorkingDay[] | null, appts: Appointment[]): [number, number] {
+function visibleHours(
+  hours: WorkingDay[] | null,
+  appts: Appointment[],
+): [number, number] {
   let start = Infinity;
   let end = -Infinity;
   for (const w of hours ?? []) {
@@ -395,7 +397,13 @@ export default function ReservationsPage() {
         operatoryId: filterRoom || undefined,
         status: filterStatus.length ? filterStatus : undefined,
       });
-      setAppts(list.map((a) => ({ ...a, startsAt: toWallString(a.startsAt), endsAt: toWallString(a.endsAt) })));
+      setAppts(
+        list.map((a) => ({
+          ...a,
+          startsAt: toWallString(a.startsAt),
+          endsAt: toWallString(a.endsAt),
+        })),
+      );
     } finally {
       setLoading(false);
     }
@@ -424,7 +432,9 @@ export default function ReservationsPage() {
     const earliest = (list: Appointment[]) =>
       list.length ? Math.min(...list.map((a) => hoursOf(new Date(a.startsAt)))) : null;
     const live = appts.filter((a) => a.status !== 'cancelled');
-    const unfinished = live.filter((a) => new Date(a.endsAt).getTime() > current.getTime());
+    const unfinished = live.filter(
+      (a) => new Date(a.endsAt).getTime() > current.getTime(),
+    );
     const target =
       earliest(unfinished) ??
       earliest(live) ??
@@ -466,7 +476,11 @@ export default function ReservationsPage() {
   // The panel takes the appointment as the API has it: instants.
   const openAppointment = (a: Appointment) => {
     setCreating(null);
-    setEditing({ ...a, startsAt: fromWallString(a.startsAt), endsAt: fromWallString(a.endsAt) });
+    setEditing({
+      ...a,
+      startsAt: fromWallString(a.startsAt),
+      endsAt: fromWallString(a.endsAt),
+    });
   };
 
   // What the range holds, in words a receptionist uses. "0 active in view"
@@ -476,7 +490,8 @@ export default function ReservationsPage() {
     return {
       booked: live.length,
       upcoming: live.filter(
-        (a) => APPT_ACTIVE_STATUSES.includes(a.status) && new Date(a.endsAt).getTime() > now,
+        (a) =>
+          APPT_ACTIVE_STATUSES.includes(a.status) && new Date(a.endsAt).getTime() > now,
       ).length,
       completed: appts.filter((a) => a.status === 'completed').length,
       cancelled: appts.length - live.length,
@@ -537,10 +552,13 @@ export default function ReservationsPage() {
   const gridCols = `var(--cal-gutter) repeat(${columnCount}, minmax(0, 1fr))`;
   const apptsFor = (c: DentistColumn) =>
     byRoom
-      ? appts.filter((a) => (c.operatoryId ? a.operatoryId === c.operatoryId : !a.operatoryId))
+      ? appts.filter((a) =>
+          c.operatoryId ? a.operatoryId === c.operatoryId : !a.operatoryId,
+        )
       : appts.filter((a) => (c.staffId ? a.staffId === c.staffId : !a.staffId));
   const bookedOn = (d: Date) =>
-    appts.filter((a) => a.status !== 'cancelled' && sameDay(new Date(a.startsAt), d)).length;
+    appts.filter((a) => a.status !== 'cancelled' && sameDay(new Date(a.startsAt), d))
+      .length;
 
   const hourRail = (
     <div className="cal__times" aria-hidden>
@@ -569,10 +587,10 @@ export default function ReservationsPage() {
         title={t('nav.reservations')}
         meta={
           loading && appts.length === 0
-              ? 'Loading…'
-              : `${plural(summary.booked, 'booking')} · ${summary.upcoming} still to come · ${summary.completed} completed${
-                  summary.cancelled ? ` · ${summary.cancelled} cancelled` : ''
-                }`
+            ? 'Loading…'
+            : `${plural(summary.booked, 'booking')} · ${summary.upcoming} still to come · ${summary.completed} completed${
+                summary.cancelled ? ` · ${summary.cancelled} cancelled` : ''
+              }`
         }
         actions={
           canWrite && (
@@ -593,39 +611,39 @@ export default function ReservationsPage() {
       />
 
       <div className="calbar">
-          <div className="calbar__nav">
+        <div className="calbar__nav">
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => setAnchor(wallNow())}
+          >
+            Today
+          </button>
+          <span className="calbar__step">
             <button
               type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => setAnchor(wallNow())}
+              className="iconbtn"
+              onClick={() => shift(-1)}
+              aria-label={`Previous ${view === 'list' ? 'day' : view}`}
+              title="Previous"
             >
-              Today
+              <ChevronLeft size={16} />
             </button>
-            <span className="calbar__step">
-              <button
-                type="button"
-                className="iconbtn"
-                onClick={() => shift(-1)}
-                aria-label={`Previous ${view === 'list' ? 'day' : view}`}
-                title="Previous"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                type="button"
-                className="iconbtn"
-                onClick={() => shift(1)}
-                aria-label={`Next ${view === 'list' ? 'day' : view}`}
-                title="Next"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </span>
-            <h2 className="calbar__label" aria-live="polite">
-              {rangeLabel(view, anchor, days)}
-            </h2>
-            {loading && <span className="calbar__loading">Loading…</span>}
-          </div>
+            <button
+              type="button"
+              className="iconbtn"
+              onClick={() => shift(1)}
+              aria-label={`Next ${view === 'list' ? 'day' : view}`}
+              title="Next"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </span>
+          <h2 className="calbar__label" aria-live="polite">
+            {rangeLabel(view, anchor, days)}
+          </h2>
+          {loading && <span className="calbar__loading">Loading…</span>}
+        </div>
 
         <div className="toolbar__group">
           <div className="tabs" role="group" aria-label="Calendar view">
@@ -657,7 +675,7 @@ export default function ReservationsPage() {
               ))}
             </div>
           )}
-          {(
+          {
             <button
               type="button"
               className={`btn btn--ghost btn--sm${activeFilters ? ' btn--active' : ''}`}
@@ -670,7 +688,7 @@ export default function ReservationsPage() {
               <span className="calbar__filterlabel">Filters</span>
               {activeFilters ? ` (${activeFilters})` : ''}
             </button>
-          )}
+          }
         </div>
       </div>
 
@@ -713,7 +731,11 @@ export default function ReservationsPage() {
             ))}
           </div>
           {activeFilters > 0 && (
-            <button type="button" className="btn btn--ghost btn--sm" onClick={clearFilters}>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={clearFilters}
+            >
               <X size={13} aria-hidden /> Clear
             </button>
           )}
@@ -738,7 +760,11 @@ export default function ReservationsPage() {
                   : 'No appointments in this view.'}
           </span>
           {activeFilters ? (
-            <button type="button" className="btn btn--ghost btn--sm" onClick={clearFilters}>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={clearFilters}
+            >
               Clear filters
             </button>
           ) : !readOnly && canWrite ? (
@@ -828,7 +854,9 @@ export default function ReservationsPage() {
               className={`cal__inner${!dentistColumns && days.length > 1 ? ' cal__inner--week' : ''}`}
               style={
                 dentistColumns
-                  ? { minWidth: `calc(var(--cal-gutter) + ${dentistColumns.length * 190}px)` }
+                  ? {
+                      minWidth: `calc(var(--cal-gutter) + ${dentistColumns.length * 190}px)`,
+                    }
                   : undefined
               }
             >
@@ -836,7 +864,9 @@ export default function ReservationsPage() {
                 <div aria-hidden />
                 {dentistColumns
                   ? dentistColumns.map((c) => {
-                      const booked = apptsFor(c).filter((a) => a.status !== 'cancelled').length;
+                      const booked = apptsFor(c).filter(
+                        (a) => a.status !== 'cancelled',
+                      ).length;
                       return (
                         <div className="cal__staffhead" key={c.key}>
                           {byRoom ? (
@@ -1038,7 +1068,11 @@ function WeekAgenda({
                     <button
                       type="button"
                       className={`weekagenda__item weekagenda__item--${a.status}`}
-                      style={a.operatoryColor ? { borderLeftColor: a.operatoryColor } : undefined}
+                      style={
+                        a.operatoryColor
+                          ? { borderLeftColor: a.operatoryColor }
+                          : undefined
+                      }
                       onClick={() => onApptClick(a)}
                       aria-label={`${fmtTime(a.startsAt)} ${a.patientName}, ${a.reason}${
                         a.staffName ? `, ${a.staffName}` : ''
@@ -1204,8 +1238,12 @@ function DayColumn({
                   {fmtTime(a.startsAt)}–{fmtTime(a.endsAt)}
                   {/* The column already says the room (or the dentist); name the other. */}
                   {byRoom
-                    ? a.staffName ? ` · ${a.staffName}` : ''
-                    : a.operatoryName ? ` · ${a.operatoryName}` : ''}
+                    ? a.staffName
+                      ? ` · ${a.staffName}`
+                      : ''
+                    : a.operatoryName
+                      ? ` · ${a.operatoryName}`
+                      : ''}
                 </span>
                 {height >= 64 && <span className="appt__tag">{a.reason}</span>}
               </>
@@ -1323,4 +1361,3 @@ function MonthGrid({
     </div>
   );
 }
-

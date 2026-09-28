@@ -56,7 +56,9 @@ describe('expiry', () => {
 describe('usageBlocker', () => {
   it('refuses recalled and expired lots, with the reason', () => {
     expect(usageBlocker(lot({ status: 'recalled' }), TODAY)).toMatch(/recalled/);
-    expect(usageBlocker(lot({ expiresOn: '2026-09-01' }), TODAY)).toMatch(/expired on 2026-09-01/);
+    expect(usageBlocker(lot({ expiresOn: '2026-09-01' }), TODAY)).toMatch(
+      /expired on 2026-09-01/,
+    );
     expect(usageBlocker(lot(), TODAY)).toBeNull();
     expect(usageBlocker(lot({ expiresOn: null }), TODAY)).toBeNull();
   });
@@ -78,7 +80,10 @@ describe('pickLot', () => {
 
   it('puts a lot with no expiry date last', () => {
     const picked = pickLot(
-      [lot({ id: 'none', expiresOn: null }), lot({ id: 'dated', expiresOn: '2030-01-01' })],
+      [
+        lot({ id: 'none', expiresOn: null }),
+        lot({ id: 'dated', expiresOn: '2030-01-01' }),
+      ],
       1,
       TODAY,
     );
@@ -113,7 +118,9 @@ describe('pickLot', () => {
 
   it('never splits one usage across lots', () => {
     const lots = [lot({ id: 'a', quantity: 3 }), lot({ id: 'b', quantity: 4 })];
-    expect(() => pickLot(lots, 5, TODAY)).toThrow(/No single lot holds 5.*largest usable lot has 4/);
+    expect(() => pickLot(lots, 5, TODAY)).toThrow(
+      /No single lot holds 5.*largest usable lot has 4/,
+    );
     expect(pickLot(lots, 4, TODAY).id).toBe('b');
   });
 

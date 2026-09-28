@@ -49,7 +49,9 @@ export default function BarBreakdown({
         const pct = max > 0 ? Math.max(0, (Math.abs(r.value) / max) * 100) : 0;
         return (
           <li key={r.label} className="bars__row">
-            <span className="bars__label" title={r.label}>{r.label}</span>
+            <span className="bars__label" title={r.label}>
+              {r.label}
+            </span>
             <span className="bars__track">
               <span
                 className="bars__fill"

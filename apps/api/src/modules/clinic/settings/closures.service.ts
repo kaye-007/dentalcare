@@ -76,23 +76,36 @@ export class ClosuresService {
   async create(dto: CreateClosureDto, actor: ClinicAuditActor) {
     const startsOn = dto.startsOn.slice(0, 10);
     const endsOn = dto.endsOn.slice(0, 10);
-    if (endsOn < startsOn) throw new BadRequestException('The end date is before the start date');
+    if (endsOn < startsOn)
+      throw new BadRequestException('The end date is before the start date');
     this.assertMay(actor, dto.staffId ?? null);
 
     const tenantId = this.tenant.getRequiredTenantId();
     return this.db.withTenant(tenantId, async (client) => {
       if (dto.staffId) {
-        const staff = await client.query('SELECT 1 FROM users WHERE id = $1', [dto.staffId]);
+        const staff = await client.query('SELECT 1 FROM users WHERE id = $1', [
+          dto.staffId,
+        ]);
         if (!staff.rowCount) throw new NotFoundException('Staff member not found');
       }
-      const { rows } = await client.query<{ id: string }>(
-        `INSERT INTO schedule_closures (tenant_id, staff_id, starts_on, ends_on, reason, created_by)
+      const { rows } = await client
+        .query<{ id: string }>(
+          `INSERT INTO schedule_closures (tenant_id, staff_id, starts_on, ends_on, reason, created_by)
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-        [tenantId, dto.staffId ?? null, startsOn, endsOn, dto.reason.trim(), actor.userId],
-      ).catch((err: { code?: string }) => {
-        if (err.code === '23514') throw new BadRequestException('A closure can span at most a year');
-        throw err;
-      });
+          [
+            tenantId,
+            dto.staffId ?? null,
+            startsOn,
+            endsOn,
+            dto.reason.trim(),
+            actor.userId,
+          ],
+        )
+        .catch((err: { code?: string }) => {
+          if (err.code === '23514')
+            throw new BadRequestException('A closure can span at most a year');
+          throw err;
+        });
       const closure = await this.one(client, rows[0]!.id);
       await this.audit.record(client, actor, {
         action: 'schedule.closure_added',
@@ -117,7 +130,11 @@ export class ClosuresService {
         entityType: 'schedule_closure',
         entityId: id,
         summary: `Removed ${closure.staffName ? `${closure.staffName}'s time off` : 'a clinic closure'} starting ${closure.startsOn}`,
-        metadata: { staffId: closure.staffId, startsOn: closure.startsOn, endsOn: closure.endsOn },
+        metadata: {
+          staffId: closure.staffId,
+          startsOn: closure.startsOn,
+          endsOn: closure.endsOn,
+        },
       });
       return { deleted: true as const };
     });
@@ -131,7 +148,9 @@ export class ClosuresService {
 
   private assertMay(actor: ClinicAuditActor, staffId: string | null) {
     if (staffId === null && !can(actor.role, 'settings:manage')) {
-      throw new ForbiddenException('Closing the whole clinic is changed in clinic settings, by an administrator');
+      throw new ForbiddenException(
+        'Closing the whole clinic is changed in clinic settings, by an administrator',
+      );
     }
   }
 }

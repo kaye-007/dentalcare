@@ -40,7 +40,11 @@ describe('StorageService — local disk backend', () => {
   });
 
   it('can be switched off', () => {
-    const off = make({ STORAGE_DRIVER: 'off', STORAGE_DIR: dir, JWT_SECRET: 'x'.repeat(20) });
+    const off = make({
+      STORAGE_DRIVER: 'off',
+      STORAGE_DIR: dir,
+      JWT_SECRET: 'x'.repeat(20),
+    });
     expect(off.isConfigured).toBe(false);
     expect(off.driver).toBe('off');
   });
@@ -79,7 +83,9 @@ describe('StorageService — local disk backend', () => {
     await storage.put(other, Buffer.from('y'), 'image/png');
 
     expect(await storage.openSigned(other, link.e, link.s, link.d)).toBeNull(); // another file
-    expect(await storage.openSigned(key, String(Number(link.e) + 60), link.s, link.d)).toBeNull(); // longer life
+    expect(
+      await storage.openSigned(key, String(Number(link.e) + 60), link.s, link.d),
+    ).toBeNull(); // longer life
     expect(await storage.openSigned(key, link.e, link.s, 'attachment')).toBeNull(); // changed disposition
     expect(await storage.openSigned(key, link.e, 'forged', link.d)).toBeNull();
   });

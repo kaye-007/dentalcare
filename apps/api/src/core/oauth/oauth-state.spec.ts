@@ -26,9 +26,7 @@ describe('OAuth state', () => {
     const a = createState({ plane: 'platform' }, SECRET, NOW);
     const b = createState({ plane: 'platform' }, SECRET, NOW);
     expect(a).not.toEqual(b);
-    expect(readState(a, SECRET, NOW).nonce).not.toBe(
-      readState(b, SECRET, NOW).nonce,
-    );
+    expect(readState(a, SECRET, NOW).nonce).not.toBe(readState(b, SECRET, NOW).nonce);
   });
 
   /**

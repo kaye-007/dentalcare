@@ -38,7 +38,10 @@ export class ClosuresController {
 
   @Delete(':id')
   @RequirePermissions('availability:manage')
-  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: AccessTokenPayload) {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: AccessTokenPayload,
+  ) {
     return this.closures.remove(id, auditActor(user));
   }
 }

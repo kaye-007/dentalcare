@@ -6,7 +6,11 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PoolClient } from 'pg';
-import { REMINDER_PLACEHOLDERS, isTimeZone, unknownPlaceholders } from '@dentalcare/shared';
+import {
+  REMINDER_PLACEHOLDERS,
+  isTimeZone,
+  unknownPlaceholders,
+} from '@dentalcare/shared';
 import { DatabaseService } from '@/core/database/database.service';
 import { TenantContextService } from '@/core/tenancy/tenant-context';
 import { ClinicAuditService, ClinicAuditActor } from '@/core/audit/clinic-audit.service';
@@ -41,12 +45,14 @@ const MAX_LOGO_BYTES = 1024 * 1024;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function validateHours(hours: WorkingDay[]) {
-  if (hours.length !== 7) throw new BadRequestException('Working hours must cover all 7 days');
+  if (hours.length !== 7)
+    throw new BadRequestException('Working hours must cover all 7 days');
   for (const h of hours) {
     if (typeof h.day !== 'number' || h.day < 0 || h.day > 6) {
       throw new BadRequestException('Invalid day in working hours');
     }
-    if (typeof h.closed !== 'boolean') throw new BadRequestException('Invalid closed flag');
+    if (typeof h.closed !== 'boolean')
+      throw new BadRequestException('Invalid closed flag');
     if (!h.closed) {
       if (!TIME_RE.test(h.open) || !TIME_RE.test(h.close)) {
         throw new BadRequestException('Times must be in HH:MM format');
@@ -61,7 +67,8 @@ function validateHours(hours: WorkingDay[]) {
 function validatePaymentMethods(methods: PaymentMethodDto[]) {
   const ids = new Set<string>();
   for (const m of methods) {
-    if (ids.has(m.id)) throw new BadRequestException(`Two payment methods share the id "${m.id}"`);
+    if (ids.has(m.id))
+      throw new BadRequestException(`Two payment methods share the id "${m.id}"`);
     ids.add(m.id);
   }
   if (!methods.some((m) => m.active)) {
@@ -150,7 +157,10 @@ export class SettingsService {
   async get() {
     const tenantId = this.tenant.getRequiredTenantId();
     const { name, row } = await this.db.withTenant(tenantId, async (client) => {
-      const t = await client.query<{ name: string }>('SELECT name FROM tenants WHERE id = $1', [tenantId]);
+      const t = await client.query<{ name: string }>(
+        'SELECT name FROM tenants WHERE id = $1',
+        [tenantId],
+      );
       const s = await client.query<SettingsRow>(
         `SELECT address, city, phone, email, working_hours, default_appointment_duration,
                 reminders_enabled, reminder_hours_before, reminder_channel,
@@ -174,9 +184,10 @@ export class SettingsService {
       logoUrl = await this.storage.signedViewUrl(row.logo_storage_key).catch(() => null);
     }
 
-    const methods = Array.isArray(row?.payment_methods) && row.payment_methods.length > 0
-      ? (row.payment_methods as PaymentMethodDto[])
-      : DEFAULT_PAYMENT_METHODS;
+    const methods =
+      Array.isArray(row?.payment_methods) && row.payment_methods.length > 0
+        ? (row.payment_methods as PaymentMethodDto[])
+        : DEFAULT_PAYMENT_METHODS;
 
     return {
       clinicName: name,
@@ -214,7 +225,8 @@ export class SettingsService {
       fxRateSource: row?.fx_rate_source === 'fixed' ? 'fixed' : 'live',
       fxFixedRate: row?.fx_fixed_rate != null ? Number(row.fx_fixed_rate) : null,
       /** What the payment screen preselects: fiscal, internal, or neither. */
-      defaultCheckoutMode: (row?.default_checkout_mode ?? 'fiscal') as 'internal' | 'fiscal' | 'ask',
+      defaultCheckoutMode: (row?.default_checkout_mode ?? 'fiscal') as
+        'internal' | 'fiscal' | 'ask',
       internalReceiptsEnabled: row?.internal_receipts_enabled ?? true,
     };
   }
@@ -229,7 +241,9 @@ export class SettingsService {
     }
     // undefined: leave alone. null: back to the built-in message.
     const template =
-      dto.reminderTemplate === undefined ? undefined : reminderTemplate(dto.reminderTemplate);
+      dto.reminderTemplate === undefined
+        ? undefined
+        : reminderTemplate(dto.reminderTemplate);
     if (dto.fxRateSource === 'fixed' && dto.fxFixedRate === null) {
       throw new BadRequestException('A fixed exchange rate needs the rate itself.');
     }
@@ -255,11 +269,19 @@ export class SettingsService {
       ['registration_number', clearable(dto.registrationNumber)],
       ['tax_number', taxNumberOf(dto.taxNumber)],
       ['website', clearable(dto.website)],
-      ['brand_color', dto.brandColor === undefined ? undefined : dto.brandColor?.toLowerCase() ?? null],
+      [
+        'brand_color',
+        dto.brandColor === undefined
+          ? undefined
+          : (dto.brandColor?.toLowerCase() ?? null),
+      ],
       ['invoice_prefix', dto.invoicePrefix],
       ['vat_rate_bp', dto.vatRateBp],
       ['payment_terms_days', dto.paymentTermsDays],
-      ['payment_methods', dto.paymentMethods ? JSON.stringify(dto.paymentMethods) : undefined],
+      [
+        'payment_methods',
+        dto.paymentMethods ? JSON.stringify(dto.paymentMethods) : undefined,
+      ],
       ['fx_rate_source', dto.fxRateSource],
       ['fx_fixed_rate', dto.fxFixedRate],
       ['default_checkout_mode', dto.defaultCheckoutMode],
@@ -270,17 +292,18 @@ export class SettingsService {
     for (const [column, value] of columns) {
       if (value === undefined) continue;
       params.push(value);
-      const cast = column === 'working_hours' || column === 'payment_methods' ? '::jsonb' : '';
+      const cast =
+        column === 'working_hours' || column === 'payment_methods' ? '::jsonb' : '';
       sets.push(`${column} = $${params.length}${cast}`);
     }
 
     const tenantId = this.tenant.getRequiredTenantId();
     await this.db.withTenant(tenantId, async (client) => {
       if (dto.clinicName !== undefined) {
-        await client.query('UPDATE tenants SET name = $1, updated_at = now() WHERE id = $2', [
-          dto.clinicName,
-          tenantId,
-        ]);
+        await client.query(
+          'UPDATE tenants SET name = $1, updated_at = now() WHERE id = $2',
+          [dto.clinicName, tenantId],
+        );
       }
       // Every column has a default, so a clinic that has never saved settings
       // gets a row of defaults first and the update below changes only what
@@ -292,14 +315,21 @@ export class SettingsService {
       // The quote currency can never equal the clinic's own; a change of either
       // that would make them equal drops the quote rather than failing.
       if (dto.quoteCurrency !== undefined || dto.currency !== undefined) {
-        const { rows: cur } = await client.query<{ currency: string; quote_currency: string | null }>(
-          'SELECT currency, quote_currency FROM clinic_settings WHERE tenant_id = $1',
-          [tenantId],
-        );
+        const { rows: cur } = await client.query<{
+          currency: string;
+          quote_currency: string | null;
+        }>('SELECT currency, quote_currency FROM clinic_settings WHERE tenant_id = $1', [
+          tenantId,
+        ]);
         const own = dto.currency ?? cur[0]?.currency;
-        const quote = dto.quoteCurrency !== undefined ? dto.quoteCurrency : cur[0]?.quote_currency ?? null;
+        const quote =
+          dto.quoteCurrency !== undefined
+            ? dto.quoteCurrency
+            : (cur[0]?.quote_currency ?? null);
         if (dto.quoteCurrency !== undefined && quote !== null && quote === own) {
-          throw new BadRequestException('The estimate currency must differ from the clinic currency.');
+          throw new BadRequestException(
+            'The estimate currency must differ from the clinic currency.',
+          );
         }
         params.push(quote === own ? null : quote);
         sets.push(`quote_currency = $${params.length}`);
@@ -344,17 +374,23 @@ export class SettingsService {
    */
   async uploadLogo(file: Express.Multer.File | undefined, actor: ClinicAuditActor) {
     if (!this.storage.isConfigured) {
-      throw new ServiceUnavailableException('File storage is not configured on this server.');
+      throw new ServiceUnavailableException(
+        'File storage is not configured on this server.',
+      );
     }
     if (!file?.buffer?.length) throw new BadRequestException('No file was uploaded');
-    if (file.size > MAX_LOGO_BYTES) throw new BadRequestException('A logo must be under 1 MB');
+    if (file.size > MAX_LOGO_BYTES)
+      throw new BadRequestException('A logo must be under 1 MB');
     if (detectFileType(file.buffer) !== 'image/jpeg') {
       throw new BadRequestException('The logo must be a JPEG image');
     }
 
     const tenantId = this.tenant.getRequiredTenantId();
     const key = this.storage.buildBrandingKey(tenantId, 'jpg');
-    await this.storage.put(key, file.buffer, 'image/jpeg', { tenant: tenantId, purpose: 'logo' });
+    await this.storage.put(key, file.buffer, 'image/jpeg', {
+      tenant: tenantId,
+      purpose: 'logo',
+    });
 
     let previous: string | null = null;
     try {

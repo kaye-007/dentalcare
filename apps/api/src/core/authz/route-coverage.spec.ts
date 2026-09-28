@@ -58,7 +58,8 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
     "The caller's OWN factor, proven with password and code, and refused where MFA is required.",
   'AuthController.sessions': "The caller's OWN signed-in devices.",
   'AuthController.revokeOtherSessions': "Ends the caller's OWN other sessions.",
-  'AuthController.revokeSession': "Ends one of the caller's OWN sessions; ownership is checked.",
+  'AuthController.revokeSession':
+    "Ends one of the caller's OWN sessions; ownership is checked.",
   'ReminderDeliveryController.twilio':
     'Called by the SMS provider, not a signed-in user. Authenticated by the provider signature over the full URL and body; it can only move the reminder that URL names, inside the clinic it names, under that clinic’s RLS.',
 };

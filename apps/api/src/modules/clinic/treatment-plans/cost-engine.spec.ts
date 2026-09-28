@@ -1,4 +1,16 @@
-import { PLAN_STATUSES, PLAN_STATUS_LABELS, PLAN_TIMESTAMP_COLUMN, allowedPlanTransitions, calculateLine, calculatePlan, canTransitionPlan, explainPlanRefusal, isPlanStatus, type PlanLineInput, type PlanStatus } from './cost-engine';
+import {
+  PLAN_STATUSES,
+  PLAN_STATUS_LABELS,
+  PLAN_TIMESTAMP_COLUMN,
+  allowedPlanTransitions,
+  calculateLine,
+  calculatePlan,
+  canTransitionPlan,
+  explainPlanRefusal,
+  isPlanStatus,
+  type PlanLineInput,
+  type PlanStatus,
+} from './cost-engine';
 
 const line = (o: Partial<PlanLineInput> = {}): PlanLineInput => ({
   unitFee: 100,
@@ -62,7 +74,7 @@ describe('plan costing', () => {
       ],
       100,
     );
-    expect(c.subtotal).toBe(900);       // 500 + 400
+    expect(c.subtotal).toBe(900); // 500 + 400
     expect(c.lineDiscounts).toBe(50);
     expect(c.planDiscount).toBe(100);
     expect(c.totalDiscount).toBe(150);
@@ -131,7 +143,12 @@ describe('plan costing', () => {
 describe('plan lifecycle', () => {
   it('declares exactly the six documented statuses', () => {
     expect(PLAN_STATUSES).toEqual([
-      'draft', 'proposed', 'accepted', 'in_progress', 'completed', 'declined',
+      'draft',
+      'proposed',
+      'accepted',
+      'in_progress',
+      'completed',
+      'declined',
     ]);
   });
 
@@ -177,9 +194,15 @@ describe('plan lifecycle', () => {
       let reached = false;
       while (queue.length) {
         const cur = queue.shift()!;
-        if (allowedPlanTransitions(cur).length === 0) { reached = true; break; }
+        if (allowedPlanTransitions(cur).length === 0) {
+          reached = true;
+          break;
+        }
         for (const n of allowedPlanTransitions(cur)) {
-          if (!seen.has(n)) { seen.add(n); queue.push(n); }
+          if (!seen.has(n)) {
+            seen.add(n);
+            queue.push(n);
+          }
         }
       }
       expect(reached).toBe(true);
@@ -195,9 +218,12 @@ describe('plan lifecycle', () => {
 
   it('labels every status and stamps the right timestamps', () => {
     for (const s of PLAN_STATUSES) expect(PLAN_STATUS_LABELS[s]).toBeTruthy();
-    expect(Object.keys(PLAN_TIMESTAMP_COLUMN).sort()).toEqual(
-      ['accepted', 'completed', 'declined', 'proposed'],
-    );
+    expect(Object.keys(PLAN_TIMESTAMP_COLUMN).sort()).toEqual([
+      'accepted',
+      'completed',
+      'declined',
+      'proposed',
+    ]);
     // draft and in_progress are working states, not milestones.
     expect(PLAN_TIMESTAMP_COLUMN.draft).toBeUndefined();
     expect(PLAN_TIMESTAMP_COLUMN.in_progress).toBeUndefined();

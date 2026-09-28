@@ -47,7 +47,9 @@ export class ReminderSchedulerService implements OnModuleInit, OnModuleDestroy {
     }
     const interval = this.config.get<number>('REMINDER_SCAN_INTERVAL_MS') ?? 60_000;
     this.timer = setInterval(() => void this.tick(), interval);
-    this.logger.log(`reminder scheduler started (every ${interval}ms, channel: ${channel})`);
+    this.logger.log(
+      `reminder scheduler started (every ${interval}ms, channel: ${channel})`,
+    );
   }
 
   onModuleDestroy(): void {
@@ -99,7 +101,9 @@ export class ReminderSchedulerService implements OnModuleInit, OnModuleDestroy {
         }
       }
     } catch (err: unknown) {
-      this.logger.error(`reminder pass failed: ${err instanceof Error ? err.message : err}`);
+      this.logger.error(
+        `reminder pass failed: ${err instanceof Error ? err.message : err}`,
+      );
     } finally {
       this.running = false;
     }

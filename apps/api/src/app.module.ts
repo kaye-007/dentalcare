@@ -16,7 +16,10 @@ import { HealthModule } from '@/core/health/health.module';
 import { TenancyModule } from '@/core/tenancy/tenancy.module';
 import { TenantMiddleware } from '@/core/tenancy/tenant.middleware';
 import { tenantMiddlewareExclusions } from '@/core/tenancy/tenant-routes';
-import { RequestContextMiddleware, RequestContextModule } from '@/core/request-context/request-context';
+import {
+  RequestContextMiddleware,
+  RequestContextModule,
+} from '@/core/request-context/request-context';
 import { EntitlementsModule } from '@/core/entitlements/entitlements.service';
 import { IdempotencyInterceptor } from '@/core/idempotency/idempotency.interceptor';
 import { FeaturesModule } from '@/modules/clinic/features';
