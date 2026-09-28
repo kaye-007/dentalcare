@@ -76,7 +76,14 @@ export const NETWORK_ERROR =
 const TECHNICAL =
   /\b(sql|syntax error|relation "|violates|constraint|econn|etimedout|enotfound|stack|undefined is not|cannot read propert|typeerror|referenceerror|internal server error|bad gateway|gateway time-?out|service unavailable|cloudflare|worker threw|exception|hyperdrive|postgres|pg_)\b/i;
 
-function humanMessage(status: number, message: string): string {
+function humanMessage(
+  status: number,
+  message: string,
+  code: string | null = null,
+): string {
+  // A locked sign-in says how long to wait (API 0025); any other 429 is the
+  // short per-minute brake, and "a moment" is the truth there.
+  if (status === 429 && code === 'sign_in_locked' && message) return message;
   if (status === 429)
     return 'Too many attempts in a short time. Wait a moment and try again.';
   if (status === 413) return 'That file is too large to upload.';
@@ -114,7 +121,7 @@ async function toApiError(res: Response): Promise<ApiError> {
   }
   return new ApiError(
     res.status,
-    humanMessage(res.status, String(message)),
+    humanMessage(res.status, String(message), code),
     code,
     details,
   );
