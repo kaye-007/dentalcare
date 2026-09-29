@@ -650,10 +650,21 @@ every one of them looks like something else from the outside.
       and it prints **Restored whole** (see [Backups and restore](#backups-and-restore)).
       Rehearsed once locally on 2026-09-28; not yet against staging.
 
+- [ ] **Money through the Worker, with its key.** Take one payment in the
+      deployed clinic app, and settle one subscription invoice in the
+      deployed console. Every route that moves money refuses a request without
+      an `Idempotency-Key` (428), so both succeeding proves the header survives
+      each SPA's service binding to the API. A 428 in the Worker log means
+      something in between dropped it.
+
 Until every box above is ticked, this deployment is unproven. Do not describe
 it as production ready, and do not put a real clinic's records on it.
 
 ## Before first paying customer
+
+The release checklist. The security items are in their own group below, and
+[SECURITY_PROGRAM.md](./SECURITY_PROGRAM.md#4-decisions-taken-2026-09-28)
+records why each one is there.
 
 - [ ] `NODE_ENV=production`, `JWT_SECRET` rotated off any shared value
 - [ ] Both Hyperdrive configs created with `--caching-disabled`
@@ -672,3 +683,15 @@ it as production ready, and do not put a real clinic's records on it.
 - [ ] A fiscal invoice registered on DPT's test service and verified by QR
 - [ ] Clinic export downloaded and its SHA-256 checked for one clinic
 - [ ] Reception accounts told that charting and treatment plans moved to clinical staff
+
+### Security release checklist
+
+- [ ] Every box in [Staging verification](#staging-verification--required-before-any-of-this-is-believed) ticked, including money through the Worker
+- [ ] CI green on the exact commit being deployed: lint, format, secrets, typecheck, unit, build, dry runs, integration, clean-machine startup
+- [ ] Migration 0026 (`platform_idempotency_keys`) applied. Both apps are deployed from the same commit as the API: an older SPA sends no key on the routes that newly require one, and would get 428
+- [ ] Monitoring provider chosen, and every alert in [MONITORING.md](./MONITORING.md) configured, fired once on staging, and owned by a named person
+- [ ] The Albanian legal and privacy review done ([PRIVACY_RETENTION_CHECKLIST.md § 5](./PRIVACY_RETENTION_CHECKLIST.md#5-for-the-legal-and-privacy-review--questions-the-software-cannot-answer)): retention periods, controller and processor agreements, sub-processors. Nothing is described as compliant before it
+- [ ] Residual risk acknowledged by the owner: an access token outlives a revoked session by up to `JWT_ACCESS_TTL` (15 minutes), with the role it was issued with. The alternative is a shorter TTL
+- [ ] HSTS preload decided for the final domain, and only then. Today both SPAs send `max-age=31536000; includeSubDomains` without `preload`, and preloading is hard to undo
+- [ ] Reception accounts told that voiding a payment is now the administrator's, and that expenses are no longer shown to them
+- [ ] The runtime chosen after staging (Workers or the container), and the unchosen path's secrets and hosts removed

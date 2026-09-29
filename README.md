@@ -188,14 +188,17 @@ either.
 
 ## Documentation
 
-| Document                                          | Contents                                  |
-| ------------------------------------------------- | ----------------------------------------- |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md)           | System design, tenancy model, data model  |
-| [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | Folder map and conventions                |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md)               | Deployment, configuration, scaling limits |
-| [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)       | Findings, fixes, what remains             |
-| [CHANGELOG.md](docs/CHANGELOG.md)                 | Release history                           |
-| [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Historical RC1 readiness record           |
+| Document                                                              | Contents                                                      |
+| --------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md)                               | System design, tenancy model, data model                      |
+| [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)                     | Folder map and conventions                                    |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md)                                   | Deployment, configuration, scaling limits                     |
+| [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)                           | Findings, fixes, what remains                                 |
+| [SECURITY_PROGRAM.md](docs/SECURITY_PROGRAM.md)                       | The hardening pass, the owner's decisions, what is still open |
+| [MONITORING.md](docs/MONITORING.md)                                   | What must be watched and alerted; no provider chosen yet      |
+| [PRIVACY_RETENTION_CHECKLIST.md](docs/PRIVACY_RETENTION_CHECKLIST.md) | What is stored and kept; the questions for the legal review   |
+| [CHANGELOG.md](docs/CHANGELOG.md)                                     | Release history                                               |
+| [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)                     | Historical RC1 readiness record                               |
 
 ## Tests
 
