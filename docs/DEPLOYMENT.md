@@ -248,6 +248,11 @@ npm run cf:dry-run    # bundles all three, uploads nothing
 npm run cf:deploy     # api → tenant-web → admin-web
 ```
 
+Both need **Node 22 or newer**: wrangler 4 refuses to start on Node 20 ("Wrangler
+requires at least Node.js v22.0.0"). This is the deploying machine's Node, not
+the Worker's. CI runs these dry runs on 22 and everything else on 20, the
+version the container image ships.
+
 `cf:deploy` on the API runs `npm run build:worker` first, which is three
 steps, and each one exists for a reason:
 

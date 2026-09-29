@@ -23,12 +23,21 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # What the container image runs (infra/docker/Dockerfile), so the tests run
+  # on it too.
   NODE_VERSION: '20'
+  # Wrangler 4 refuses to start on anything older ("Wrangler requires at least
+  # Node.js v22.0.0"). Only the Cloudflare tooling uses it; the Worker itself
+  # runs on workerd, not on Node.
+  WRANGLER_NODE_VERSION: '22'
 
 jobs:
   checks:
     name: Lint, typecheck, unit tests, builds
     runs-on: ubuntu-latest
+    # Each job takes minutes. The limit exists so that a hang fails in
+    # minutes too, instead of holding a runner for GitHub's default six hours.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -62,6 +71,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.WRANGLER_NODE_VERSION }}
+
       # Proves the Worker bundles and that every binding in wrangler.jsonc
       # resolves. It does NOT prove the Worker serves a request — see
       # docs/DEPLOYMENT.md; that needs staging.
@@ -71,6 +84,7 @@ jobs:
   integration:
     name: Database and API integration
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -114,12 +128,20 @@ jobs:
       - name: Migrate
         run: npm run migrate:up
 
+      # ts-jest checks types against packages/shared/dist, which only a build
+      # writes. The checks job gets it from `npm run typecheck`; this job has
+      # to build it itself. Without it every suite that boots the API fails to
+      # compile (TS2307 on '@dentalcare/shared'), and Jest then never exits.
+      - name: Build the shared package
+        run: npm run shared:build
+
       - name: Database and API integration tests
         run: npm run test:integration
 
   compose:
     name: Clean-machine startup
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 

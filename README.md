@@ -200,9 +200,13 @@ either.
 ## Tests
 
 ```bash
+npm run shared:build                           # once, and after changing packages/shared
 npm test -w @dentalcare/api                    # unit — no database
 npm run test:integration -w @dentalcare/api    # against Postgres, as the real roles
 ```
+
+Both suites check types against the shared package's build output; without
+it every file that imports `@dentalcare/shared` fails with TS2307.
 
 The integration suite writes to the database it runs against, so it never
 uses the development database in `.env`. Give it one of its own, once:
