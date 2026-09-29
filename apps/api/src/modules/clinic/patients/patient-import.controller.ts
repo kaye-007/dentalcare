@@ -5,6 +5,7 @@ import { RequirePermissions } from '@/core/authz/permissions.decorator';
 import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
 import { auditActor } from '@/core/audit/clinic-audit.service';
+import { Idempotent } from '@/core/idempotency/idempotency.interceptor';
 import { ImportBatchDto } from './dto/patient-import.dto';
 import { PatientImportService } from './patient-import.service';
 
@@ -27,7 +28,9 @@ export class PatientImportController {
     return this.imports.preview(dto);
   }
 
+  /** Can post opening balances to the ledger, so a repeat must not repeat it. */
   @Post()
+  @Idempotent()
   @RequirePermissions('patients:import')
   commit(@Body() dto: ImportBatchDto, @CurrentUser() user?: AccessTokenPayload) {
     return this.imports.commit(dto, auditActor(user));

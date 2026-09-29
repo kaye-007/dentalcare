@@ -1,15 +1,20 @@
 import { createHash } from 'node:crypto';
 import {
+  BadRequestException,
   CallHandler,
   ConflictException,
   ExecutionContext,
+  HttpException,
+  HttpStatus,
   Injectable,
+  InternalServerErrorException,
   NestInterceptor,
   SetMetadata,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Response } from 'express';
+import { PoolClient } from 'pg';
 import { Observable, from, of, throwError } from 'rxjs';
 import { catchError, mergeMap } from 'rxjs/operators';
 import { DatabaseService } from '@/core/database/database.service';
@@ -21,13 +26,89 @@ export const IDEMPOTENT_METADATA_KEY = 'dentalcare:idempotent';
 
 /**
  * Mark a route whose repeat must not repeat its effect: taking money, moving
- * cash, issuing anything fiscal.
+ * cash, issuing anything fiscal, billing a clinic.
  *
- * Opt-in per route, and the header stays optional so a client written before
- * 0013 keeps working. The clinic app sends a fresh key per user action and
- * the same key on every retry of that action.
+ * The key is REQUIRED on every route marked here (the owner's decision,
+ * 2026-09-28): a request without one is refused with 428 before the handler
+ * runs, so no money moves without a key to replay it by. The clinic app and
+ * the console make a fresh key per user action and send the same key on every
+ * retry of that action. idempotency-coverage.spec.ts fails the build when a
+ * route that moves money is left unmarked.
  */
 export const Idempotent = () => SetMetadata(IDEMPOTENT_METADATA_KEY, true);
+
+/**
+ * Where a plane keeps its keys. A clinic's live in idempotency_keys under the
+ * clinic's row security (0013); the console's billing belongs to no clinic,
+ * so its keys live in platform_idempotency_keys (0026). Table and column
+ * names are these constants, never input.
+ */
+interface KeyStore {
+  table: 'idempotency_keys' | 'platform_idempotency_keys';
+  actorColumn: 'user_id' | 'admin_id';
+  transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T>;
+  /** Claim the key as in_progress; false when it is already there. */
+  insert(
+    client: PoolClient,
+    key: string,
+    actorId: string | null,
+    method: string,
+    path: string,
+    hash: string,
+  ): Promise<boolean>;
+}
+
+/**
+ * Fields that are secrets wherever they sit in a body. A manager's approval
+ * PIN travels with a payout, a float or a variance approval; the database
+ * keeps it under bcrypt, and a SHA-256 of the request would undo that — four
+ * to six digits are guessed from a fast hash in milliseconds by anyone who
+ * can read the table. The hash only has to tell one request from another,
+ * and the fields around the secret already do.
+ */
+const SECRET_FIELDS: ReadonlySet<string> = new Set([
+  'pin',
+  'password',
+  'currentPassword',
+]);
+
+export function withoutSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutSecrets);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([field]) => !SECRET_FIELDS.has(field))
+        .map(([field, v]) => [field, withoutSecrets(v)]),
+    );
+  }
+  return value;
+}
+
+/**
+ * The request's key, or the refusal. The request context keeps a key only
+ * when it has the shape 0013 stores, so a null there is either no header at
+ * all (428: the precondition this route requires) or one that is not a key
+ * (400: a client bug).
+ */
+function requiredKey(req: { headers: Record<string, unknown> }, parsed: string | null) {
+  if (parsed) return parsed;
+  const raw = req.headers['idempotency-key'];
+  const sent = (Array.isArray(raw) ? raw[0] : raw) as string | undefined;
+  if (!sent?.trim()) {
+    throw new HttpException(
+      {
+        code: 'idempotency_key_required',
+        message:
+          'This action moves money, so it needs an Idempotency-Key header: a new one per action, the same one on every retry of it.',
+      },
+      HttpStatus.PRECONDITION_REQUIRED,
+    );
+  }
+  throw new BadRequestException({
+    code: 'idempotency_key_invalid',
+    message: 'An Idempotency-Key is 16 to 128 letters, digits, "-" or "_".',
+  });
+}
 
 /** A claim older than this with no response is a request that died mid-way. */
 const STALE_CLAIM_MS = 60_000;
@@ -62,6 +143,9 @@ type Claim =
  * runs the handler again. Routes where that matters carry a second guard in
  * their own transaction — a payment stores the key in a unique column, so the
  * second run fails on the constraint instead of taking the money twice.
+ *
+ * Guards run before interceptors, so a caller who is not signed in, or not
+ * allowed the route, is refused for that before a missing key is mentioned.
  */
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
@@ -81,25 +165,34 @@ export class IdempotencyInterceptor implements NestInterceptor {
       IDEMPOTENT_METADATA_KEY,
       [context.getHandler(), context.getClass()],
     );
-    const key = this.request.get()?.idempotencyKey ?? null;
-    const tenantId = this.tenant.getTenantId();
-    if (!marked || !key || !tenantId) return handled();
+    if (!marked) return handled();
 
-    const req = context.switchToHttp().getRequest<RequestWithUser>();
+    const req = context
+      .switchToHttp()
+      .getRequest<RequestWithUser & { admin?: { sub?: string } }>();
     const res = context.switchToHttp().getResponse<Response>();
+    const key = requiredKey(req, this.request.get()?.idempotencyKey ?? null);
+
+    // A clinic route has its clinic by now (TenantMiddleware); a console route
+    // has its administrator (PlatformJwtGuard). Neither is a route this
+    // interceptor can place, and it refuses rather than guess the plane.
+    const tenantId = this.tenant.getTenantId();
+    const actorId = tenantId ? (req.user?.sub ?? null) : (req.admin?.sub ?? null);
+    if (!tenantId && !req.admin) {
+      throw new InternalServerErrorException(
+        'An idempotent route ran outside both the clinic and the console.',
+      );
+    }
+    const store = tenantId ? this.clinicStore(tenantId) : this.platformStore();
+
     const path = (req.originalUrl ?? req.url).split('?')[0]!;
     const hash = createHash('sha256')
-      .update(JSON.stringify([req.method, path, req.user?.sub ?? null, req.body ?? null]))
+      .update(
+        JSON.stringify([req.method, path, actorId, withoutSecrets(req.body ?? null)]),
+      )
       .digest('hex');
 
-    const claim = await this.claim(
-      tenantId,
-      key,
-      req.method,
-      path,
-      hash,
-      req.user?.sub ?? null,
-    );
+    const claim = await this.claim(store, key, req.method, path, hash, actorId);
 
     switch (claim.kind) {
       case 'mismatch':
@@ -122,39 +215,74 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     return handled().pipe(
       mergeMap((body) =>
-        from(this.complete(tenantId, key, res.statusCode, body).then(() => body)),
+        from(this.complete(store, key, res.statusCode, body).then(() => body)),
       ),
       catchError((err: unknown) =>
-        from(this.release(tenantId, key)).pipe(mergeMap(() => throwError(() => err))),
+        from(this.release(store, key)).pipe(mergeMap(() => throwError(() => err))),
       ),
     );
   }
 
+  private clinicStore(tenantId: string): KeyStore {
+    return {
+      table: 'idempotency_keys',
+      actorColumn: 'user_id',
+      transaction: (fn) => this.db.withTenant(tenantId, fn),
+      insert: async (client, key, actorId, method, path, hash) =>
+        Boolean(
+          (
+            await client.query(
+              `INSERT INTO idempotency_keys (tenant_id, key, user_id, request_method, request_path, request_hash)
+               VALUES ($1,$2,$3,$4,$5,$6)
+               ON CONFLICT (tenant_id, key) DO NOTHING
+               RETURNING key`,
+              [tenantId, key, actorId, method, path, hash],
+            )
+          ).rowCount,
+        ),
+    };
+  }
+
+  private platformStore(): KeyStore {
+    return {
+      table: 'platform_idempotency_keys',
+      actorColumn: 'admin_id',
+      transaction: (fn) => this.db.withAdminTransaction(fn),
+      insert: async (client, key, actorId, method, path, hash) =>
+        Boolean(
+          (
+            await client.query(
+              `INSERT INTO platform_idempotency_keys (key, admin_id, request_method, request_path, request_hash)
+               VALUES ($1,$2,$3,$4,$5)
+               ON CONFLICT (key) DO NOTHING
+               RETURNING key`,
+              [key, actorId, method, path, hash],
+            )
+          ).rowCount,
+        ),
+    };
+  }
+
   private claim(
-    tenantId: string,
+    store: KeyStore,
     key: string,
     method: string,
     path: string,
     hash: string,
-    userId: string | null,
+    actorId: string | null,
   ): Promise<Claim> {
-    return this.db.withTenant(tenantId, async (client) => {
+    return store.transaction(async (client) => {
       // Forget keys past the replay window, now and then rather than on every
-      // request. RLS scopes this to the one clinic.
+      // request. RLS scopes this to the one clinic on the clinic plane.
       if (Math.random() < 0.02) {
         await client.query(
-          `DELETE FROM idempotency_keys WHERE created_at < now() - interval '${REPLAY_WINDOW_HOURS} hours'`,
+          `DELETE FROM ${store.table} WHERE created_at < now() - interval '${REPLAY_WINDOW_HOURS} hours'`,
         );
       }
 
-      const inserted = await client.query(
-        `INSERT INTO idempotency_keys (tenant_id, key, user_id, request_method, request_path, request_hash)
-         VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (tenant_id, key) DO NOTHING
-         RETURNING key`,
-        [tenantId, key, userId, method, path, hash],
-      );
-      if (inserted.rowCount) return { kind: 'claimed' };
+      if (await store.insert(client, key, actorId, method, path, hash)) {
+        return { kind: 'claimed' };
+      }
 
       const { rows } = await client.query<{
         request_hash: string;
@@ -164,7 +292,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
         created_at: Date;
       }>(
         `SELECT request_hash, status, response_status, response_body, created_at
-           FROM idempotency_keys WHERE key = $1 FOR UPDATE`,
+           FROM ${store.table} WHERE key = $1 FOR UPDATE`,
         [key],
       );
       const row = rows[0];
@@ -186,25 +314,25 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
       // Expired or abandoned: take the key over as a new claim.
       await client.query(
-        `UPDATE idempotency_keys
+        `UPDATE ${store.table}
             SET status = 'in_progress', response_status = NULL, response_body = NULL,
-                completed_at = NULL, created_at = now(), user_id = $2
+                completed_at = NULL, created_at = now(), ${store.actorColumn} = $2
           WHERE key = $1`,
-        [key, userId],
+        [key, actorId],
       );
       return { kind: 'claimed' };
     });
   }
 
   private async complete(
-    tenantId: string,
+    store: KeyStore,
     key: string,
     status: number,
     body: unknown,
   ): Promise<void> {
-    await this.db.withTenant(tenantId, (client) =>
+    await store.transaction((client) =>
       client.query(
-        `UPDATE idempotency_keys
+        `UPDATE ${store.table}
             SET status = 'completed', response_status = $2, response_body = $3, completed_at = now()
           WHERE key = $1`,
         [key, status, JSON.stringify(body ?? null)],
@@ -212,11 +340,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
     );
   }
 
-  private async release(tenantId: string, key: string): Promise<void> {
-    await this.db
-      .withTenant(tenantId, (client) =>
+  private async release(store: KeyStore, key: string): Promise<void> {
+    await store
+      .transaction((client) =>
         client.query(
-          `DELETE FROM idempotency_keys WHERE key = $1 AND status = 'in_progress'`,
+          `DELETE FROM ${store.table} WHERE key = $1 AND status = 'in_progress'`,
           [key],
         ),
       )

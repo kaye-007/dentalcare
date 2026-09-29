@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { randomUUID } from 'node:crypto';
 import { AddressInfo } from 'node:net';
 import { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -81,9 +82,22 @@ export async function call<T = unknown>(
     body?: unknown;
     /** Extra request headers, e.g. Idempotency-Key. */
     headers?: Record<string, string>;
+    /**
+     * The Idempotency-Key a change carries. A route that moves money refuses
+     * a request without one (428), and the apps send one with every such
+     * action, so a POST, PUT, PATCH or DELETE here gets a fresh key unless the
+     * test names one (here or in `headers`) or passes null to send none.
+     */
+    idempotencyKey?: string | null;
   } = {},
 ): Promise<Response<T>> {
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
+  const named = Object.keys(headers).some((h) => h.toLowerCase() === 'idempotency-key');
+  if (opts.idempotencyKey !== undefined) {
+    if (opts.idempotencyKey !== null) headers['Idempotency-Key'] = opts.idempotencyKey;
+  } else if (!named && !['GET', 'HEAD'].includes(method.toUpperCase())) {
+    headers['Idempotency-Key'] = `itest-${randomUUID()}`;
+  }
   if (opts.subdomain) headers['X-Tenant-Subdomain'] = opts.subdomain;
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';

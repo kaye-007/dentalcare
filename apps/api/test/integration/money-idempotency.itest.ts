@@ -8,7 +8,8 @@ import { createScenario, destroyScenario, Scenario } from './fixtures';
  *
  * Every route that creates or reverses money takes an Idempotency-Key: the
  * same key replays the first response, and the handler does not run again.
- * Payments and the cash drawer already did; these are the rest.
+ * Payments and the cash drawer already did; these are the rest. Since
+ * 2026-09-28 the key is required: a request without one is refused (428).
  *
  * The replay store and the handler's own transaction are two commits. Where
  * a second run would duplicate money even after the replay is lost (a
@@ -78,11 +79,30 @@ describe('creating an invoice', () => {
     expect(await invoices()).toBe(before);
   });
 
-  it('still makes two invoices for two requests without a key', async () => {
+  it('refuses a request without a key (428), and records nothing', async () => {
     const before = await invoices();
-    expect((await post('/api/invoices', body())).status).toBe(201);
-    expect((await post('/api/invoices', body())).status).toBe(201);
-    expect(await invoices()).toBe(before + 2);
+    const res = await call<{ code: string }>(api, 'POST', '/api/invoices', {
+      token,
+      subdomain: s.a.subdomain,
+      body: body(),
+      idempotencyKey: null,
+    });
+    expect(res.status).toBe(428);
+    expect(res.body.code).toBe('idempotency_key_required');
+    expect(await invoices()).toBe(before);
+  });
+
+  it('refuses a key that is not one (400), and records nothing', async () => {
+    const before = await invoices();
+    const res = await call<{ code: string }>(api, 'POST', '/api/invoices', {
+      token,
+      subdomain: s.a.subdomain,
+      body: body(),
+      idempotencyKey: 'too short',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('idempotency_key_invalid');
+    expect(await invoices()).toBe(before);
   });
 });
 
@@ -216,5 +236,71 @@ describe('invoicing a treatment plan', () => {
     const rerun = await post(`/api/treatment-plans/${plan.body.id}/invoice`, {}, k);
     expect(rerun.status).toBe(400);
     expect(await billed()).toBe(1);
+  });
+});
+
+/**
+ * No money moves without a key (the owner's decision, 2026-09-28). Each of
+ * these answers 428 before its handler runs, so before it reads the body or
+ * looks up the id: the ids here name nothing. idempotency-coverage.spec.ts is
+ * what keeps this list complete; this proves the refusal is real on each.
+ */
+describe('every route that moves money requires a key', () => {
+  const none = randomUUID();
+  const routes: [string, string][] = [
+    ['POST', '/api/invoices'],
+    ['PATCH', `/api/invoices/${none}/cancel`],
+    ['POST', `/api/invoices/${none}/payments`],
+    ['POST', `/api/payments/${none}/void`],
+    ['POST', `/api/treatment-plans/${none}/invoice`],
+    ['POST', `/api/patients/${none}/ledger/adjustments`],
+    ['POST', '/api/expenses'],
+    ['POST', `/api/expenses/${none}/void`],
+    ['POST', `/api/staff/${none}/salary-payments`],
+    ['POST', `/api/invoices/${none}/fiscal`],
+    ['POST', '/api/fiscal/cash-deposits'],
+    ['POST', `/api/fiscal/queue/${none}/retry`],
+    ['POST', '/api/drawer/sessions'],
+    ['POST', `/api/drawer/sessions/${none}/drops`],
+    ['POST', `/api/drawer/sessions/${none}/payouts`],
+    ['POST', `/api/drawer/sessions/${none}/float`],
+    ['POST', `/api/drawer/sessions/${none}/counts`],
+    ['POST', `/api/drawer/sessions/${none}/close`],
+    ['POST', `/api/drawer/sessions/${none}/approve`],
+    ['POST', `/api/drawer/sessions/${none}/approve-with-pin`],
+    ['POST', `/api/drawer/sessions/${none}/force-close`],
+    ['POST', '/api/patient-imports'],
+    ['POST', '/api/whatsapp/reminders/send'],
+  ];
+
+  beforeAll(async () => {
+    // The drawer routes sit behind the clinic's feature switch, a guard that
+    // answers before the key is looked at.
+    const on = await call(api, 'PATCH', '/api/features/cash_drawer', {
+      token,
+      subdomain: s.a.subdomain,
+      body: { enabled: true },
+    });
+    expect(on.status).toBe(200);
+  });
+
+  it.each(routes)('%s %s answers 428 without a key', async (method, path) => {
+    const res = await call<{ code: string }>(api, method, path, {
+      token,
+      subdomain: s.a.subdomain,
+      body: {},
+      idempotencyKey: null,
+    });
+    expect(res.status).toBe(428);
+    expect(res.body.code).toBe('idempotency_key_required');
+  });
+
+  it('asks who is calling before it asks for a key', async () => {
+    const anonymous = await call(api, 'POST', '/api/invoices', {
+      subdomain: s.a.subdomain,
+      body: {},
+      idempotencyKey: null,
+    });
+    expect(anonymous.status).toBe(401);
   });
 });

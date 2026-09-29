@@ -152,6 +152,7 @@ describe('the platform tables are out of reach', () => {
   it.each([
     ['platform_admins', 'SELECT * FROM platform_admins'],
     ['audit_log', 'SELECT * FROM audit_log'],
+    ['platform_idempotency_keys', 'SELECT * FROM platform_idempotency_keys'],
   ])('cannot read %s', async (_table, sql) => {
     const code = await errorCodeOf(asTenant(s.a.id, (c) => c.query(sql)));
 

@@ -15,6 +15,7 @@ import { can, normalizeRole } from '@dentalcare/shared';
 import { CurrentUser } from '@/shared/decorators/current-user.decorator';
 import { AccessTokenPayload } from '@/shared/types/access-token';
 import { auditActor } from '@/core/audit/clinic-audit.service';
+import { Idempotent } from '@/core/idempotency/idempotency.interceptor';
 import {
   CreateStaffDto,
   RecordSalaryPaymentDto,
@@ -84,6 +85,7 @@ export class StaffController {
   }
 
   @Post(':id/salary-payments')
+  @Idempotent()
   @RequirePermissions('payroll:manage')
   recordSalary(
     @Param('id', ParseUUIDPipe) id: string,

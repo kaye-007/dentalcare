@@ -73,6 +73,7 @@ export class FiscalSettingsController {
   }
 
   @Post('queue/:id/retry')
+  @Idempotent()
   @RequirePermissions('invoices:fiscalize')
   retry(@Param('id', ParseUUIDPipe) id: string) {
     return this.fiscal.retryNow(id);

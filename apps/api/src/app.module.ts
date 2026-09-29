@@ -168,8 +168,8 @@ function prettyTransport() {
     // Global, so a controller written next month is covered without anyone
     // remembering to opt in. Outside the clinic plane it is a no-op.
     { provide: APP_GUARD, useClass: ReadOnlyGuard },
-    // Global and inert unless a route is marked @Idempotent() and the request
-    // carries an Idempotency-Key (0013).
+    // Global and inert unless a route is marked @Idempotent(). A marked route
+    // requires an Idempotency-Key: 428 without one (0013, 0026).
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
 })

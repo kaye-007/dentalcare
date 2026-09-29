@@ -67,6 +67,27 @@ afterAll(async () => {
 });
 
 describe('running the month', () => {
+  // No money moves without an Idempotency-Key (2026-09-28), the vendor's
+  // included. The console keeps its keys in platform_idempotency_keys (0026).
+  it('refuses to run without an Idempotency-Key, and issues nothing', async () => {
+    const refused = await call<{ code: string }>(
+      api,
+      'POST',
+      '/api/platform/billing/run',
+      {
+        ...P({}),
+        idempotencyKey: null,
+      },
+    );
+    expect(refused.status).toBe(428);
+    expect(refused.body.code).toBe('idempotency_key_required');
+    const issued = await ownerQuery<{ n: string }>(
+      'SELECT count(*) AS n FROM subscription_invoices WHERE tenant_id = $1',
+      [s.a.id],
+    );
+    expect(Number(issued.rows[0]!.n)).toBe(0);
+  });
+
   it('issues one invoice per clinic, and a second run issues nothing', async () => {
     const first = await call<{ considered: number; issued: number; numbers: string[] }>(
       api,
@@ -171,14 +192,35 @@ describe('settling an invoice', () => {
 
   it('records the payment, and refuses to record it twice', async () => {
     const invoice = await mine();
-    const paid = await call<{ status: string; paidAmount: number }>(
-      api,
-      'POST',
-      `/api/platform/billing/invoices/${invoice.id}/pay`,
-      P({ method: 'bank_transfer', reference: 'TXN-55512' }),
-    );
+    const pay = (idempotencyKey: string | null) =>
+      call<{ status: string; paidAmount: number; code?: string }>(
+        api,
+        'POST',
+        `/api/platform/billing/invoices/${invoice.id}/pay`,
+        { ...P({ method: 'bank_transfer', reference: 'TXN-55512' }), idempotencyKey },
+      );
+
+    const unkeyed = await pay(null);
+    expect(unkeyed.status).toBe(428);
+    expect((await mine()).status).not.toBe('paid');
+
+    const key = `console-${invoice.id}`;
+    const paid = await pay(key);
     expect(paid.status).toBe(201);
     expect(paid.body).toMatchObject({ status: 'paid', paidAmount: 4900 });
+
+    // A double click, or a retry after a lost response: the first answer,
+    // replayed, instead of "already settled".
+    const replayed = await pay(key);
+    expect(replayed.status).toBe(201);
+    expect(replayed.body).toEqual(paid.body);
+    expect(replayed.headers.get('idempotent-replayed')).toBe('true');
+    const audited = await ownerQuery<{ n: string }>(
+      `SELECT count(*) AS n FROM audit_log
+        WHERE action = 'platform.billing.paid' AND entity_id = $1`,
+      [invoice.id],
+    );
+    expect(Number(audited.rows[0]!.n)).toBe(1);
 
     const again = await call<{ code: string }>(
       api,

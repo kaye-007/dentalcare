@@ -198,6 +198,7 @@ export class CashDrawerController {
   /* ── approval and oversight ── */
 
   @Post('sessions/:id/approve')
+  @Idempotent()
   @RequirePermissions('drawer:approve')
   approve(
     @Param('id', ParseUUIDPipe) id: string,
@@ -209,6 +210,7 @@ export class CashDrawerController {
 
   /** A manager's approval given with their PIN at the receptionist's device. */
   @Post('sessions/:id/approve-with-pin')
+  @Idempotent()
   @RequirePermissions('drawer:operate')
   approveWithPin(
     @Param('id', ParseUUIDPipe) id: string,
@@ -219,6 +221,7 @@ export class CashDrawerController {
   }
 
   @Post('sessions/:id/force-close')
+  @Idempotent()
   @RequirePermissions('drawer:approve')
   forceClose(
     @Param('id', ParseUUIDPipe) id: string,

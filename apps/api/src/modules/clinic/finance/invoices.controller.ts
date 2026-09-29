@@ -90,6 +90,7 @@ export class InvoicesController {
    * clinic audit log.
    */
   @Patch(':id/cancel')
+  @Idempotent()
   @RequirePermissions('invoices:write')
   cancel(
     @Param('id', ParseUUIDPipe) id: string,
