@@ -405,7 +405,8 @@ function PatientSearch({
         label: t('quick.addExpense'),
         also: 'new expense spend',
         icon: TrendingDown,
-        allowed: can('expenses:write') && !readOnly,
+        // The form lives on the Expenses page, which needs expenses:read.
+        allowed: can('expenses:write') && can('expenses:read') && !readOnly,
         run: () => go('/expenses?new=1'),
       },
     ];
@@ -625,7 +626,8 @@ function NewMenu() {
       to: '/expenses?new=1',
       label: t('quick.addExpense'),
       icon: TrendingDown,
-      allowed: can('expenses:write'),
+      // The form lives on the Expenses page, which needs expenses:read.
+      allowed: can('expenses:write') && can('expenses:read'),
     },
   ].filter((i) => i.allowed);
 

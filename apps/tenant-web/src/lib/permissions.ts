@@ -39,7 +39,7 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   assistant:
     'Charts on a clinician’s behalf and files documents, but cannot sign — a clinician signs what an assistant records. Can book appointments. No access to money.',
   receptionist:
-    'Runs the day: booking, patients, the medical history at intake, invoices, fiscal invoices, payments, expenses and documents. Runs a cash drawer when the clinic uses one. Can read the chart and treatment plans but not change them. Can void a mistaken payment with a reason — never delete one. Cannot see financial reports, and cannot change prices, settings or accounts.',
+    'Runs the day: booking, patients, the medical history at intake, invoices, fiscal invoices, payments and documents. Runs a cash drawer when the clinic uses one. Can read the chart and treatment plans but not change them. Takes payments but cannot void one — the administrator does. Cannot see expenses or financial reports, and cannot change prices, settings or accounts.',
   accountant:
     'Reads the money: invoices, payments, expenses, cash drawer reports and financial reports. Changes nothing, and never sees patient records, the chart or documents.',
 };

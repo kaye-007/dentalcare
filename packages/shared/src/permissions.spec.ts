@@ -136,8 +136,6 @@ describe('permission matrix', () => {
         'invoices:fiscalize',
         'payments:read',
         'payments:write',
-        'expenses:read',
-        'expenses:write',
         'documents:read',
         'documents:write',
         'reminders:send',
@@ -151,9 +149,31 @@ describe('permission matrix', () => {
     }
   });
 
-  it('lets reception undo money without erasing it', () => {
-    expect(can('receptionist', 'payments:void')).toBe(true);
-    expect(can('receptionist', 'expenses:void')).toBe(true);
+  /**
+   * The owner's decision of 2026-09-28: reception takes money but does not
+   * reverse it, and does not see what the clinic spends. It still reads the
+   * chart, which it explains the bill from.
+   */
+  it('lets reception take money, but not reverse it or see the spending', () => {
+    expect(canAll('receptionist', ['payments:write', 'clinical:read'])).toBe(true);
+    for (const p of ['payments:void', 'expenses:void', 'expenses:read'] as const) {
+      expect(can('receptionist', p)).toBe(false);
+    }
+  });
+
+  it('leaves reversing money to the administrator alone', () => {
+    expect(ROLES.filter((r) => can(r, 'payments:void'))).toEqual(['admin']);
+    expect(ROLES.filter((r) => can(r, 'expenses:void'))).toEqual(['admin']);
+  });
+
+  it('shows the spending to the administrator and the accountant only', () => {
+    expect(ROLES.filter((r) => can(r, 'expenses:read')).sort()).toEqual([
+      'accountant',
+      'admin',
+    ]);
+  });
+
+  it('undoes money without erasing it: nothing but a document or an adjustment deletes', () => {
     expect(PERMISSIONS.filter((p) => p.endsWith(':delete')).sort()).toEqual([
       'documents:delete',
       'invoices:delete',

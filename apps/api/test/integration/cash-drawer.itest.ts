@@ -482,11 +482,21 @@ describe('a shift', () => {
         inv,
       ])
     ).rows[0]!;
-    const voided = await call(
+    // Reception takes the money and does not reverse it (the owner's decision,
+    // 2026-09-28). The administrator voids, and the cash still comes off the
+    // drawer that took it.
+    const refused = await call(
       api,
       'POST',
       `/api/payments/${pay.id}/void`,
       A(desk, { reason: 'Patient paid by card instead' }),
+    );
+    expect(refused.status).toBe(403);
+    const voided = await call(
+      api,
+      'POST',
+      `/api/payments/${pay.id}/void`,
+      A(admin, { reason: 'Patient paid by card instead' }),
     );
     expect(voided.status).toBe(201);
     const types = (
@@ -692,7 +702,7 @@ describe('a shift', () => {
       api,
       'POST',
       `/api/payments/${firstCashPaymentId}/void`,
-      A(desk, { reason: 'Invoice raised twice' }),
+      A(admin, { reason: 'Invoice raised twice' }),
     );
     expect(voided.status).toBe(201);
     const list = await call<{ id: string; status: string; voidedAfterClose: boolean }[]>(

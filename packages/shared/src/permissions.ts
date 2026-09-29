@@ -142,12 +142,13 @@ export const PERMISSIONS = [
   'payments:write',
   /**
    * Reverse a recorded payment. NOT a delete — 0018 revoked that privilege
-   * from the database role entirely. Reception holds this so a mistyped cash
-   * payment can be fixed without waiting for the doctor; the reversal, the
-   * reason and her name are permanent.
+   * from the database role entirely; the reversal, the reason and the name of
+   * whoever did it are permanent. The administrator's alone since 2026-09-28:
+   * reception takes payments, and a mistyped one is reversed by the doctor.
    */
   'payments:void',
 
+  /** The clinic's spending. Owner-level: not reception's (2026-09-28). */
   'expenses:read',
   'expenses:write',
   /** Reverse a recorded expense. Same shape as payments:void. */
@@ -263,11 +264,12 @@ export type Role = (typeof ROLES)[number];
  *  - `inventory:manage` — what is stocked and what counts as low. Moving a
  *    minimum level silences a warning rather than recording a fact.
  *  - `patients:import`  — hundreds of records and opening balances at once.
- *
- * Note what is NOT here: reception may VOID a payment or an expense. She has
- * to be able to fix a mistyped cash payment without waiting for the doctor.
- * What she cannot do is make one disappear — 0018 took DELETE away from the
- * database role, so a void is a reversal that stays on the record forever.
+ *  - `payments:void`, `expenses:void` — reversing money already recorded.
+ *    Reception used to hold both, so a mistyped cash payment could be fixed
+ *    without waiting for the doctor. The owner's decision of 2026-09-28 is
+ *    that the person who takes the money does not also reverse it. Nobody
+ *    can make one disappear: 0018 took DELETE away from the database role,
+ *    so a void is a reversal that stays on the record forever.
  */
 export const ADMIN_ONLY: readonly Permission[] = [
   'treatments:manage',
@@ -280,6 +282,8 @@ export const ADMIN_ONLY: readonly Permission[] = [
   'inventory:manage',
   'patients:import',
   'drawer:approve',
+  'payments:void',
+  'expenses:void',
 ];
 
 /**
@@ -380,8 +384,15 @@ const ASSISTANT: readonly Permission[] = [
  *
  * Cannot sign, see aggregate finances or salaries, change prices, settings or
  * accounts, read the activity trail, or delete anything. The money evidence
- * she does touch — payments, voids, the ledger — is append-only in the
- * database regardless of what this list says.
+ * she does touch — payments, the ledger — is append-only in the database
+ * regardless of what this list says.
+ *
+ * Takes money but does not reverse it, and does not see the clinic's
+ * spending (the owner's decision, 2026-09-28): `payments:void`,
+ * `expenses:void` and `expenses:read` were withdrawn. A mistyped payment is
+ * voided by the administrator. `expenses:write` stays, as the decision left
+ * it, but with the list withdrawn the app offers her no way to use it — the
+ * Expenses page needs `expenses:read`.
  */
 const RECEPTIONIST: readonly Permission[] = [
   'patients:read',
@@ -399,10 +410,7 @@ const RECEPTIONIST: readonly Permission[] = [
   'fiscal:read',
   'payments:read',
   'payments:write',
-  'payments:void',
-  'expenses:read',
   'expenses:write',
-  'expenses:void',
   'documents:read',
   'documents:write',
   'staff:read',
