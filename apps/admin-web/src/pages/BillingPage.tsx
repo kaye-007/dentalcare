@@ -18,6 +18,7 @@ import {
   api,
   formatEuro,
   METHOD_LABELS,
+  newIdempotencyKey,
   type BillingSummary,
   type SubscriptionInvoice,
 } from '../lib/api';
@@ -126,7 +127,10 @@ export default function BillingPage() {
     setRunning(true);
     setError(null);
     try {
-      const result = await api.runBilling(`${period}-01`);
+      // A key per confirmed run. Running the same month twice is safe on its
+      // own (clinics already billed are skipped); the key makes a lost
+      // response come back as the first run's answer.
+      const result = await api.runBilling(`${period}-01`, newIdempotencyKey());
       toast(
         result.issued === 0
           ? `Nothing to issue — all ${result.considered} clinics are already billed for ${label}.`

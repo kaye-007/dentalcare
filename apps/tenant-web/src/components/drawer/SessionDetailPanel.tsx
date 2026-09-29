@@ -7,6 +7,7 @@ import {
   type DenominationCounts,
   type DrawerSession,
   humanError,
+  newIdempotencyKey,
 } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { SidePanel, StatusPill, LoadingRows } from '../ui';
@@ -44,6 +45,13 @@ export default function SessionDetailPanel({
     {},
   );
   const [busy, setBusy] = useState(false);
+  // A new key each time an approval or a force-close is started; a retry of
+  // the same one reuses it.
+  const [actionKey, setActionKey] = useState(newIdempotencyKey);
+  const start = (next: 'approve' | 'force') => {
+    setActionKey(newIdempotencyKey());
+    setMode(next);
+  };
 
   useEffect(() => {
     drawerApi
@@ -60,14 +68,18 @@ export default function SessionDetailPanel({
     try {
       const next =
         mode === 'approve'
-          ? await drawerApi.approve(s.id, reason)
-          : await drawerApi.forceClose(s.id, {
-              reason,
-              counts: s.currencies.map((c) => ({
-                currency: c,
-                denominations: counts[c] ?? {},
-              })),
-            });
+          ? await drawerApi.approve(s.id, reason, actionKey)
+          : await drawerApi.forceClose(
+              s.id,
+              {
+                reason,
+                counts: s.currencies.map((c) => ({
+                  currency: c,
+                  denominations: counts[c] ?? {},
+                })),
+              },
+              actionKey,
+            );
       setS(next);
       setMode('view');
       setReason('');
@@ -223,7 +235,7 @@ export default function SessionDetailPanel({
               <button
                 type="button"
                 className="btn btn--ghost"
-                onClick={() => setMode('force')}
+                onClick={() => start('force')}
               >
                 Count and force-close
               </button>
@@ -234,7 +246,7 @@ export default function SessionDetailPanel({
               <button
                 type="button"
                 className="btn btn--primary"
-                onClick={() => setMode('approve')}
+                onClick={() => start('approve')}
               >
                 Approve variance
               </button>

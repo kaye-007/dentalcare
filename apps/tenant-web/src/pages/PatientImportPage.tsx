@@ -15,6 +15,7 @@ import {
 } from '@dentalcare/shared';
 import {
   ApiError,
+  newIdempotencyKey,
   patientImportApi,
   settingsApi,
   type ImportBatch,
@@ -253,7 +254,14 @@ export default function PatientImportPage() {
         });
         skipped += batch.rows.length - rows.length;
         if (rows.length === 0) continue;
-        const res = await patientImportApi.commit({ ...batch, rows });
+        // Each batch is its own action. A run that stops is reviewed again
+        // before it continues, so its batches can differ; the server's
+        // duplicate check, not the key, is what keeps a rerun from importing
+        // a patient twice.
+        const res = await patientImportApi.commit(
+          { ...batch, rows },
+          newIdempotencyKey(),
+        );
         imported += res.imported;
         skipped += res.skipped;
       }

@@ -5,6 +5,7 @@ import {
   api,
   formatEuro,
   METHOD_LABELS,
+  newIdempotencyKey,
   PAYMENT_METHODS,
   type MarkPaidInput,
   type PaymentMethod,
@@ -37,6 +38,10 @@ export default function PaymentModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voiding, setVoiding] = useState(false);
+  // One key for settling this invoice and one for voiding it, however many
+  // times either is pressed while the dialog is open.
+  const [payKey] = useState(newIdempotencyKey);
+  const [voidKey] = useState(newIdempotencyKey);
 
   const minor = Math.round(Number(amount) * 100);
   const short = Number.isFinite(minor) && minor < invoice.amount;
@@ -49,7 +54,7 @@ export default function PaymentModal({
       const input: MarkPaidInput = { method, amount: minor };
       if (reference.trim()) input.reference = reference.trim();
       if (note.trim()) input.note = note.trim();
-      await api.markInvoicePaid(invoice.id, input);
+      await api.markInvoicePaid(invoice.id, input, payKey);
       onDone('paid');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not record the payment.');
@@ -65,7 +70,7 @@ export default function PaymentModal({
     setBusy(true);
     setError(null);
     try {
-      await api.voidInvoice(invoice.id, note.trim());
+      await api.voidInvoice(invoice.id, note.trim(), voidKey);
       onDone('void');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not void the invoice.');

@@ -56,6 +56,16 @@ async function refreshSession(): Promise<boolean> {
   }
 }
 
+/**
+ * A key for one billing action, sent as `Idempotency-Key`. The API refuses
+ * one without it (428): make it when the dialog opens, and send the same key
+ * on every retry of that action, so a double click or a lost response cannot
+ * issue, settle or void an invoice twice (API migration 0026).
+ */
+export function newIdempotencyKey(): string {
+  return `console-${crypto.randomUUID()}`;
+}
+
 function send(path: string, options: RequestInit, auth: boolean) {
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
@@ -421,23 +431,29 @@ export const api = {
     ),
   tenantInvoices: (tenantId: string) =>
     req<SubscriptionInvoice[]>(`/platform/billing/tenants/${tenantId}/invoices`),
-  runBilling: (period?: string) =>
+  runBilling: (period: string | undefined, idempotencyKey: string) =>
     req<{ considered: number; issued: number; numbers: string[] }>(
       '/platform/billing/run',
       {
         method: 'POST',
         body: JSON.stringify(period ? { period } : {}),
+        headers: { 'Idempotency-Key': idempotencyKey },
       },
     ),
-  markInvoicePaid: (id: string, input: MarkPaidInput) =>
+  markInvoicePaid: (id: string, input: MarkPaidInput, idempotencyKey: string) =>
     req<{ id: string; status: 'paid'; paidAmount: number }>(
       `/platform/billing/invoices/${id}/pay`,
-      { method: 'POST', body: JSON.stringify(input) },
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+        headers: { 'Idempotency-Key': idempotencyKey },
+      },
     ),
-  voidInvoice: (id: string, reason: string) =>
+  voidInvoice: (id: string, reason: string, idempotencyKey: string) =>
     req<{ id: string; status: 'void' }>(`/platform/billing/invoices/${id}/void`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
+      headers: { 'Idempotency-Key': idempotencyKey },
     }),
 
   // ── What each clinic consumes ───────────────────────────────────────────

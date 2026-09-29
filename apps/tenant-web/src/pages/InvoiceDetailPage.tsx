@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import QrCode from '../components/QrCode';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import {
@@ -110,6 +110,13 @@ export default function InvoiceDetailPage() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const payRequested = searchParams.get('pay') === '1';
+  // One key for registering this invoice and one for cancelling it, however
+  // many times either is pressed. The page stays mounted when it moves from
+  // one invoice to another, so both are renewed with the id below.
+  const fiscalKey = useRef(newIdempotencyKey());
+  const cancelKey = useRef(newIdempotencyKey());
+  // One key per payment being voided, however many times Void is pressed.
+  const voidKey = useMemo(() => (voiding ? newIdempotencyKey() : undefined), [voiding]);
 
   async function load() {
     if (!id) return;
@@ -135,6 +142,8 @@ export default function InvoiceDetailPage() {
   }, [payRequested, inv, setSearchParams]);
 
   useEffect(() => {
+    fiscalKey.current = newIdempotencyKey();
+    cancelKey.current = newIdempotencyKey();
     setLoading(true);
     load()
       .catch(() => setInv(null))
@@ -150,7 +159,7 @@ export default function InvoiceDetailPage() {
     if (!inv) return;
     setError(null);
     try {
-      await financeApi.cancelInvoice(inv.id);
+      await financeApi.cancelInvoice(inv.id, cancelKey.current);
       toast(`${inv.invoiceNumber} cancelled.`);
       await load();
     } catch (err) {
@@ -170,9 +179,6 @@ export default function InvoiceDetailPage() {
       setBusy(null);
     }
   }
-
-  // One key for registering this invoice, however many times it is pressed.
-  const fiscalKey = useRef(newIdempotencyKey());
 
   async function fiscalize() {
     if (!inv) return;
@@ -545,14 +551,14 @@ export default function InvoiceDetailPage() {
         </Modal>
       )}
 
-      {voiding && (
+      {voiding && voidKey && (
         <VoidModal
           title="Void this payment"
           subtitle={`${formatMoney(voiding.amount)} by ${methodName(voiding)} on ${fmtDateTime(voiding.paidAt)}`}
           confirmLabel={`Void ${formatMoney(voiding.amount)}`}
           onClose={() => setVoiding(null)}
           onConfirm={async (reason) => {
-            await financeApi.voidPayment(voiding.id, reason);
+            await financeApi.voidPayment(voiding.id, reason, voidKey);
             setVoiding(null);
             toast('Payment voided.');
             await load();
@@ -1069,6 +1075,8 @@ export function PaymentsPage() {
   const [voiding, setVoiding] = useState<import('../lib/api').PaymentHistoryRow | null>(
     null,
   );
+  // One key per payment being voided, however many times Void is pressed.
+  const voidKey = useMemo(() => (voiding ? newIdempotencyKey() : undefined), [voiding]);
   const { can } = useAuth();
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1180,14 +1188,14 @@ export function PaymentsPage() {
         )}
       </div>
 
-      {voiding && (
+      {voiding && voidKey && (
         <VoidModal
           title="Void this payment"
           subtitle={`${formatMoney(voiding.amount)} from ${voiding.patientName} on ${voiding.invoiceNumber}`}
           confirmLabel={`Void ${formatMoney(voiding.amount)}`}
           onClose={() => setVoiding(null)}
           onConfirm={async (reason) => {
-            await financeApi.voidPayment(voiding.id, reason);
+            await financeApi.voidPayment(voiding.id, reason, voidKey);
             setVoiding(null);
             await load();
           }}

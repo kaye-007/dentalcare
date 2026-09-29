@@ -163,13 +163,16 @@ async function fetchOrFail(input: string, init?: RequestInit): Promise<Response>
  * Make it once per action — when the payment sheet opens — and send the same
  * key on every retry of that action, so a double tap or a lost response
  * cannot take the money twice (API migration 0013).
+ *
+ * The API refuses a money action without one (428), so every call below that
+ * moves money takes the key as a required argument.
  */
 export function newIdempotencyKey(): string {
   return `web-${crypto.randomUUID()}`;
 }
 
-function idempotent(key?: string): HeadersInit | undefined {
-  return key ? { 'Idempotency-Key': key } : undefined;
+function idempotent(key: string): HeadersInit {
+  return { 'Idempotency-Key': key };
 }
 
 /** Called when the session cannot be recovered, so the app can log out. */
@@ -2063,10 +2066,12 @@ export const staffApi = {
   recordSalaryPayment(
     staffId: string,
     p: { amount: number; paidOn?: string; note?: string },
+    idempotencyKey: string,
   ) {
     return request<SalaryPayment>(`/staff/${staffId}/salary-payments`, {
       method: 'POST',
       body: JSON.stringify(p),
+      headers: idempotent(idempotencyKey),
     });
   },
   salaryPayments() {
@@ -2302,7 +2307,7 @@ export const fiscalApi = {
   },
   registerCashDeposit(
     p: { operation: 'INITIAL' | 'WITHDRAW'; amount: number },
-    idempotencyKey?: string,
+    idempotencyKey: string,
   ) {
     return request<CashDeposit>('/fiscal/cash-deposits', {
       method: 'POST',
@@ -2317,7 +2322,7 @@ export const fiscalApi = {
   receipt(invoiceId: string) {
     return request<FiscalReceipt>(`/invoices/${invoiceId}/fiscal/receipt`);
   },
-  fiscalize(invoiceId: string, idempotencyKey?: string) {
+  fiscalize(invoiceId: string, idempotencyKey: string) {
     return request<FiscalRecord>(`/invoices/${invoiceId}/fiscal`, {
       method: 'POST',
       headers: idempotent(idempotencyKey),
@@ -2327,8 +2332,11 @@ export const fiscalApi = {
   queue() {
     return request<FiscalQueue>('/fiscal/queue');
   },
-  retry(id: string) {
-    return request<FiscalRecord>(`/fiscal/queue/${id}/retry`, { method: 'POST' });
+  retry(id: string, idempotencyKey: string) {
+    return request<FiscalRecord>(`/fiscal/queue/${id}/retry`, {
+      method: 'POST',
+      headers: idempotent(idempotencyKey),
+    });
   },
 };
 
@@ -2409,13 +2417,17 @@ export const patientImportApi = {
       rows: ImportRowResult[];
     }>('/patient-imports/preview', { method: 'POST', body: JSON.stringify(batch) });
   },
-  commit(batch: ImportBatch) {
+  commit(batch: ImportBatch, idempotencyKey: string) {
     return request<{
       importId: string;
       imported: number;
       skipped: number;
       rows: ImportRowResult[];
-    }>('/patient-imports', { method: 'POST', body: JSON.stringify(batch) });
+    }>('/patient-imports', {
+      method: 'POST',
+      body: JSON.stringify(batch),
+      headers: idempotent(idempotencyKey),
+    });
   },
 };
 
@@ -2581,7 +2593,7 @@ export const financeApi = {
   },
   createInvoice(
     p: { patientId: string; issuedAt?: string; items: LineItemPayload[] },
-    idempotencyKey?: string,
+    idempotencyKey: string,
   ) {
     return request<InvoiceSummaryRow>('/invoices', {
       method: 'POST',
@@ -2589,8 +2601,11 @@ export const financeApi = {
       headers: idempotent(idempotencyKey),
     });
   },
-  cancelInvoice(id: string) {
-    return request<InvoiceSummaryRow>(`/invoices/${id}/cancel`, { method: 'PATCH' });
+  cancelInvoice(id: string, idempotencyKey: string) {
+    return request<InvoiceSummaryRow>(`/invoices/${id}/cancel`, {
+      method: 'PATCH',
+      headers: idempotent(idempotencyKey),
+    });
   },
   /** The printable invoice, fetched with the session so it can be opened as a Blob URL. */
   invoicePdf(id: string) {
@@ -2613,7 +2628,7 @@ export const financeApi = {
       note?: string;
       document?: InvoiceDocumentKind;
     },
-    idempotencyKey?: string,
+    idempotencyKey: string,
   ) {
     return request<CheckoutResult>(`/invoices/${invoiceId}/payments`, {
       method: 'POST',
@@ -2635,7 +2650,7 @@ export const financeApi = {
       expenseDate?: string;
       note?: string;
     },
-    idempotencyKey?: string,
+    idempotencyKey: string,
   ) {
     return request<ExpenseRow>('/expenses', {
       method: 'POST',
@@ -2643,17 +2658,18 @@ export const financeApi = {
       headers: idempotent(idempotencyKey),
     });
   },
-  voidExpense(id: string, reason: string, idempotencyKey?: string) {
+  voidExpense(id: string, reason: string, idempotencyKey: string) {
     return request<{ voided: true }>(`/expenses/${id}/void`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
       headers: idempotent(idempotencyKey),
     });
   },
-  voidPayment(id: string, reason: string) {
+  voidPayment(id: string, reason: string, idempotencyKey: string) {
     return request<InvoiceSummaryRow>(`/payments/${id}/void`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
+      headers: idempotent(idempotencyKey),
     });
   },
   summary(period: 'today' | 'month' | 'all' = 'month') {
@@ -3107,7 +3123,7 @@ export const billingApi = {
       issuedAt?: string;
       notes?: string;
     } = {},
-    idempotencyKey?: string,
+    idempotencyKey: string,
   ) {
     return request<GeneratedInvoice>(`/treatment-plans/${planId}/invoice`, {
       method: 'POST',
@@ -3126,7 +3142,7 @@ export const billingApi = {
       description: string;
       occurredOn?: string;
     },
-    idempotencyKey?: string,
+    idempotencyKey: string,
   ) {
     return request<PatientLedger>(`/patients/${patientId}/ledger/adjustments`, {
       method: 'POST',
@@ -3774,22 +3790,29 @@ export const drawerApi = {
       headers: idempotent(key),
     });
   },
-  approve(sessionId: string, reason: string) {
+  approve(sessionId: string, reason: string, key: string) {
     return request<DrawerSession>(`/drawer/sessions/${sessionId}/approve`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
+      headers: idempotent(key),
     });
   },
-  approveWithPin(sessionId: string, p: PinApproval & { reason: string }) {
+  approveWithPin(sessionId: string, p: PinApproval & { reason: string }, key: string) {
     return request<DrawerSession>(`/drawer/sessions/${sessionId}/approve-with-pin`, {
       method: 'POST',
       body: JSON.stringify(p),
+      headers: idempotent(key),
     });
   },
-  forceClose(sessionId: string, p: { counts: CountPayload; reason: string }) {
+  forceClose(
+    sessionId: string,
+    p: { counts: CountPayload; reason: string },
+    key: string,
+  ) {
     return request<DrawerSession>(`/drawer/sessions/${sessionId}/force-close`, {
       method: 'POST',
       body: JSON.stringify(p),
+      headers: idempotent(key),
     });
   },
   sessions(

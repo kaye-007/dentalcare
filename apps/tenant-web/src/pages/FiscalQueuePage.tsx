@@ -7,6 +7,7 @@ import {
   type FiscalQueue,
   type FiscalQueueItem,
   humanError,
+  newIdempotencyKey,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatMoney } from '../lib/format';
@@ -43,7 +44,10 @@ export default function FiscalQueuePage() {
     setBusyId(item.id);
     setError(null);
     try {
-      await fiscalApi.retry(item.id);
+      // Every press is a new attempt at delivery, so a new key: replaying the
+      // last answer would show the old failure instead of trying again. The
+      // button is disabled while one is in flight.
+      await fiscalApi.retry(item.id, newIdempotencyKey());
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not send it again.');

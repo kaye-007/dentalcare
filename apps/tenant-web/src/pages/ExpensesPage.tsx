@@ -179,7 +179,7 @@ export default function ExpensesPage() {
         )}
       </div>
 
-      {voiding && (
+      {voiding && voidKey && (
         <VoidModal
           title="Void this expense"
           subtitle={`${formatMoney(voiding.amount)} · ${CAT_LABEL[voiding.category]} · ${fmtDate(voiding.expenseDate)}`}

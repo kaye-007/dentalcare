@@ -72,6 +72,9 @@ export default function EndDayModal({
   // One key per count attempt; a retry of the same attempt reuses it.
   const [countKey, setCountKey] = useState(newIdempotencyKey);
   const closeKey = useMemo(newIdempotencyKey, []);
+  // One approval per closing. A wrong PIN is refused before anything is
+  // recorded, which frees the key for the corrected try.
+  const approveKey = useMemo(newIdempotencyKey, []);
   const counted = useRef(initial.counts.length > 0);
 
   useEffect(() => {
@@ -171,10 +174,11 @@ export default function EndDayModal({
     setBusy(true);
     setError(null);
     try {
-      const s = await drawerApi.approveWithPin(session.id, {
-        ...approval,
-        reason: approvalReason,
-      });
+      const s = await drawerApi.approveWithPin(
+        session.id,
+        { ...approval, reason: approvalReason },
+        approveKey,
+      );
       setSession(s);
       announceDrawerChange();
       setStep('done');
