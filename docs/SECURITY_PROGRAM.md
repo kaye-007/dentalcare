@@ -92,7 +92,7 @@ Each item below can only be proven on a deployed environment, and none of it is 
 
 1. **Idempotency-Key: required on every route that moves money. Done.**
    - A request without a key gets **428** (`idempotency_key_required`), and a malformed key gets 400. Both happen before the handler runs, and after the sign-in and permission checks, so a caller who may not do the thing is refused for that first.
-   - It covers the 25 money routes and the console's subscription billing. The console keeps its keys in `platform_idempotency_keys` (0026), which the clinic role cannot read.
+   - It covers all 25 routes that move money: 22 in the clinic, and the console's three billing routes (run, settle, void). It also covers the WhatsApp batch send. The console keeps its keys in `platform_idempotency_keys` (0026), which the clinic role cannot read.
    - The clinic app and the console send a key per action. The key is a required argument of every client call that moves money, so a call without one does not compile.
    - `idempotency-coverage.spec` fails the build when a route guarded by a money permission is not marked. It lists the five exempt routes with their reasons: no-sale, starting and cancelling a count, setting one's own PIN, and the import preview.
    - Rows 15 and 16.
